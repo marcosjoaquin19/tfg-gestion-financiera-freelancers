@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+
+  db:                          # contenedor de PostgreSQL
+    image: postgres:15
+    container_name: tfg_db
+    environment:
+      POSTGRES_USER: marcos
+      POSTGRES_PASSWORD: marcos123
+      POSTGRES_DB: tfg_freelancers
+    ports:
+      - "5432:5432"            # puerto local:puerto contenedor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data  # guarda los datos aunque apagues Docker
+
+  api:                         # contenedor de tu API FastAPI
+    build: .                   # construye la imagen desde este proyecto
+    container_name: tfg_api
+    ports:
+      - "8000:8000"            # tu API va a estar en localhost:8000
+    depends_on:
+      - db                     # espera que la DB esté lista antes de arrancar
+    env_file:
+      - .env                   # usa las variables de tu archivo .env
+
+volumes:
+  postgres_data:               # volumen para persistir los datos de PostgreSQL
