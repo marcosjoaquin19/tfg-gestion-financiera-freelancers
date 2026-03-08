@@ -1,0 +1,17 @@
+# Variables de entorno - NUNCA subir al repositorio
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Docker
+*.log
+
+# VS Code
+.vscode/
+
+# Mac
+.DS_Store
