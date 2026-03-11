@@ -12,7 +12,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Crea el "motor" de conexión a la base de datos
 # Analogía: es como abrir un canal entre Python y PostgreSQL
-engine = create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10)
 
 # Crea una "fábrica" de sesiones
 # Analogía: cada sesión es una conversación individual con la base de datos

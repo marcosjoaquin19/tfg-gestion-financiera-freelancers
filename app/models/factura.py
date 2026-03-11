@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -25,7 +25,7 @@ class Factura(Base):
     descripcion = Column(String(500), nullable=False)
     # detalle del servicio facturado
     
-    monto = Column(Float, nullable=False)
+    monto = Column(Numeric(12, 2), nullable=False)
     # monto de la factura
     
     estado = Column(Enum(EstadoFactura), default=EstadoFactura.PENDIENTE)

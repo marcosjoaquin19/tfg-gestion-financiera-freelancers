@@ -1,0 +1,120 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.usuario import Usuario
+from app.models.factura import Factura, EstadoFactura
+from app.schemas.factura import FacturaCreate, FacturaEstadoUpdate, FacturaResponse
+from app.dependencies import get_current_user
+
+
+router = APIRouter(prefix="/facturas", tags=["Facturas"])
+
+
+@router.post("/", response_model=FacturaResponse, status_code=status.HTTP_201_CREATED)
+def crear_factura(
+    datos: FacturaCreate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    nueva_factura = Factura(
+        usuario_id=current_user.id,
+        cliente_nombre=datos.cliente_nombre,
+        descripcion=datos.descripcion,
+        monto=datos.monto,
+        fecha_emision=datos.fecha_emision,
+        fecha_vencimiento=datos.fecha_vencimiento,
+        # estado arranca en PENDIENTE por defecto (definido en el modelo)
+    )
+    db.add(nueva_factura)
+    db.commit()
+    db.refresh(nueva_factura)
+    return nueva_factura
+
+
+@router.get("/", response_model=list[FacturaResponse])
+def listar_facturas(
+    estado: EstadoFactura | None = Query(default=None),
+    # ?estado=pendiente / ?estado=pagada / ?estado=vencida
+    cliente_nombre: str | None = Query(default=None),
+    # ?cliente_nombre=Acme → filtra por nombre de cliente
+    limite: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    query = db.query(Factura).filter(Factura.usuario_id == current_user.id)
+
+    if estado:
+        query = query.filter(Factura.estado == estado)
+
+    if cliente_nombre:
+        query = query.filter(Factura.cliente_nombre.ilike(f"%{cliente_nombre}%"))
+        # ilike → búsqueda case-insensitive, ej: "acme" matchea "Acme Corp"
+
+    return query.order_by(Factura.fecha_emision.desc()).offset(offset).limit(limite).all()
+
+
+@router.get("/{factura_id}", response_model=FacturaResponse)
+def obtener_factura(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    factura = db.query(Factura).filter(
+        Factura.id == factura_id,
+        Factura.usuario_id == current_user.id,
+    ).first()
+
+    if not factura:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+
+    return factura
+
+
+@router.patch("/{factura_id}/estado", response_model=FacturaResponse)
+def actualizar_estado_factura(
+    factura_id: int,
+    datos: FacturaEstadoUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    # PATCH en vez de PUT → solo actualizamos el estado, no toda la factura
+    # una factura emitida no debería poder modificar cliente, monto o fechas
+    factura = db.query(Factura).filter(
+        Factura.id == factura_id,
+        Factura.usuario_id == current_user.id,
+    ).first()
+
+    if not factura:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+
+    if datos.estado == EstadoFactura.PAGADA and datos.fecha_pago is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe indicar la fecha de pago al marcar una factura como pagada",
+        )
+
+    factura.estado = datos.estado
+    factura.fecha_pago = datos.fecha_pago
+
+    db.commit()
+    db.refresh(factura)
+    return factura
+
+
+@router.delete("/{factura_id}", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_factura(
+    factura_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    factura = db.query(Factura).filter(
+        Factura.id == factura_id,
+        Factura.usuario_id == current_user.id,
+    ).first()
+
+    if not factura:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+
+    db.delete(factura)
+    db.commit()

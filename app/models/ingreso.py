@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -15,7 +15,7 @@ class Ingreso(Base):
     descripcion = Column(String(255), nullable=False)
     # ej: "Proyecto web para cliente X"
     
-    monto = Column(Float, nullable=False)
+    monto = Column(Numeric(12, 2), nullable=False)
     # el valor del ingreso en pesos/dolares
     
     categoria = Column(String(100), nullable=False)
@@ -29,5 +29,3 @@ class Ingreso(Base):
     # Relación con la tabla usuarios
     # Analogía: desde un ingreso puedo acceder a los datos del usuario dueño
     usuario = relationship("Usuario", back_populates="ingresos")
-     # Relaciones con otras tablas
-    ingresos = relationship("Ingreso", back_populates="usuario")

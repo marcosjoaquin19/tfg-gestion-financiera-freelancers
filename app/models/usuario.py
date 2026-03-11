@@ -15,7 +15,7 @@ class Usuario(Base):
     nombre = Column(String(100), nullable=False)
     # nullable=False → este campo es obligatorio, no puede estar vacío
     
-    email = Column(String(150), unique=True, nullable=False)
+    email = Column(String(150), unique=True, nullable=False, index=True)
     # unique=True → no puede haber dos usuarios con el mismo email
     
     password_hash = Column(String(255), nullable=False)
@@ -27,6 +27,7 @@ class Usuario(Base):
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
     # se llena automáticamente con la fecha y hora actual
 
+    ingresos = relationship("Ingreso", back_populates="usuario")
     gastos = relationship("Gasto", back_populates="usuario")
     facturas = relationship("Factura", back_populates="usuario")
     proyecciones = relationship("Proyeccion", back_populates="usuario")

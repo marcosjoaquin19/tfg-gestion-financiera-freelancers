@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -15,12 +15,16 @@ class TipoAlerta(enum.Enum):
     DISCREPANCIA_FACTURACION = "discrepancia_facturacion"
     # hay facturas emitidas pero no hay ingresos que las justifiquen
 
+    RIESGO_RECATEGORIZACION = "riesgo_recategorizacion"
+    FACTURA_IMPAGA = "factura_impaga"
+    COMISION_EXCESIVA = "comision_excesiva"
+
 class AlertaAuditoria(Base):
     __tablename__ = "alertas_auditoria"
 
     id = Column(Integer, primary_key=True, index=True)
     
-    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False, index=True)
     
     tipo = Column(Enum(TipoAlerta), nullable=False)
     # qué tipo de alerta es
@@ -29,7 +33,7 @@ class AlertaAuditoria(Base):
     # explicación en texto de qué se detectó
     # ej: "Gasto duplicado: $5000 en Adobe el 01/03 y 02/03"
     
-    monto_involucrado = Column(Float, nullable=True)
+    monto_involucrado = Column(Numeric(12, 2), nullable=True)
     # el monto relacionado a la alerta (puede ser null)
     
     resuelta = Column(Boolean, default=False)

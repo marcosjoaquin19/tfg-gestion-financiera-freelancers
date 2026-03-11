@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -14,7 +14,7 @@ class Gasto(Base):
     descripcion = Column(String(255), nullable=False)
     # ej: "Suscripción Adobe", "Hosting servidor"
     
-    monto = Column(Float, nullable=False)
+    monto = Column(Numeric(12, 2), nullable=False)
     # el valor del gasto
     
     categoria = Column(String(100), nullable=False)
