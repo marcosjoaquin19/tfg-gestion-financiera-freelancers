@@ -4,13 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 # HTTPException → para devolver errores HTTP con código y mensaje
 # status → constantes de códigos HTTP, ej: status.HTTP_400_BAD_REQUEST
 
+from fastapi.security import OAuth2PasswordRequestForm
+
 from sqlalchemy.orm import Session
 # Session → tipo de la conexión a la BD
 
 from app.database import get_db
 # get_db → función que abre y cierra la sesión de BD automáticamente
 
-from app.schemas.usuario import UsuarioCreate, UsuarioLogin, Token, UsuarioResponse
+from app.schemas.usuario import UsuarioCreate, Token, UsuarioResponse
 # los schemas de Pydantic que validan los datos de entrada y salida
 
 from app.services.auth import (
@@ -81,10 +83,11 @@ def register(usuario_data: UsuarioCreate, db: Session = Depends(get_db)):
     response_model=Token,
     # la respuesta va a ser el schema Token: {access_token, token_type}
 )
-def login(credenciales: UsuarioLogin, db: Session = Depends(get_db)):
-    # credenciales → email y password que manda el usuario
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # OAuth2PasswordRequestForm usa "username" como campo estándar → lo mapeamos al email
+    # esto activa el botón Authorize de Swagger automáticamente
 
-    usuario = obtener_usuario_por_email(db, credenciales.email)
+    usuario = obtener_usuario_por_email(db, form_data.username)
     if not usuario:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -93,7 +96,7 @@ def login(credenciales: UsuarioLogin, db: Session = Depends(get_db)):
             # dar esa info ayudaría a un atacante a enumerar usuarios válidos
         )
 
-    password_valido = verificar_password(credenciales.password, usuario.password_hash)
+    password_valido = verificar_password(form_data.password, usuario.password_hash)
     if not password_valido:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

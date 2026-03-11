@@ -10,6 +10,16 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
 
 
+def _get_factura_or_404(factura_id: int, db: Session, usuario_id: int) -> Factura:
+    factura = db.query(Factura).filter(
+        Factura.id == factura_id,
+        Factura.usuario_id == usuario_id,
+    ).first()
+    if not factura:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+    return factura
+
+
 @router.post("/", response_model=FacturaResponse, status_code=status.HTTP_201_CREATED)
 def crear_factura(
     datos: FacturaCreate,
@@ -60,15 +70,7 @@ def obtener_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    factura = db.query(Factura).filter(
-        Factura.id == factura_id,
-        Factura.usuario_id == current_user.id,
-    ).first()
-
-    if not factura:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
-
-    return factura
+    return _get_factura_or_404(factura_id, db, current_user.id)
 
 
 @router.patch("/{factura_id}/estado", response_model=FacturaResponse)
@@ -80,13 +82,7 @@ def actualizar_estado_factura(
 ):
     # PATCH en vez de PUT → solo actualizamos el estado, no toda la factura
     # una factura emitida no debería poder modificar cliente, monto o fechas
-    factura = db.query(Factura).filter(
-        Factura.id == factura_id,
-        Factura.usuario_id == current_user.id,
-    ).first()
-
-    if not factura:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+    factura = _get_factura_or_404(factura_id, db, current_user.id)
 
     if datos.estado == EstadoFactura.PAGADA and datos.fecha_pago is None:
         raise HTTPException(
@@ -108,13 +104,13 @@ def eliminar_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    factura = db.query(Factura).filter(
-        Factura.id == factura_id,
-        Factura.usuario_id == current_user.id,
-    ).first()
+    factura = _get_factura_or_404(factura_id, db, current_user.id)
 
-    if not factura:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Factura no encontrada")
+    if factura.estado == EstadoFactura.PAGADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede eliminar una factura ya pagada",
+        )
 
     db.delete(factura)
     db.commit()

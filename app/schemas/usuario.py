@@ -1,6 +1,8 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 # BaseModel → clase base de Pydantic, valida los datos automáticamente
 # EmailStr → tipo especial que verifica que el string sea un email válido
+# ConfigDict → reemplaza class Config en Pydantic V2
+# Field → permite agregar validaciones extra a los campos
 
 # -------------------------------------------------------------------
 # SCHEMA DE REGISTRO
@@ -15,7 +17,7 @@ class UsuarioCreate(BaseModel):
     # Pydantic verifica automáticamente que sea un email válido
     # si mandan "marcos@@", devuelve error 422 sin que vos hagas nada
 
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     # el password en texto plano que manda el usuario
     # NUNCA se guarda así en la BD → el servicio lo hashea antes de guardarlo
 
@@ -65,8 +67,7 @@ class UsuarioResponse(BaseModel):
     es_activo: bool
     # si el usuario está activo o fue desactivado
 
-    class Config:
-        from_attributes = True
-        # le dice a Pydantic que puede leer los datos desde un objeto SQLAlchemy
-        # sin esto, solo podría leer desde diccionarios
-        # Analogía: es el "traductor" entre el objeto de la BD y el JSON de respuesta
+    model_config = ConfigDict(from_attributes=True)
+    # le dice a Pydantic que puede leer los datos desde un objeto SQLAlchemy
+    # sin esto, solo podría leer desde diccionarios
+    # Analogía: es el "traductor" entre el objeto de la BD y el JSON de respuesta

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
@@ -10,6 +10,9 @@ import statistics
 # CONSTANTES DE CONFIGURACIÓN
 # -------------------------------------------------------------------
 VENTANA_DUPLICADOS_DIAS = 3
+
+MESES_VENTANA = 6
+# solo analizamos los últimos 6 meses para mantener la detección relevante y eficiente
 # dos gastos se consideran duplicados si tienen mismo monto y categoría
 # y fueron registrados con menos de 3 días de diferencia
 
@@ -26,19 +29,17 @@ MIN_GASTOS_PARA_ESTADISTICA = 5
 # FUNCIÓN AUXILIAR
 # -------------------------------------------------------------------
 def _crear_alerta(
-    db: Session,
     usuario_id: int,
     tipo: TipoAlerta,
     descripcion: str,
     monto: float | None = None,
-) -> None:
-    alerta = AlertaAuditoria(
+) -> AlertaAuditoria:
+    return AlertaAuditoria(
         usuario_id=usuario_id,
         tipo=tipo,
         descripcion=descripcion,
         monto_involucrado=monto,
     )
-    db.add(alerta)
 
 
 # -------------------------------------------------------------------
@@ -46,9 +47,10 @@ def _crear_alerta(
 # Busca gastos con mismo monto y categoría dentro de la ventana de días
 # -------------------------------------------------------------------
 def detectar_gastos_duplicados(db: Session, usuario_id: int) -> list[tuple[Gasto, Gasto]]:
+    fecha_limite = datetime.now(timezone.utc) - timedelta(days=MESES_VENTANA * 30)
     gastos = (
         db.query(Gasto)
-        .filter(Gasto.usuario_id == usuario_id)
+        .filter(Gasto.usuario_id == usuario_id, Gasto.fecha >= fecha_limite)
         .order_by(Gasto.fecha.asc())
         .all()
     )
@@ -77,7 +79,11 @@ def detectar_gastos_duplicados(db: Session, usuario_id: int) -> list[tuple[Gasto
 # Detecta gastos inusualmente altos comparados al promedio de su categoría
 # -------------------------------------------------------------------
 def detectar_anomalias_estadisticas(db: Session, usuario_id: int) -> list[tuple[Gasto, float, float]]:
-    gastos = db.query(Gasto).filter(Gasto.usuario_id == usuario_id).all()
+    fecha_limite = datetime.now(timezone.utc) - timedelta(days=MESES_VENTANA * 30)
+    gastos = db.query(Gasto).filter(
+        Gasto.usuario_id == usuario_id,
+        Gasto.fecha >= fecha_limite,
+    ).all()
 
     # agrupamos los gastos por categoría
     por_categoria: dict[str, list[Gasto]] = {}
@@ -141,6 +147,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
     ).delete()
 
     conteo = {"gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0}
+    alertas: list[AlertaAuditoria] = []
 
     # --- DETECTOR 1: duplicados ---
     duplicados = detectar_gastos_duplicados(db, usuario_id)
@@ -153,43 +160,41 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
                 g.es_duplicado = True
                 ids_marcados.add(g.id)
 
-        _crear_alerta(
-            db,
+        alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.GASTO_DUPLICADO,
             f"Posible gasto duplicado: ${gasto_a.monto:.2f} en '{gasto_a.categoria}' "
             f"registrado el {gasto_a.fecha.date()} y el {gasto_b.fecha.date()}",
             monto=gasto_a.monto,
-        )
+        ))
         conteo["gastos_duplicados"] += 1
 
     # --- DETECTOR 2: anomalías ---
     anomalias = detectar_anomalias_estadisticas(db, usuario_id)
 
     for gasto, media, desviacion in anomalias:
-        _crear_alerta(
-            db,
+        alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.ANOMALIA_ESTADISTICA,
             f"Gasto inusualmente alto: ${gasto.monto:.2f} en '{gasto.categoria}' "
             f"(promedio de la categoría: ${media:.2f}, desviación: ${desviacion:.2f})",
             monto=gasto.monto,
-        )
+        ))
         conteo["anomalias"] += 1
 
     # --- DETECTOR 3: discrepancias ---
     facturas_vencidas = detectar_discrepancias_facturacion(db, usuario_id)
 
     for factura in facturas_vencidas:
-        _crear_alerta(
-            db,
+        alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.DISCREPANCIA_FACTURACION,
             f"Factura vencida sin cobrar: ${factura.monto:.2f} a '{factura.cliente_nombre}' "
             f"(venció el {factura.fecha_vencimiento.date()})",
             monto=factura.monto,
-        )
+        ))
         conteo["discrepancias"] += 1
 
+    db.add_all(alertas)
     db.commit()
     return conteo
