@@ -58,6 +58,9 @@ def usuario_registrado(client):
 @pytest.fixture
 def auth_headers(client, usuario_registrado):
     # Devuelve el header Authorization listo para usar en los requests
-    response = client.post("/auth/login", json=usuario_registrado)
+    response = client.post("/auth/login", data={
+        "username": usuario_registrado["email"],
+        "password": usuario_registrado["password"]
+    })
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

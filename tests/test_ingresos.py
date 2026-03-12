@@ -78,11 +78,11 @@ def test_eliminar_ingreso(client, auth_headers):
 
 def test_usuario_no_ve_ingresos_de_otro(client):
     # registramos dos usuarios distintos
-    client.post("/auth/register", json={"nombre": "User1", "email": "user1@test.com", "password": "pass1"})
-    client.post("/auth/register", json={"nombre": "User2", "email": "user2@test.com", "password": "pass2"})
+    client.post("/auth/register", json={"nombre": "User1", "email": "user1@test.com", "password": "password123"})
+    client.post("/auth/register", json={"nombre": "User2", "email": "user2@test.com", "password": "password123"})
 
-    token1 = client.post("/auth/login", json={"email": "user1@test.com", "password": "pass1"}).json()["access_token"]
-    token2 = client.post("/auth/login", json={"email": "user2@test.com", "password": "pass2"}).json()["access_token"]
+    token1 = client.post("/auth/login", data={"username": "user1@test.com", "password": "password123"}).json()["access_token"]
+    token2 = client.post("/auth/login", data={"username": "user2@test.com", "password": "password123"}).json()["access_token"]
 
     headers1 = {"Authorization": f"Bearer {token1}"}
     headers2 = {"Authorization": f"Bearer {token2}"}

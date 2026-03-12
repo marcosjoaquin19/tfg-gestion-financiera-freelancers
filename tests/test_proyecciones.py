@@ -11,11 +11,10 @@ def _crear_ingresos(client, headers, cantidad):
 
 
 def test_generar_proyecciones_sin_suficientes_datos(client, auth_headers):
-    # con menos de 10 ingresos debe fallar
+    # con pocos datos usa Cold Start y devuelve proyecciones igual
     _crear_ingresos(client, auth_headers, 5)
     response = client.post("/proyecciones/generar", json={"periodos": 30}, headers=auth_headers)
-    assert response.status_code == 400
-    assert "10" in response.json()["detail"]
+    assert response.status_code == 201
 
 
 def test_generar_proyecciones_exitoso(client, auth_headers):
@@ -29,7 +28,7 @@ def test_generar_proyecciones_exitoso(client, auth_headers):
         "yhat_upper": [140000.0] * 30,
     })
 
-    with patch("app.routers.proyecciones.Prophet") as MockProphet:
+    with patch("app.services.prophet_service.Prophet") as MockProphet:
         instancia = MagicMock()
         instancia.predict.return_value = forecast_mock
         instancia.make_future_dataframe.return_value = forecast_mock
@@ -55,7 +54,7 @@ def test_generar_proyecciones_reemplaza_anteriores(client, auth_headers):
         "yhat_upper": [140000.0] * 10,
     })
 
-    with patch("app.routers.proyecciones.Prophet") as MockProphet:
+    with patch("app.services.prophet_service.Prophet") as MockProphet:
         instancia = MagicMock()
         instancia.predict.return_value = forecast_mock
         instancia.make_future_dataframe.return_value = forecast_mock

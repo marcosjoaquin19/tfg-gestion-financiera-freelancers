@@ -31,7 +31,10 @@ def test_register_email_invalido(client):
 
 
 def test_login_exitoso(client, usuario_registrado):
-    response = client.post("/auth/login", json=usuario_registrado)
+    response = client.post("/auth/login", data={
+        "username": usuario_registrado["email"],
+        "password": usuario_registrado["password"]
+    })
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
@@ -39,8 +42,8 @@ def test_login_exitoso(client, usuario_registrado):
 
 
 def test_login_password_incorrecto(client, usuario_registrado):
-    response = client.post("/auth/login", json={
-        "email": usuario_registrado["email"],
+    response = client.post("/auth/login", data={
+        "username": usuario_registrado["email"],
         "password": "wrongpassword"
     })
     assert response.status_code == 401
@@ -49,8 +52,8 @@ def test_login_password_incorrecto(client, usuario_registrado):
 
 
 def test_login_email_inexistente(client):
-    response = client.post("/auth/login", json={
-        "email": "noexiste@test.com",
+    response = client.post("/auth/login", data={
+        "username": "noexiste@test.com",
         "password": "password123"
     })
     assert response.status_code == 401
