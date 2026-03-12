@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 import statistics
 from sqlalchemy.orm import Session
 import pandas as pd
+import cmdstanpy  # noqa: F401 — debe importarse antes que Prophet para que use CMDSTANPY
 from prophet import Prophet
 from app.models.ingreso import Ingreso
 from app.models.proyeccion import Proyeccion
@@ -41,7 +42,7 @@ def _proyecciones_prophet(usuario_id: int, ingresos, periodos: int) -> list[Proy
     df["ds"] = pd.to_datetime(df["ds"]).dt.tz_localize(None)
     # Prophet no acepta fechas con timezone → las removemos
 
-    modelo = Prophet()
+    modelo = Prophet(stan_backend="CMDSTANPY")
     modelo.fit(df)
     futuro = modelo.make_future_dataframe(periods=periodos)
     forecast = modelo.predict(futuro)
