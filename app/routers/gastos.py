@@ -1,13 +1,33 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.gasto import Gasto
 from app.schemas.gasto import GastoCreate, GastoResponse
 from app.dependencies import get_current_user
+from app.services.ia_service import clasificar_gasto
 
 
 router = APIRouter(prefix="/gastos", tags=["Gastos"])
+
+
+class ClasificarRequest(BaseModel):
+    descripcion: str
+
+
+class ClasificarResponse(BaseModel):
+    categoria_sugerida: str
+
+
+@router.post("/clasificar", response_model=ClasificarResponse)
+def clasificar(
+    datos: ClasificarRequest,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    categoria = clasificar_gasto(datos.descripcion, db)
+    return ClasificarResponse(categoria_sugerida=categoria)
 
 
 @router.post("/", response_model=GastoResponse, status_code=status.HTTP_201_CREATED)
