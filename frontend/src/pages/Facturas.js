@@ -18,6 +18,11 @@ function todayISO() {
   return new Date().toISOString().split('T')[0];
 }
 
+function toDateInput(str) {
+  if (!str) return '';
+  return str.split('T')[0];
+}
+
 const ESTADO_BADGE = {
   pendiente: { background: '#1a2e1a', color: '#4ade80' },
   pagada:    { background: '#0f1e35', color: '#3b82f6' },
@@ -69,6 +74,9 @@ export default function Facturas() {
   const [busqueda, setBusqueda] = useState('');
   const [pagandoId, setPagandoId] = useState(null);
   const [fechaPago, setFechaPago] = useState(todayISO());
+  const [editando, setEditando] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
   const [form, setForm] = useState({
     cliente_nombre: '', monto: '', descripcion: '',
     fecha_emision: todayISO(), fecha_vencimiento: '',
@@ -123,6 +131,40 @@ export default function Facturas() {
     } catch (_) {}
   }
 
+  function handleAbrirEditar(factura) {
+    setEditando(factura);
+    setEditForm({
+      cliente_nombre: factura.cliente_nombre,
+      monto: factura.monto,
+      descripcion: factura.descripcion,
+      fecha_emision: toDateInput(factura.fecha_emision),
+      fecha_vencimiento: toDateInput(factura.fecha_vencimiento),
+    });
+  }
+
+  function handleEditChange(e) {
+    setEditForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    setEditSaving(true);
+    try {
+      await api.put(`/facturas/${editando.id}`, {
+        cliente_nombre: editForm.cliente_nombre,
+        monto: parseFloat(editForm.monto),
+        descripcion: editForm.descripcion,
+        fecha_emision: editForm.fecha_emision + 'T00:00:00',
+        fecha_vencimiento: editForm.fecha_vencimiento + 'T00:00:00',
+      });
+      setEditando(null);
+      await fetchFacturas();
+    } catch (_) {
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function handleDelete(id) {
     if (!window.confirm('¿Eliminar esta factura?')) return;
     try {
@@ -148,7 +190,110 @@ export default function Facturas() {
 
   const COLS = '1.5fr 2fr 1fr 1fr 1fr 1fr 2.2fr';
 
+  const modalInputStyle = {
+    background: '#0f1117', border: '1px solid #1e293b',
+    color: '#e2e8f0', borderRadius: '8px',
+    padding: '10px 14px', width: '100%',
+    fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+  };
+
   return (
+    <>
+    {editando && (
+      <div
+        onClick={(e) => { if (e.target === e.currentTarget) setEditando(null); }}
+        style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <div style={{
+          background: '#161b27', border: '1px solid #1e293b',
+          borderRadius: '10px', padding: '24px',
+          maxWidth: '560px', width: '90%',
+        }}>
+          <p style={{ margin: '0 0 20px 0', fontSize: '17px', fontWeight: 600, color: '#f8fafc' }}>
+            Editar factura
+          </p>
+          <form onSubmit={handleSaveEdit}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Cliente</label>
+                <input
+                  name="cliente_nombre" required value={editForm.cliente_nombre} onChange={handleEditChange}
+                  style={modalInputStyle}
+                  onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Monto</label>
+                <input
+                  name="monto" type="number" step="0.01" min="0" required value={editForm.monto} onChange={handleEditChange}
+                  style={modalInputStyle}
+                  onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Descripción</label>
+              <input
+                name="descripcion" required value={editForm.descripcion} onChange={handleEditChange}
+                style={modalInputStyle}
+                onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+                onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Fecha de emisión</label>
+                <input
+                  name="fecha_emision" type="date" required value={editForm.fecha_emision} onChange={handleEditChange}
+                  style={{ ...modalInputStyle, colorScheme: 'dark' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Fecha de vencimiento</label>
+                <input
+                  name="fecha_vencimiento" type="date" required value={editForm.fecha_vencimiento} onChange={handleEditChange}
+                  style={{ ...modalInputStyle, colorScheme: 'dark' }}
+                  onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="submit" disabled={editSaving}
+                style={{
+                  background: '#3b82f6', color: '#fff', border: 'none',
+                  borderRadius: '8px', padding: '9px 22px',
+                  fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+                  opacity: editSaving ? 0.7 : 1,
+                }}
+              >
+                {editSaving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+              <button
+                type="button" onClick={() => setEditando(null)}
+                style={{
+                  background: 'transparent', color: '#94a3b8',
+                  border: '1px solid #1e293b', borderRadius: '8px',
+                  padding: '9px 22px', fontSize: '14px', cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
     <Layout activeSection="Facturas">
 
       {/* Header */}
@@ -335,6 +480,18 @@ export default function Facturas() {
                         Marcar pagada
                       </button>
                     )}
+                    {factura.estado !== 'pagada' && (
+                      <button
+                        onClick={() => handleAbrirEditar(factura)}
+                        style={{
+                          background: '#3b82f6', color: '#fff', border: 'none',
+                          borderRadius: '6px', padding: '4px 10px',
+                          fontSize: '12px', cursor: 'pointer',
+                        }}
+                      >
+                        ✏️ Editar
+                      </button>
+                    )}
                     <EliminarBtn
                       disabled={factura.estado === 'pagada'}
                       onDelete={() => handleDelete(factura.id)}
@@ -386,5 +543,6 @@ export default function Facturas() {
         )}
       </div>
     </Layout>
+    </>
   );
 }

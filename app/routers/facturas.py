@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.factura import Factura, EstadoFactura
-from app.schemas.factura import FacturaCreate, FacturaEstadoUpdate, FacturaResponse
+from app.schemas.factura import FacturaCreate, FacturaUpdate, FacturaEstadoUpdate, FacturaResponse
 from app.dependencies import get_current_user
 
 
@@ -71,6 +71,32 @@ def obtener_factura(
     current_user: Usuario = Depends(get_current_user),
 ):
     return _get_factura_or_404(factura_id, db, current_user.id)
+
+
+@router.put("/{factura_id}", response_model=FacturaResponse)
+def editar_factura(
+    factura_id: int,
+    datos: FacturaUpdate,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    factura = _get_factura_or_404(factura_id, db, current_user.id)
+
+    if factura.estado == EstadoFactura.PAGADA:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede editar una factura ya pagada",
+        )
+
+    factura.cliente_nombre = datos.cliente_nombre
+    factura.descripcion = datos.descripcion
+    factura.monto = datos.monto
+    factura.fecha_emision = datos.fecha_emision
+    factura.fecha_vencimiento = datos.fecha_vencimiento
+
+    db.commit()
+    db.refresh(factura)
+    return factura
 
 
 @router.patch("/{factura_id}/estado", response_model=FacturaResponse)
