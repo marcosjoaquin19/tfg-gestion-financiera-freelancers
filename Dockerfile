@@ -13,5 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copiamos todo el resto del proyecto
 COPY . .
 
-# El comando para arrancar la API
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Al arrancar el contenedor: primero aplica migraciones pendientes, luego levanta la API.
+# Se usa CMD con shell para poder encadenar con &&.
+# Nota: RUN no sirve aquí porque en build-time la BD no está disponible.
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

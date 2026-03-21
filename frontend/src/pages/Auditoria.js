@@ -68,7 +68,8 @@ export default function Auditoria() {
     setMensaje('');
     try {
       const res = await api.post('/alertas/ejecutar-auditoria');
-      const total = res.data?.alertas_generadas ?? res.data?.length ?? '?';
+      const detalle = res.data?.detalle ?? {};
+      const total = Object.values(detalle).reduce((acc, v) => acc + v, 0);
       setMensaje(`Auditoría completada: ${total} alertas generadas`);
       await fetchAlertas();
     } catch (_) {
@@ -97,6 +98,7 @@ export default function Auditoria() {
   const duplicados    = alertas.filter((a) => a.tipo === 'gasto_duplicado').length;
   const anomalias     = alertas.filter((a) => a.tipo === 'anomalia_estadistica').length;
   const discrepancias = alertas.filter((a) => a.tipo === 'discrepancia_facturacion').length;
+  const monImpago     = alertas.filter((a) => a.tipo === 'factura_impaga').length;
 
   return (
     <Layout activeSection="Auditoría">
@@ -126,11 +128,12 @@ export default function Auditoria() {
       </div>
 
       {/* Resumen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${monImpago > 0 ? 4 : 3}, 1fr)`, gap: '12px', marginBottom: '16px' }}>
         {[
           { label: 'Gastos duplicados',    value: duplicados,    color: '#fbbf24' },
           { label: 'Anomalías estadísticas', value: anomalias,   color: '#f87171' },
           { label: 'Discrepancias',         value: discrepancias, color: '#f87171' },
+          ...(monImpago > 0 ? [{ label: 'Monotributo impago', value: monImpago, color: '#fbbf24' }] : []),
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
             <p style={{ margin: '0 0 4px 0', fontSize: '28px', fontWeight: 600, color }}>{value}</p>

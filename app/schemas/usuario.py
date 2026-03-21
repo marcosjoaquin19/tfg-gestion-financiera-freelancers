@@ -67,7 +67,14 @@ class UsuarioResponse(BaseModel):
     es_activo: bool
     # si el usuario está activo o fue desactivado
 
+    categoria_monotributo: str | None = None
+    actividad_monotributo: str | None = None
+
     model_config = ConfigDict(from_attributes=True)
     # le dice a Pydantic que puede leer los datos desde un objeto SQLAlchemy
     # sin esto, solo podría leer desde diccionarios
     # Analogía: es el "traductor" entre el objeto de la BD y el JSON de respuesta
+
+
+class UsuarioUpdateMonotributo(BaseModel):
+    categoria_monotributo: str

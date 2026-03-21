@@ -22,6 +22,9 @@ class Usuario(Base):
     # guardamos el password encriptado, nunca el password real
     
     es_activo = Column(Boolean, default=True)
+
+    categoria_monotributo = Column(String(2), nullable=True)
+    actividad_monotributo = Column(String(20), default="servicios")
     # si el usuario está activo o fue desactivado
     
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())

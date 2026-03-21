@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
+from app.services.monotributo_service import verificar_pago_monotributo
 import statistics
 
 
@@ -146,7 +147,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         AlertaAuditoria.resuelta == False,
     ).delete()
 
-    conteo = {"gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0}
+    conteo = {"gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0, "monotributo_impago": 0}
     alertas: list[AlertaAuditoria] = []
 
     # --- DETECTOR 1: duplicados ---
@@ -195,6 +196,26 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         ))
         conteo["discrepancias"] += 1
 
+    # --- DETECTOR 4: monotributo impago ---
+    mono_count, alerta_mono = detectar_monotributo_impago(db, usuario_id)
+    conteo["monotributo_impago"] = mono_count
+    if alerta_mono:
+        alertas.append(alerta_mono)
+
     db.add_all(alertas)
     db.commit()
     return conteo
+
+
+def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
+    estado = verificar_pago_monotributo(db, usuario_id)
+    if not estado["pagado"] and estado["monto_esperado"] is not None:
+        alerta = _crear_alerta(
+            usuario_id,
+            TipoAlerta.FACTURA_IMPAGA,
+            f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
+            f"Cuota esperada: ${estado['monto_esperado']:,.0f}",
+            monto=estado["monto_esperado"],
+        )
+        return 1, alerta
+    return 0, None

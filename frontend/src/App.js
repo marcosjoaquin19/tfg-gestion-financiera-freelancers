@@ -11,6 +11,7 @@ import Clasificador from './pages/Clasificador';
 import ResumenIA from './pages/ResumenIA';
 import Recomendaciones from './pages/Recomendaciones';
 import ImportarCSV from './pages/ImportarCSV';
+import Monotributo from './pages/Monotributo';
 import Layout from './components/Layout';
 
 function PrivateRoute({ children }) {
@@ -50,6 +51,7 @@ function App() {
         <Route path="/resumen-ia"      element={<PrivateRoute><ResumenIA /></PrivateRoute>} />
         <Route path="/recomendaciones" element={<PrivateRoute><Recomendaciones /></PrivateRoute>} />
         <Route path="/importar"        element={<PrivateRoute><ImportarCSV /></PrivateRoute>} />
+        <Route path="/monotributo"     element={<PrivateRoute><Monotributo /></PrivateRoute>} />
         {placeholders.map(({ path, section }) => (
           <Route
             key={path}

@@ -12,6 +12,7 @@ const SIDEBAR_SECTIONS = [
       { label: 'Auditoría',     route: '/auditoria' },
       { label: 'Proyecciones',  route: '/proyecciones' },
       { label: 'Importar CSV',  route: '/importar' },
+      { label: 'Monotributo',   route: '/monotributo' },
     ],
   },
   {
