@@ -10,6 +10,7 @@ import Proyecciones from './pages/Proyecciones';
 import Clasificador from './pages/Clasificador';
 import ResumenIA from './pages/ResumenIA';
 import Recomendaciones from './pages/Recomendaciones';
+import ImportarCSV from './pages/ImportarCSV';
 import Layout from './components/Layout';
 
 function PrivateRoute({ children }) {
@@ -48,6 +49,7 @@ function App() {
         <Route path="/clasificador"    element={<PrivateRoute><Clasificador /></PrivateRoute>} />
         <Route path="/resumen-ia"      element={<PrivateRoute><ResumenIA /></PrivateRoute>} />
         <Route path="/recomendaciones" element={<PrivateRoute><Recomendaciones /></PrivateRoute>} />
+        <Route path="/importar"        element={<PrivateRoute><ImportarCSV /></PrivateRoute>} />
         {placeholders.map(({ path, section }) => (
           <Route
             key={path}

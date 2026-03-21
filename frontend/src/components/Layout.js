@@ -11,6 +11,7 @@ const SIDEBAR_SECTIONS = [
       { label: 'Facturas',      route: '/facturas' },
       { label: 'Auditoría',     route: '/auditoria' },
       { label: 'Proyecciones',  route: '/proyecciones' },
+      { label: 'Importar CSV',  route: '/importar' },
     ],
   },
   {
