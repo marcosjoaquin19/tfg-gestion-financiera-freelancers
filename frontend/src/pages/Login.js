@@ -110,6 +110,7 @@ export default function Login() {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
       localStorage.setItem('token', res.data.access_token);
+      localStorage.setItem('userEmail', email);
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al iniciar sesión');
