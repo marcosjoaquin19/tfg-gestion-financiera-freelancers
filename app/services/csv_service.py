@@ -37,6 +37,14 @@ CSV:
 def detectar_columnas_csv(contenido_csv: str, db: Session) -> dict | None:
     try:
         df = pd.read_csv(io.StringIO(contenido_csv), nrows=5)
+
+        # Privacidad y ahorro de tokens: enviamos a Groq solo las primeras 5 columnas.
+        # CSVs bancarios suelen incluir CUIT, número de cuenta, nombre del titular y saldo,
+        # datos que no aportan al mapeo de columnas pero exponen PII innecesariamente.
+        # Limitamos a 5 columnas para reducir la superficie de exposición y el tamaño del prompt.
+        if df.shape[1] > 5:
+            df = df.iloc[:, :5]
+
         csv_muestra = df.to_csv(index=False)
     except Exception as e:
         logger.error(f"Error leyendo CSV para detección: {e}")

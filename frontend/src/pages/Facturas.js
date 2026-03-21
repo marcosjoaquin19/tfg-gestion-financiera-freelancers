@@ -24,9 +24,9 @@ function toDateInput(str) {
 }
 
 const ESTADO_BADGE = {
-  pendiente: { background: '#1a2e1a', color: '#4ade80' },
-  pagada:    { background: '#0f1e35', color: '#3b82f6' },
-  vencida:   { background: '#1c1010', color: '#f87171' },
+  pendiente: { background: '#1f1a0d', color: '#fbbf24' },
+  pagada:    { background: '#0d1f0d', color: '#4ade80' },
+  vencida:   { background: '#1f0d0d', color: '#f87171' },
 };
 
 const inputStyle = {
@@ -86,7 +86,19 @@ export default function Facturas() {
     setLoading(true);
     try {
       const res = await api.get('/facturas/', { params: { limite: 200 } });
-      setFacturas(res.data);
+      const ahora = new Date();
+      const vencidas = res.data.filter(
+        (f) => f.estado === 'pendiente' && new Date(f.fecha_vencimiento) < ahora
+      );
+      if (vencidas.length > 0) {
+        await Promise.all(
+          vencidas.map((f) => api.patch(`/facturas/${f.id}/estado`, { estado: 'vencida', fecha_pago: null }))
+        );
+        const actualizado = await api.get('/facturas/', { params: { limite: 200 } });
+        setFacturas(actualizado.data);
+      } else {
+        setFacturas(res.data);
+      }
     } catch (_) {
       setFacturas([]);
     } finally {
