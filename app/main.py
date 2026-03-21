@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from app.database import engine
 from app import models
-from app.routers import auth, ingresos, gastos, facturas, alertas, proyecciones
+from app.routers import auth, ingresos, gastos, facturas, alertas, proyecciones, resumen
 
 load_dotenv()
 
@@ -20,6 +20,7 @@ app.include_router(gastos.router)
 app.include_router(facturas.router)
 app.include_router(alertas.router)
 app.include_router(proyecciones.router)
+app.include_router(resumen.router)
 
 @app.get("/")
 def root():
