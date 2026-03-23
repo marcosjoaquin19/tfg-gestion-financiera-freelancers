@@ -5,20 +5,7 @@ from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.proyeccion import Proyeccion
-
-CATEGORIAS_SERVICIOS = {
-    "A": {"limite_anual": 10277988,  "cuota_mensual": 42387},
-    "B": {"limite_anual": 15068988,  "cuota_mensual": 48251},
-    "C": {"limite_anual": 21010988,  "cuota_mensual": 56502},
-    "D": {"limite_anual": 27540988,  "cuota_mensual": 72414},
-    "E": {"limite_anual": 34650988,  "cuota_mensual": 102548},
-    "F": {"limite_anual": 45280988,  "cuota_mensual": 129045},
-    "G": {"limite_anual": 56510988,  "cuota_mensual": 174378},
-    "H": {"limite_anual": 79130988,  "cuota_mensual": 447347},
-    "I": {"limite_anual": 94500988,  "cuota_mensual": 606019},
-    "J": {"limite_anual": 101430988, "cuota_mensual": 805938},
-    "K": {"limite_anual": 108357084, "cuota_mensual": 1080000},
-}
+from app.models.categoria_monotributo import CategoriaMonotributo
 
 MESES_ES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
@@ -26,7 +13,15 @@ MESES_ES = {
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
 }
 
-CATEGORIAS_ORDEN = list(CATEGORIAS_SERVICIOS.keys())
+CATEGORIAS_ORDEN = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
+
+
+def get_categoria(db: Session, letra: str) -> CategoriaMonotributo | None:
+    return (
+        db.query(CategoriaMonotributo)
+        .filter(CategoriaMonotributo.letra == letra.upper(), CategoriaMonotributo.activa == True)
+        .first()
+    )
 
 
 def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
@@ -35,12 +30,12 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
         return None
 
     cat = usuario.categoria_monotributo.upper()
-    if cat not in CATEGORIAS_SERVICIOS:
+    datos_cat = get_categoria(db, cat)
+    if datos_cat is None:
         return None
 
-    datos_cat = CATEGORIAS_SERVICIOS[cat]
-    limite_anual = datos_cat["limite_anual"]
-    cuota_mensual = datos_cat["cuota_mensual"]
+    limite_anual = float(datos_cat.limite_anual)
+    cuota_mensual = float(datos_cat.cuota_mensual)
 
     now = datetime.now()
     anio_actual = now.year
@@ -108,7 +103,8 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
 
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     cat = usuario.categoria_monotributo if usuario else None
-    monto_esperado = CATEGORIAS_SERVICIOS.get(cat, {}).get("cuota_mensual") if cat else None
+    datos_cat = get_categoria(db, cat) if cat else None
+    monto_esperado = float(datos_cat.cuota_mensual) if datos_cat else None
 
     gasto = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,

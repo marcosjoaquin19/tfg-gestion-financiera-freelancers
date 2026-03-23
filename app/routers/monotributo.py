@@ -7,7 +7,7 @@ from app.dependencies import get_current_user
 from app.services.monotributo_service import (
     calcular_estado_monotributo,
     verificar_pago_monotributo,
-    CATEGORIAS_SERVICIOS,
+    get_categoria,
 )
 
 router = APIRouter(prefix="/monotributo", tags=["Monotributo"])
@@ -39,10 +39,10 @@ def actualizar_categoria(
     current_user: Usuario = Depends(get_current_user),
 ):
     cat = datos.categoria_monotributo.upper()
-    if cat not in CATEGORIAS_SERVICIOS:
+    if get_categoria(db, cat) is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Categoría inválida. Opciones válidas: {', '.join(CATEGORIAS_SERVICIOS.keys())}",
+            detail=f"Categoría inválida o no activa: {cat}",
         )
     current_user.categoria_monotributo = cat
     db.commit()
