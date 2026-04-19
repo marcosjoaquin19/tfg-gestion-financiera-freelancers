@@ -18,6 +18,8 @@ class ClasificarRequest(BaseModel):
 
 class ClasificarResponse(BaseModel):
     categoria_sugerida: str
+    fuente: str | None = None
+    confianza: float | None = None
 
 
 @router.post("/clasificar", response_model=ClasificarResponse)
@@ -26,8 +28,12 @@ def clasificar(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    categoria = clasificar_gasto(datos.descripcion, db)
-    return ClasificarResponse(categoria_sugerida=categoria)
+    resultado = clasificar_gasto(datos.descripcion, db, current_user.id)
+    return ClasificarResponse(
+        categoria_sugerida=resultado["categoria_sugerida"],
+        fuente=resultado.get("fuente"),
+        confianza=resultado.get("confianza"),
+    )
 
 
 @router.post("/", response_model=GastoResponse, status_code=status.HTTP_201_CREATED)

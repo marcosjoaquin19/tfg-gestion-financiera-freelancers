@@ -7,3 +7,4 @@ from app.models.proyeccion import Proyeccion
 from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.cache_clasificacion import CacheClasificacion
 from app.models.categoria_monotributo import CategoriaMonotributo
+from app.models.modelo_clasificador import ModeloClasificador

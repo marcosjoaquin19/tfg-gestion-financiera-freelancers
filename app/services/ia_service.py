@@ -287,23 +287,35 @@ Proyección de ingresos: {proyeccion_txt}"""
         }
 
 
-def clasificar_gasto(descripcion: str, db: Session) -> str:
-    descripcion_normalizada = descripcion.strip().lower()
+UMBRAL_CONFIANZA_ML = 0.65
 
-    cached = db.query(CacheClasificacion).filter(
-        CacheClasificacion.descripcion_normalizada == descripcion_normalizada
-    ).first()
 
-    if cached:
-        return cached.categoria
+def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict:
+    from app.services import ml_service
 
-    categoria = _llamar_groq(descripcion)
+    # 1. Intentar con ML propio
+    try:
+        resultado_ml = ml_service.clasificar_gasto(descripcion, db, usuario_id)
+        if resultado_ml["confianza"] >= UMBRAL_CONFIANZA_ML:
+            ml_service.registrar_ejemplo(descripcion, resultado_ml["categoria"], db, usuario_id)
+            return {
+                "categoria_sugerida": resultado_ml["categoria"],
+                "fuente": "ml_propio",
+                "confianza": resultado_ml["confianza"],
+            }
+    except Exception as e:
+        logger.error(f"Error ML clasificar_gasto, usando Groq: {e}")
 
-    entrada = CacheClasificacion(
-        descripcion_normalizada=descripcion_normalizada,
-        categoria=categoria,
-    )
-    db.add(entrada)
-    db.commit()
+    # 2. Fallback a Groq
+    categoria_groq = _llamar_groq(descripcion)
 
-    return categoria
+    try:
+        ml_service.registrar_ejemplo(descripcion, categoria_groq, db, usuario_id)
+    except Exception as e:
+        logger.error(f"Error registrar_ejemplo tras Groq: {e}")
+
+    return {
+        "categoria_sugerida": categoria_groq,
+        "fuente": "groq",
+        "confianza": None,
+    }

@@ -1,5 +1,31 @@
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def seed_categorias(client):
+    from decimal import Decimal
+    from datetime import date
+    from app.models.categoria_monotributo import CategoriaMonotributo
+    from app.database import get_db
+    from app.main import app
+
+    db = next(app.dependency_overrides[get_db]())
+    for letra, limite, cuota in [
+        ("A", Decimal("1000000"), Decimal("5000")),
+        ("B", Decimal("1500000"), Decimal("6000")),
+    ]:
+        db.add(CategoriaMonotributo(
+            letra=letra,
+            limite_anual=limite,
+            cuota_mensual=cuota,
+            actividad="servicios",
+            fecha_vigencia=date(2024, 1, 1),
+            activa=True,
+        ))
+    db.commit()
+
+
 def test_estado_sin_categoria(client, auth_headers):
-    # El usuario recién creado no tiene categoria_monotributo asignada
     response = client.get("/monotributo/estado", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
@@ -18,7 +44,6 @@ def test_actualizar_categoria(client, auth_headers):
 
 
 def test_estado_con_categoria(client, auth_headers):
-    # Asignamos categoría primero
     client.patch(
         "/monotributo/categoria",
         json={"categoria_monotributo": "B"},

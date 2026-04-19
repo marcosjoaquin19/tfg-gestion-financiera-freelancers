@@ -19,6 +19,7 @@ const SIDEBAR_SECTIONS = [
     title: 'INTELIGENCIA IA',
     items: [
       { label: 'Clasificador',    route: '/clasificador' },
+      { label: 'Estado ML',       route: '/clasificador' },
       { label: 'Resumen IA',      route: '/resumen-ia' },
       { label: 'Recomendaciones', route: '/recomendaciones' },
     ],

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from app.database import engine
 from app import models
-from app.routers import auth, ingresos, gastos, facturas, alertas, proyecciones, resumen, recomendaciones, importar, monotributo
+from app.routers import auth, ingresos, gastos, facturas, alertas, proyecciones, resumen, recomendaciones, importar, monotributo, ml
 
 load_dotenv()
 
@@ -38,6 +38,7 @@ app.include_router(resumen.router)
 app.include_router(recomendaciones.router)
 app.include_router(importar.router)
 app.include_router(monotributo.router)
+app.include_router(ml.router)
 
 @app.get("/")
 def root():
