@@ -1,8 +1,9 @@
 import base64
 import logging
-import pickle
+from io import BytesIO
 from typing import Optional
 
+import joblib
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
@@ -271,13 +272,18 @@ def _crear_pipeline(algoritmo: str) -> Pipeline:
 
 
 def _serializar_modelo(pipeline: Pipeline) -> str:
-    datos = pickle.dumps(pipeline)
-    return base64.b64encode(datos).decode("utf-8")
+    # joblib es la biblioteca recomendada por scikit-learn para persistir modelos:
+    # comprime arrays NumPy de manera más eficiente que pickle estándar.
+    # Envolvemos el binario en base64 para almacenarlo como texto en la columna
+    # modelo_serializado de la tabla modelos_clasificador.
+    buffer = BytesIO()
+    joblib.dump(pipeline, buffer)
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 def _deserializar_modelo(texto: str) -> Pipeline:
     datos = base64.b64decode(texto)
-    return pickle.loads(datos)
+    return joblib.load(BytesIO(datos))
 
 
 def _elegir_algoritmo(n_ejemplos: int) -> str:
@@ -491,6 +497,78 @@ def reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
         "precision": precision,
         "algoritmo": algoritmo,
         "mensaje": f"Modelo personalizado entrenado con {len(X)} ejemplos ({n} propios + {len(X_base)} base).",
+    }
+
+
+# ── Política de reentrenamiento automático ──────────────────────────────────
+# La tesis declara que el clasificador "aprende de las correcciones del usuario
+# mediante reentrenamiento automático". Estos dos parámetros definen cuándo se
+# dispara ese reentrenamiento sin intervención manual.
+
+UMBRAL_MINIMO_REENTRENAMIENTO = 20
+# Por debajo de este número de gastos clasificados, no entrenamos un modelo
+# personalizado: el sample sería demasiado chico para que el SVM/Naive Bayes
+# generalice algo útil contra las 12 categorías. Mismo umbral que ya usa
+# reentrenar_modelo_usuario() para no entrar en contradicción.
+
+INTERVALO_REENTRENAMIENTO_NUEVOS = 10
+# Cantidad de gastos nuevos que se acumulan antes de reentrenar por creación.
+# Buscamos un balance: si reentrenamos en cada gasto, gastamos CPU al pedo;
+# si esperamos demasiado, el modelo queda viejo. Diez es razonable para un
+# freelancer típico que carga ~30-60 gastos al mes.
+
+
+def evaluar_reentrenamiento_automatico(db: Session, usuario_id: int, motivo: str = "creacion") -> dict:
+    """Evalúa la política de reentrenamiento y dispara el fit si corresponde.
+
+    motivo: "creacion"   → gasto nuevo, reentrena cada INTERVALO_REENTRENAMIENTO_NUEVOS.
+            "correccion" → el usuario cambió la categoría de un gasto existente.
+                           Esa es la señal más informativa que tenemos, así que
+                           reentrenamos siempre que se haya superado el umbral.
+    """
+    n_actuales = db.query(Gasto).filter(
+        Gasto.usuario_id == usuario_id,
+        Gasto.descripcion.isnot(None),
+        Gasto.categoria.isnot(None),
+    ).count()
+
+    if n_actuales < UMBRAL_MINIMO_REENTRENAMIENTO:
+        return {
+            "reentrenado": False,
+            "razon": "umbral_no_alcanzado",
+            "n_actuales": n_actuales,
+            "umbral": UMBRAL_MINIMO_REENTRENAMIENTO,
+        }
+
+    modelo_actual = db.query(ModeloClasificador).filter(
+        ModeloClasificador.usuario_id == usuario_id,
+        ModeloClasificador.activo == True,
+    ).first()
+
+    if modelo_actual is None:
+        # El usuario recién cruzó el umbral: primer entrenamiento personalizado.
+        resultado = reentrenar_modelo_usuario(db, usuario_id)
+        return {"reentrenado": True, "razon": "primer_entrenamiento", **resultado}
+
+    # n_ejemplos guardado = DATASET_BASE + propios al momento del último fit.
+    # Restando el tamaño del base obtenemos cuántos propios había entonces.
+    n_propios_anterior = max(0, modelo_actual.n_ejemplos - len(DATASET_BASE))
+    nuevos_desde_ultimo = n_actuales - n_propios_anterior
+
+    if motivo == "correccion":
+        resultado = reentrenar_modelo_usuario(db, usuario_id)
+        return {"reentrenado": True, "razon": "correccion_usuario", **resultado}
+
+    if nuevos_desde_ultimo >= INTERVALO_REENTRENAMIENTO_NUEVOS:
+        resultado = reentrenar_modelo_usuario(db, usuario_id)
+        return {"reentrenado": True, "razon": "intervalo_alcanzado", **resultado}
+
+    return {
+        "reentrenado": False,
+        "razon": "intervalo_no_alcanzado",
+        "n_actuales": n_actuales,
+        "nuevos_desde_ultimo": nuevos_desde_ultimo,
+        "intervalo": INTERVALO_REENTRENAMIENTO_NUEVOS,
     }
 
 

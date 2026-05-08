@@ -1,82 +1,139 @@
-import os
-import json
-import logging
+"""
+Procesamiento de archivos CSV de homebanking.
+
+Política de soberanía de datos del TFG: la detección del formato del archivo
+se realiza íntegramente con heurísticas locales basadas en un diccionario de
+sinónimos relevados sobre bancos y billeteras argentinas (Galicia, Santander,
+BBVA, Macro, Nación, Brubank, ICBC, Mercado Pago, Naranja X). En ningún caso
+se transmite el contenido del archivo a servicios externos.
+"""
+
 import io
+import logging
+import re
+import unicodedata
 import pandas as pd
-from groq import Groq
 from sqlalchemy.orm import Session
 from app.services.ia_service import clasificar_gasto
 
 logger = logging.getLogger(__name__)
 
-PROMPT_DETECCION = """Analizá este CSV de un banco argentino.
-Identificá exactamente qué columna contiene:
-- la fecha del movimiento
-- la descripción o concepto
-- el monto (puede estar en una o dos columnas: débito/crédito o una sola con signo)
-- si hay columna de tipo (ingreso/egreso)
 
-Respondé SOLO con JSON válido así:
-{{
-  "columna_fecha": "nombre_exacto_columna",
-  "columna_descripcion": "nombre_exacto_columna",
-  "columna_monto": "nombre_exacto_columna_o_null",
-  "columna_debito": null,
-  "columna_credito": null,
-  "columna_tipo": null,
-  "formato_fecha": "DD/MM/YYYY"
-}}
+# ── Diccionario de sinónimos de columnas (homebanking argentino) ─────────────
+# Cada lista contiene fragmentos esperables en los encabezados. Se compara
+# contra el nombre de columna normalizado (sin tildes, minúsculas, alfanumérico).
 
-Donde columna_monto es null si hay columnas separadas de débito/crédito, y columna_debito/columna_credito son null si hay una sola columna de monto.
-Sin explicaciones, solo el JSON.
+SINONIMOS_FECHA = [
+    "fecha", "fechamov", "fechamovimiento", "fechaoperacion", "fechavalor",
+    "fmov", "fechadeoperacion", "fechaoperac", "fechacontabilizacion",
+]
+SINONIMOS_DESCRIPCION = [
+    "concepto", "descripcion", "detalle", "movimiento", "referencia",
+    "comprobante", "operacion", "descripciondelmovimiento", "descripcionoperacion",
+    "tipodemovimiento",
+]
+SINONIMOS_DEBITO = [
+    "debito", "debitos", "egreso", "egresos", "salida", "importedebito",
+    "debe", "debitoars", "debitopesos",
+]
+SINONIMOS_CREDITO = [
+    "credito", "creditos", "ingreso", "ingresos", "entrada", "importecredito",
+    "haber", "creditoars", "creditopesos",
+]
+SINONIMOS_MONTO = [
+    "importe", "monto", "valor", "montoars", "importeoperacion",
+    "importepesos", "montototal", "importetotal",
+]
 
-CSV:
-{csv_muestra}"""
+
+def _normalizar(texto: str) -> str:
+    """Normaliza un nombre de columna: minúsculas, sin tildes, solo alfanuméricos."""
+    if texto is None:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", str(texto))
+    sin_tildes = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"[^a-z0-9]", "", sin_tildes.lower())
 
 
-def detectar_columnas_csv(contenido_csv: str, db: Session) -> dict | None:
+def _buscar_columna(columnas_norm: dict[str, str], sinonimos: list[str]) -> str | None:
+    """Devuelve el nombre original de la columna que matchee algún sinónimo.
+
+    columnas_norm: dict {nombre_normalizado: nombre_original}
+    Estrategia: primero match exacto, luego match por contains (más permisivo).
+    """
+    for sin in sinonimos:
+        if sin in columnas_norm:
+            return columnas_norm[sin]
+    for nombre_norm, nombre_orig in columnas_norm.items():
+        for sin in sinonimos:
+            if sin in nombre_norm:
+                return nombre_orig
+    return None
+
+
+def _detectar_formato_fecha(serie: pd.Series) -> str:
+    """Intenta inferir el formato de fecha probando los más comunes en Argentina."""
+    formatos = [
+        "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d",
+        "%d/%m/%y", "%d-%m-%y",
+    ]
+    muestras = serie.dropna().astype(str).head(5).tolist()
+    if not muestras:
+        return "%d/%m/%Y"
+
+    for fmt in formatos:
+        try:
+            pd.to_datetime(muestras, format=fmt)
+            return fmt
+        except (ValueError, TypeError):
+            continue
+    return "%d/%m/%Y"
+
+
+def detectar_columnas_csv(contenido_csv: str, db: Session = None) -> dict | None:
+    """Detecta la estructura del CSV mediante heurísticas locales.
+
+    Devuelve un mapeo con la misma forma que la versión anterior basada en LLM,
+    para mantener compatibilidad con procesar_csv() y el resto del flujo.
+    """
     try:
         df = pd.read_csv(io.StringIO(contenido_csv), nrows=5)
-
-        # Privacidad y ahorro de tokens: enviamos a Groq solo las primeras 5 columnas.
-        # CSVs bancarios suelen incluir CUIT, número de cuenta, nombre del titular y saldo,
-        # datos que no aportan al mapeo de columnas pero exponen PII innecesariamente.
-        # Limitamos a 5 columnas para reducir la superficie de exposición y el tamaño del prompt.
-        if df.shape[1] > 5:
-            df = df.iloc[:, :5]
-
-        csv_muestra = df.to_csv(index=False)
     except Exception as e:
         logger.error(f"Error leyendo CSV para detección: {e}")
         return None
 
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
+    if df.empty or df.shape[1] == 0:
         return None
 
-    try:
-        client = Groq(api_key=api_key)
-        model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": PROMPT_DETECCION.format(csv_muestra=csv_muestra)}],
-            max_tokens=300,
-            temperature=0,
-        )
-        texto = response.choices[0].message.content.strip()
+    columnas_norm = {_normalizar(c): c for c in df.columns}
 
-        # Extraer el JSON aunque venga envuelto en markdown
-        if "```" in texto:
-            texto = texto.split("```")[1]
-            if texto.startswith("json"):
-                texto = texto[4:]
+    col_fecha = _buscar_columna(columnas_norm, SINONIMOS_FECHA)
+    col_desc = _buscar_columna(columnas_norm, SINONIMOS_DESCRIPCION)
+    col_debito = _buscar_columna(columnas_norm, SINONIMOS_DEBITO)
+    col_credito = _buscar_columna(columnas_norm, SINONIMOS_CREDITO)
+    col_monto = _buscar_columna(columnas_norm, SINONIMOS_MONTO)
 
-        mapeo = json.loads(texto)
-        return mapeo
-
-    except Exception as e:
-        logger.error(f"Error Groq detectar_columnas_csv: {e}")
+    if col_fecha is None or col_desc is None:
         return None
+
+    # Si hay débito y crédito, ignoramos columna de monto único para evitar
+    # sumar dos veces. Si solo hay monto único, lo usamos.
+    if col_debito and col_credito:
+        col_monto = None
+    elif col_monto is None and not (col_debito and col_credito):
+        return None
+
+    formato_fecha = _detectar_formato_fecha(df[col_fecha])
+
+    return {
+        "columna_fecha": col_fecha,
+        "columna_descripcion": col_desc,
+        "columna_monto": col_monto,
+        "columna_debito": col_debito,
+        "columna_credito": col_credito,
+        "columna_tipo": None,
+        "formato_fecha": formato_fecha,
+    }
 
 
 def procesar_csv(contenido_csv: str, mapeo: dict) -> list[dict]:
@@ -93,51 +150,39 @@ def procesar_csv(contenido_csv: str, mapeo: dict) -> list[dict]:
     col_credito = mapeo.get("columna_credito")
     fmt_fecha = mapeo.get("formato_fecha", "%d/%m/%Y")
 
-    # Normalizar formato de fecha para pandas
-    fmt_pandas = fmt_fecha.replace("DD", "%d").replace("MM", "%m").replace("YYYY", "%Y").replace("YY", "%y")
-
     movimientos = []
 
     for _, row in df.iterrows():
         try:
-            # Fecha
             fecha_raw = row.get(col_fecha) if col_fecha else None
-            if pd.isna(fecha_raw) if fecha_raw is not None else True:
+            if fecha_raw is None or (isinstance(fecha_raw, float) and pd.isna(fecha_raw)):
                 continue
             try:
-                fecha = pd.to_datetime(str(fecha_raw), format=fmt_pandas)
-            except Exception:
-                fecha = pd.to_datetime(str(fecha_raw), infer_datetime_format=True)
+                fecha = pd.to_datetime(str(fecha_raw), format=fmt_fecha)
+            except (ValueError, TypeError):
+                fecha = pd.to_datetime(str(fecha_raw), errors="coerce")
+                if pd.isna(fecha):
+                    continue
 
-            # Descripción
             descripcion = str(row.get(col_desc, "Sin descripción")).strip()
 
-            # Monto y tipo
             if col_debito and col_credito:
-                debito_raw  = row.get(col_debito, 0)
-                credito_raw = row.get(col_credito, 0)
-                debito  = _parse_monto(debito_raw)
-                credito = _parse_monto(credito_raw)
-
+                debito = _parse_monto(row.get(col_debito, 0))
+                credito = _parse_monto(row.get(col_credito, 0))
                 if credito and credito > 0:
-                    monto = credito
-                    tipo = "ingreso"
+                    monto, tipo = credito, "ingreso"
                 elif debito and debito > 0:
-                    monto = debito
-                    tipo = "gasto"
+                    monto, tipo = debito, "gasto"
                 else:
                     continue
             elif col_monto:
-                monto_raw = row.get(col_monto, 0)
-                monto_val = _parse_monto(monto_raw)
+                monto_val = _parse_monto(row.get(col_monto, 0))
                 if not monto_val or monto_val == 0:
                     continue
                 if monto_val > 0:
-                    monto = monto_val
-                    tipo = "ingreso"
+                    monto, tipo = monto_val, "ingreso"
                 else:
-                    monto = abs(monto_val)
-                    tipo = "gasto"
+                    monto, tipo = abs(monto_val), "gasto"
             else:
                 continue
 
@@ -159,23 +204,28 @@ def _parse_monto(valor) -> float | None:
     if valor is None or (isinstance(valor, float) and pd.isna(valor)):
         return None
     try:
-        # Limpiar formato argentino: "1.234,56" → 1234.56
+        # Formato argentino: "1.234,56" → 1234.56
         s = str(valor).strip().replace("$", "").replace(" ", "")
-        # Si tiene punto y coma, el punto es separador de miles
         if "," in s and "." in s:
             s = s.replace(".", "").replace(",", ".")
         elif "," in s:
             s = s.replace(",", ".")
         return float(s)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 
-def clasificar_movimientos(movimientos: list, db: Session) -> list:
+def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) -> list:
+    """Clasifica cada movimiento usando exclusivamente el ML local.
+
+    La descripción del movimiento permanece dentro de la infraestructura del
+    sistema y nunca se transmite a terceros.
+    """
     resultado = []
     for mov in movimientos:
         try:
-            categoria = clasificar_gasto(mov["descripcion"], db)
+            clasificacion = clasificar_gasto(mov["descripcion"], db, usuario_id)
+            categoria = clasificacion.get("categoria_sugerida", "Otros")
         except Exception:
             categoria = "Otros"
         resultado.append({**mov, "categoria": categoria})

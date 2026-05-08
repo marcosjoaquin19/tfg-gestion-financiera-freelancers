@@ -33,12 +33,19 @@ def db():
 
 
 @pytest.fixture
-def client(db):
+def client(db, monkeypatch):
     # Reemplaza get_db por la sesión de test
     def override_get_db():
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
+
+    # El reentrenamiento automático del clasificador corre en una BackgroundTask
+    # de FastAPI que abre su propia sesión vía SessionLocal (apunta a PostgreSQL).
+    # En tests no queremos esa conexión, así que neutralizamos el hook.
+    from app.routers import gastos as gastos_router
+    monkeypatch.setattr(gastos_router, "_reentrenar_en_background", lambda *a, **k: None)
+
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

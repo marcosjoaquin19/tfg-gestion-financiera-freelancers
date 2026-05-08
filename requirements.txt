@@ -19,3 +19,4 @@ groq==0.13.0
 alembic==1.13.1
 scikit-learn==1.4.2
 joblib==1.4.0
+reportlab==4.1.0
