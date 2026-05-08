@@ -1,15 +1,40 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+import logging
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.usuario import Usuario
 from app.models.gasto import Gasto
 from app.schemas.gasto import GastoCreate, GastoResponse
 from app.dependencies import get_current_user
 from app.services.ia_service import clasificar_gasto
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/gastos", tags=["Gastos"])
+
+
+def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
+    """Tarea asíncrona que evalúa y dispara el reentrenamiento del modelo.
+
+    La sesión de BD del request se cierra apenas FastAPI termina la respuesta,
+    así que para una tarea diferida hay que abrir una sesión nueva. Si algo
+    falla acá, se loguea pero no afecta al usuario: el gasto ya quedó guardado.
+    """
+    from app.services import ml_service
+
+    db = SessionLocal()
+    try:
+        resultado = ml_service.evaluar_reentrenamiento_automatico(db, usuario_id, motivo)
+        if resultado.get("reentrenado"):
+            logger.info(
+                f"Reentrenamiento automático usuario {usuario_id}: {resultado.get('razon')} "
+                f"(precision={resultado.get('precision')}, n={resultado.get('n_ejemplos')})"
+            )
+    except Exception as e:
+        logger.error(f"Falló reentrenamiento automático usuario {usuario_id}: {e}")
+    finally:
+        db.close()
 
 
 class ClasificarRequest(BaseModel):
@@ -20,6 +45,7 @@ class ClasificarResponse(BaseModel):
     categoria_sugerida: str
     fuente: str | None = None
     confianza: float | None = None
+    requiere_revision: bool = False
 
 
 @router.post("/clasificar", response_model=ClasificarResponse)
@@ -33,12 +59,14 @@ def clasificar(
         categoria_sugerida=resultado["categoria_sugerida"],
         fuente=resultado.get("fuente"),
         confianza=resultado.get("confianza"),
+        requiere_revision=resultado.get("requiere_revision", False),
     )
 
 
 @router.post("/", response_model=GastoResponse, status_code=status.HTTP_201_CREATED)
 def crear_gasto(
     datos: GastoCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -53,6 +81,11 @@ def crear_gasto(
     db.add(nuevo_gasto)
     db.commit()
     db.refresh(nuevo_gasto)
+
+    # Aprende de a poco: cada N gastos nuevos, reentrenamos el modelo del
+    # usuario en background. La política está en ml_service.
+    background_tasks.add_task(_reentrenar_en_background, current_user.id, "creacion")
+
     return nuevo_gasto
 
 
@@ -98,6 +131,7 @@ def obtener_gasto(
 def actualizar_gasto(
     gasto_id: int,
     datos: GastoCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -109,6 +143,11 @@ def actualizar_gasto(
     if not gasto:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gasto no encontrado")
 
+    # Capturamos la categoría previa antes de pisarla. Si cambió, sabemos que
+    # el usuario está corrigiendo una clasificación — esa es la señal más
+    # valiosa para reentrenar.
+    categoria_anterior = gasto.categoria
+
     gasto.descripcion = datos.descripcion
     gasto.monto = datos.monto
     gasto.categoria = datos.categoria
@@ -116,6 +155,10 @@ def actualizar_gasto(
 
     db.commit()
     db.refresh(gasto)
+
+    if categoria_anterior != datos.categoria:
+        background_tasks.add_task(_reentrenar_en_background, current_user.id, "correccion")
+
     return gasto
 
 

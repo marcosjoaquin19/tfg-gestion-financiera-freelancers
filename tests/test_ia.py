@@ -7,7 +7,16 @@ def test_clasificar_gasto_sin_auth(client):
 
 
 def test_clasificar_gasto_exitoso(client, auth_headers):
-    with patch("app.services.ia_service._llamar_groq", return_value="Software"):
+    # Política de soberanía de datos: la clasificación se hace solo con el ML
+    # local. Mockeamos ml_service.clasificar_gasto para simular alta confianza.
+    mock_ml = {
+        "categoria": "Software",
+        "confianza": 0.92,
+        "fuente": "ml_propio",
+        "algoritmo": "naive_bayes",
+    }
+    with patch("app.services.ml_service.clasificar_gasto", return_value=mock_ml), \
+         patch("app.services.ml_service.registrar_ejemplo"):
         response = client.post(
             "/gastos/clasificar",
             json={"descripcion": "Adobe Photoshop"},
@@ -17,6 +26,29 @@ def test_clasificar_gasto_exitoso(client, auth_headers):
     data = response.json()
     assert "categoria_sugerida" in data
     assert data["categoria_sugerida"] == "Software"
+    assert data["fuente"] == "ml_propio"
+    assert data["requiere_revision"] is False
+
+
+def test_clasificar_gasto_baja_confianza_marca_revision(client, auth_headers):
+    # Si el ML local devuelve confianza < 0.65, se sugiere "Otros" y se marca
+    # para revisión manual. NUNCA se llama a un servicio externo.
+    mock_ml = {
+        "categoria": "Software",
+        "confianza": 0.30,
+        "fuente": "ml_propio",
+        "algoritmo": "naive_bayes",
+    }
+    with patch("app.services.ml_service.clasificar_gasto", return_value=mock_ml):
+        response = client.post(
+            "/gastos/clasificar",
+            json={"descripcion": "ZZZ texto desconocido"},
+            headers=auth_headers,
+        )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["categoria_sugerida"] == "Otros"
+    assert data["requiere_revision"] is True
 
 
 def test_resumen_financiero_sin_auth(client):

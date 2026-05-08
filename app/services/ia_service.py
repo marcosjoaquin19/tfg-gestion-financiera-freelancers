@@ -1,11 +1,9 @@
 import os
-import time
 import logging
 from decimal import Decimal
 from groq import Groq
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
-from app.models.cache_clasificacion import CacheClasificacion
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
@@ -14,72 +12,13 @@ from app.models.proyeccion import Proyeccion
 
 logger = logging.getLogger(__name__)
 
+# Categorías cerradas válidas para clasificación de gastos.
+# Se mantienen acá para los fallbacks locales y para validar respuestas agregadas.
 CATEGORIAS = [
     "Software", "Hardware", "Infraestructura", "Marketing", "Servicios",
     "Capacitación", "Suscripciones", "Transporte", "Alimentación",
     "Impuestos", "Monotributo", "Otros",
 ]
-
-PROMPT_TEMPLATE = """Eres un asistente contable para freelancers.
-Dado el siguiente gasto, devolvé ÚNICAMENTE el nombre de la categoría más apropiada, sin explicación adicional.
-
-Categorías posibles: {categorias}
-
-Descripción del gasto: "{descripcion}"
-
-Categoría:"""
-
-MAX_INTENTOS = 3
-ESPERA_RATE_LIMIT = 20
-
-
-def _es_rate_limit(error: Exception) -> bool:
-    mensaje = str(error).lower()
-    return "quota" in mensaje or "429" in mensaje
-
-
-def _llamar_groq(descripcion: str) -> str:
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return "Otros"
-
-    model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-    client = Groq(api_key=api_key)
-
-    prompt = PROMPT_TEMPLATE.format(
-        categorias=", ".join(CATEGORIAS),
-        descripcion=descripcion,
-    )
-
-    ultimo_error = None
-    for intento in range(1, MAX_INTENTOS + 1):
-        try:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=20,
-                temperature=0,
-            )
-            categoria = response.choices[0].message.content.strip()
-
-            if categoria in CATEGORIAS:
-                return categoria
-            for c in CATEGORIAS:
-                if c.lower() in categoria.lower():
-                    return c
-            return "Otros"
-
-        except Exception as e:
-            print(f"ERROR GROQ DETALLADO: {type(e).__name__}: {e}")
-            ultimo_error = e
-            if _es_rate_limit(e) and intento < MAX_INTENTOS:
-                logger.warning(f"Rate limit Groq (intento {intento}/{MAX_INTENTOS}), reintentando en {ESPERA_RATE_LIMIT}s...")
-                time.sleep(ESPERA_RATE_LIMIT)
-            else:
-                break
-
-    logger.error(f"Error Groq clasificar_gasto: {ultimo_error}")
-    return "Otros"
 
 
 MESES_ES = {
@@ -238,8 +177,17 @@ def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
     ).order_by(Proyeccion.fecha_proyeccion).limit(30).all()
     total_proyectado = sum(p.monto_proyectado for p in proyecciones) or Decimal("0")
 
-    # Armar contexto para el prompt
-    alertas_txt = "\n".join(f"- [{a.tipo.value}] {a.descripcion}" for a in alertas) or "Ninguna"
+    # Soberanía de datos: armamos el contexto con datos AGREGADOS solamente.
+    # Las descripciones individuales de alertas pueden incluir nombres de
+    # clientes, fechas específicas u otros datos identificables — por eso
+    # se reemplazan por conteos por tipo.
+    from collections import Counter
+    conteo_alertas = Counter(a.tipo.value for a in alertas)
+    alertas_txt = "\n".join(
+        f"- {tipo}: {cantidad} alerta(s) sin resolver"
+        for tipo, cantidad in conteo_alertas.items()
+    ) or "Ninguna"
+
     fact_pend_txt = f"{len(facturas_pend)} factura(s) pendientes por ${sum(f.monto for f in facturas_pend) or 0:.2f}"
     fact_venc_txt = f"{len(facturas_venc)} factura(s) vencidas por ${sum(f.monto for f in facturas_venc) or 0:.2f}"
     aumentos_txt = "\n".join(f"- {cat}: +{pct:.0f}%" for cat, pct in aumentos) or "Ningún aumento significativo"
@@ -291,9 +239,15 @@ UMBRAL_CONFIANZA_ML = 0.65
 
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict:
+    """Clasifica un gasto usando exclusivamente el modelo ML local.
+
+    Política de soberanía de datos del TFG: la descripción del gasto NUNCA se
+    envía a servicios externos. Si el clasificador local devuelve confianza
+    inferior al umbral, se sugiere "Otros" y se marca para revisión manual del
+    usuario. Las correcciones del usuario alimentan futuros reentrenamientos.
+    """
     from app.services import ml_service
 
-    # 1. Intentar con ML propio
     try:
         resultado_ml = ml_service.clasificar_gasto(descripcion, db, usuario_id)
         if resultado_ml["confianza"] >= UMBRAL_CONFIANZA_ML:
@@ -302,20 +256,21 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
                 "categoria_sugerida": resultado_ml["categoria"],
                 "fuente": "ml_propio",
                 "confianza": resultado_ml["confianza"],
+                "requiere_revision": False,
             }
+        # Confianza insuficiente: no asumimos categoría, devolvemos "Otros"
+        # como placeholder y delegamos al usuario la corrección.
+        return {
+            "categoria_sugerida": "Otros",
+            "fuente": "ml_propio",
+            "confianza": resultado_ml["confianza"],
+            "requiere_revision": True,
+        }
     except Exception as e:
-        logger.error(f"Error ML clasificar_gasto, usando Groq: {e}")
-
-    # 2. Fallback a Groq
-    categoria_groq = _llamar_groq(descripcion)
-
-    try:
-        ml_service.registrar_ejemplo(descripcion, categoria_groq, db, usuario_id)
-    except Exception as e:
-        logger.error(f"Error registrar_ejemplo tras Groq: {e}")
-
-    return {
-        "categoria_sugerida": categoria_groq,
-        "fuente": "groq",
-        "confianza": None,
-    }
+        logger.error(f"Error ML clasificar_gasto usuario {usuario_id}: {e}")
+        return {
+            "categoria_sugerida": "Otros",
+            "fuente": "ml_propio",
+            "confianza": 0.0,
+            "requiere_revision": True,
+        }
