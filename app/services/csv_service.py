@@ -12,8 +12,14 @@ import io
 import logging
 import re
 import unicodedata
+from collections import defaultdict
+from datetime import datetime, time
+
 import pandas as pd
 from sqlalchemy.orm import Session
+
+from app.models.ingreso import Ingreso
+from app.models.gasto import Gasto
 from app.services.ia_service import clasificar_gasto
 
 logger = logging.getLogger(__name__)
@@ -230,3 +236,147 @@ def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) 
             categoria = "Otros"
         resultado.append({**mov, "categoria": categoria})
     return resultado
+
+
+# ── Detección de duplicados por conteo de instancias ─────────────────────────
+# El problema: si comparamos solo "existe ya un movimiento igual en BD", falla
+# en casos legítimos como "dos cafés del mismo día" — el segundo café se
+# marcaría como duplicado del primero.
+#
+# La estrategia es comparar la CANTIDAD de instancias por clave (fecha+monto+
+# descripción+tipo) que vienen en el CSV contra las que ya están persistidas:
+#
+#   csv_count == 0  → no hay nada que comparar
+#   csv_count <= bd_count  → todas las del CSV ya están cubiertas → marcar todas
+#   csv_count >  bd_count  → marcar las primeras bd_count, dejar el resto pasar
+#
+# Esto distingue correctamente entre re-importar el mismo archivo (mismas
+# cantidades en CSV y BD) y agregar nuevas instancias legítimas (CSV trae más
+# que BD).
+
+
+def _normalizar_descripcion(desc: str) -> str:
+    """Limpia la descripción para comparar: minúsculas, sin tildes, sin espacios extra."""
+    if not desc:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", desc)
+    sin_tildes = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", sin_tildes.lower().strip())
+
+
+def _clave_movimiento(mov: dict) -> tuple:
+    """Tupla canónica para agrupar movimientos equivalentes.
+
+    No usamos hash criptográfico porque la clave nunca sale del proceso —
+    la usamos como llave de diccionario y nada más. Una tupla hashable alcanza.
+    """
+    fecha_str = mov.get("fecha", "")
+    try:
+        fecha_obj = datetime.fromisoformat(fecha_str).date()
+    except (ValueError, TypeError):
+        # Fechas inválidas no se pueden agrupar; las tratamos como únicas
+        # para no marcarlas erróneamente como duplicado.
+        fecha_obj = None
+    monto = round(float(mov.get("monto", 0)), 2)
+    desc = _normalizar_descripcion(mov.get("descripcion", ""))
+    tipo = mov.get("tipo", "")
+    return (fecha_obj, monto, desc, tipo)
+
+
+def _contar_instancias_en_bd(
+    db: Session,
+    usuario_id: int,
+    fecha_obj,
+    monto: float,
+    desc_norm: str,
+    tipo: str,
+) -> int:
+    """Cuenta movimientos del usuario en BD que matchean la clave del CSV.
+
+    La descripción tiene que compararse normalizada, pero la BD guarda el
+    texto original. Por eso traemos los candidatos por fecha+monto y
+    filtramos en Python con la misma normalización que aplicamos al CSV.
+    Para el rango de fechas usamos el día completo (00:00 a 23:59:59) porque
+    distintos exports pueden traer la hora con valores diferentes.
+    """
+    if fecha_obj is None:
+        return 0
+
+    Modelo = Ingreso if tipo == "ingreso" else Gasto
+
+    inicio = datetime.combine(fecha_obj, time.min)
+    fin = datetime.combine(fecha_obj, time.max)
+
+    candidatos = db.query(Modelo).filter(
+        Modelo.usuario_id == usuario_id,
+        Modelo.monto == monto,
+        Modelo.fecha >= inicio,
+        Modelo.fecha <= fin,
+    ).all()
+
+    return sum(
+        1 for m in candidatos
+        if _normalizar_descripcion(m.descripcion) == desc_norm
+    )
+
+
+def detectar_posibles_duplicados(
+    db: Session,
+    usuario_id: int,
+    movimientos: list[dict],
+) -> list[dict]:
+    """Marca cada movimiento con la flag posible_duplicado: bool.
+
+    El criterio se documenta arriba en este mismo archivo. La función no
+    decide nada ni omite filas — solo agrega información para que el cliente
+    (frontend o el endpoint /confirmar) sepa qué desactivar por defecto.
+    """
+    if not movimientos:
+        return []
+
+    # Agrupamos los índices del CSV por clave canónica.
+    grupos = defaultdict(list)
+    for idx, mov in enumerate(movimientos):
+        clave = _clave_movimiento(mov)
+        grupos[clave].append(idx)
+
+    # Arrancamos con la flag en False para todos.
+    resultado = [{**mov, "posible_duplicado": False} for mov in movimientos]
+
+    # Cache local para no preguntarle a la BD lo mismo dos veces si hay
+    # varias claves que cuentan la misma fecha+monto+desc.
+    cache_bd: dict[tuple, int] = {}
+
+    for clave, indices in grupos.items():
+        if clave in cache_bd:
+            bd_count = cache_bd[clave]
+        else:
+            fecha_obj, monto, desc_norm, tipo = clave
+            bd_count = _contar_instancias_en_bd(
+                db, usuario_id, fecha_obj, monto, desc_norm, tipo,
+            )
+            cache_bd[clave] = bd_count
+
+        # Solo marcamos las primeras bd_count instancias del CSV. Si el CSV
+        # trae más que las que ya hay en BD, las "extras" quedan como nuevas.
+        n_marcar = min(len(indices), bd_count)
+        for i in indices[:n_marcar]:
+            resultado[i]["posible_duplicado"] = True
+
+    return resultado
+
+
+def filtrar_no_duplicados(
+    db: Session,
+    usuario_id: int,
+    movimientos: list[dict],
+) -> tuple[list[dict], int]:
+    """Devuelve (movimientos_a_importar, omitidos_por_duplicado).
+
+    Pensada para el endpoint /confirmar: aplica la misma detección que /preview
+    como red de seguridad y descarta los duplicados antes de persistir.
+    """
+    marcados = detectar_posibles_duplicados(db, usuario_id, movimientos)
+    a_importar = [m for m in marcados if not m.get("posible_duplicado")]
+    omitidos = len(marcados) - len(a_importar)
+    return a_importar, omitidos

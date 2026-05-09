@@ -7,7 +7,13 @@ from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.dependencies import get_current_user
-from app.services.csv_service import detectar_columnas_csv, procesar_csv, clasificar_movimientos
+from app.services.csv_service import (
+    clasificar_movimientos,
+    detectar_columnas_csv,
+    detectar_posibles_duplicados,
+    filtrar_no_duplicados,
+    procesar_csv,
+)
 from datetime import datetime
 
 router = APIRouter(prefix="/importar", tags=["Importar"])
@@ -81,13 +87,25 @@ async def preview_csv(
             detail="No se encontraron movimientos válidos en el CSV.",
         )
 
-    preview_raw = todos[:20]
+    # La detección de duplicados se aplica sobre el lote completo, no solo
+    # sobre las primeras 20 filas que mostramos en el preview visual. Así el
+    # resumen que vuelve al frontend ("X nuevos, Y posibles duplicados")
+    # representa la realidad del archivo entero.
+    todos_marcados = detectar_posibles_duplicados(db, current_user.id, todos)
+    posibles_duplicados = sum(1 for m in todos_marcados if m.get("posible_duplicado"))
+
+    preview_raw = todos_marcados[:20]
     preview = clasificar_movimientos(preview_raw, db, current_user.id)
 
     return {
         "total_filas": len(todos),
         "preview": preview,
         "mapeo_detectado": mapeo,
+        "resumen": {
+            "total": len(todos),
+            "nuevos": len(todos) - posibles_duplicados,
+            "posibles_duplicados": posibles_duplicados,
+        },
     }
 
 
@@ -100,30 +118,39 @@ def confirmar_importacion(
     ingresos_nuevos = []
     gastos_nuevos = []
 
+    # Red de seguridad: aunque el frontend ya filtre lo que el usuario marcó
+    # como duplicado en el preview, volvemos a aplicar la detección server-side
+    # antes de persistir. Si alguien llama directo al endpoint sin pasar por
+    # el preview (por ejemplo desde un script), la idempotencia se mantiene.
+    movimientos_dict = [m.model_dump() for m in datos.movimientos]
+    a_importar, omitidos_por_duplicado = filtrar_no_duplicados(
+        db, current_user.id, movimientos_dict,
+    )
+
     # Persistencia transaccional atómica (Objetivo Específico 1 — TFG):
     # si falla cualquier inserción, se revierte la operación completa
     # y ningún registro parcial queda en la base de datos.
     try:
-        for mov in datos.movimientos:
+        for mov in a_importar:
             try:
-                fecha = datetime.fromisoformat(mov.fecha)
-            except Exception:
+                fecha = datetime.fromisoformat(mov["fecha"])
+            except (ValueError, TypeError):
                 fecha = datetime.now()
 
-            if mov.tipo == "ingreso":
+            if mov["tipo"] == "ingreso":
                 ingresos_nuevos.append(Ingreso(
                     usuario_id=current_user.id,
-                    descripcion=mov.descripcion,
-                    monto=mov.monto,
-                    categoria=mov.categoria,
+                    descripcion=mov["descripcion"],
+                    monto=mov["monto"],
+                    categoria=mov["categoria"],
                     fecha=fecha,
                 ))
-            elif mov.tipo == "gasto":
+            elif mov["tipo"] == "gasto":
                 gastos_nuevos.append(Gasto(
                     usuario_id=current_user.id,
-                    descripcion=mov.descripcion,
-                    monto=mov.monto,
-                    categoria=mov.categoria,
+                    descripcion=mov["descripcion"],
+                    monto=mov["monto"],
+                    categoria=mov["categoria"],
                     fecha=fecha,
                 ))
 
@@ -141,4 +168,5 @@ def confirmar_importacion(
         "importados": len(ingresos_nuevos) + len(gastos_nuevos),
         "ingresos_creados": len(ingresos_nuevos),
         "gastos_creados": len(gastos_nuevos),
+        "omitidos_por_duplicado": omitidos_por_duplicado,
     }
