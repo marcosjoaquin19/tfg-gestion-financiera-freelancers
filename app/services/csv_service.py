@@ -1,11 +1,17 @@
 """
-Procesamiento de archivos CSV de homebanking.
+Procesamiento de archivos de homebanking (CSV y Excel).
+
+El módulo se llama csv_service por razones históricas. En la práctica acepta
+también archivos .xlsx, ya que los bancos argentinos (Galicia, Santander,
+BBVA, Macro, Nación, Brubank, ICBC, Mercado Pago, Naranja X) exportan en
+ambos formatos según el plan o canal del usuario. La detección de columnas
+se hace una sola vez sobre un DataFrame de pandas, sin importar de qué
+formato vino el archivo.
 
 Política de soberanía de datos del TFG: la detección del formato del archivo
 se realiza íntegramente con heurísticas locales basadas en un diccionario de
-sinónimos relevados sobre bancos y billeteras argentinas (Galicia, Santander,
-BBVA, Macro, Nación, Brubank, ICBC, Mercado Pago, Naranja X). En ningún caso
-se transmite el contenido del archivo a servicios externos.
+sinónimos relevados sobre los bancos arriba mencionados. En ningún caso se
+transmite el contenido del archivo a servicios externos.
 """
 
 import io
@@ -77,6 +83,38 @@ def _buscar_columna(columnas_norm: dict[str, str], sinonimos: list[str]) -> str 
     return None
 
 
+# ── Lectura de archivos ──────────────────────────────────────────────────────
+# Centralizamos acá la decisión de qué motor de pandas usar según la extensión.
+# Si después agregamos otro formato (ej: .ods) basta con sumar un branch.
+
+def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | None:
+    """Devuelve un DataFrame leído desde el contenido bruto del archivo.
+
+    Acepta extensiones .csv y .xlsx. La extensión se compara en minúsculas
+    con punto incluido. Si pandas no puede interpretar el contenido, devuelve
+    None y el llamador decide cómo reportarlo al usuario.
+    """
+    extension = (extension or "").lower()
+    try:
+        if extension == ".csv":
+            # Algunos bancos exportan en latin-1; intentamos utf-8 primero
+            # y caemos a latin-1 si falla la decodificación.
+            try:
+                texto = contenido_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                texto = contenido_bytes.decode("latin-1")
+            return pd.read_csv(io.StringIO(texto))
+        if extension == ".xlsx":
+            # openpyxl es la dependencia que pandas usa por debajo para .xlsx.
+            return pd.read_excel(io.BytesIO(contenido_bytes), engine="openpyxl")
+    except Exception as e:
+        logger.error(f"Error leyendo archivo ({extension}): {e}")
+        return None
+
+    logger.warning(f"Extensión no soportada en leer_dataframe: {extension}")
+    return None
+
+
 def _detectar_formato_fecha(serie: pd.Series) -> str:
     """Intenta inferir el formato de fecha probando los más comunes en Argentina."""
     formatos = [
@@ -96,19 +134,15 @@ def _detectar_formato_fecha(serie: pd.Series) -> str:
     return "%d/%m/%Y"
 
 
-def detectar_columnas_csv(contenido_csv: str, db: Session = None) -> dict | None:
-    """Detecta la estructura del CSV mediante heurísticas locales.
+def detectar_columnas_csv(df: pd.DataFrame, db: Session = None) -> dict | None:
+    """Detecta la estructura del archivo mediante heurísticas locales.
 
-    Devuelve un mapeo con la misma forma que la versión anterior basada en LLM,
-    para mantener compatibilidad con procesar_csv() y el resto del flujo.
+    Recibe un DataFrame ya parseado (por leer_dataframe). El nombre conserva
+    el sufijo csv por compatibilidad histórica, pero opera igual sobre Excel.
+    Devuelve None si no logra identificar las columnas mínimas (fecha y
+    descripción), para que el endpoint pueda informar el problema al usuario.
     """
-    try:
-        df = pd.read_csv(io.StringIO(contenido_csv), nrows=5)
-    except Exception as e:
-        logger.error(f"Error leyendo CSV para detección: {e}")
-        return None
-
-    if df.empty or df.shape[1] == 0:
+    if df is None or df.empty or df.shape[1] == 0:
         return None
 
     columnas_norm = {_normalizar(c): c for c in df.columns}
@@ -142,11 +176,14 @@ def detectar_columnas_csv(contenido_csv: str, db: Session = None) -> dict | None
     }
 
 
-def procesar_csv(contenido_csv: str, mapeo: dict) -> list[dict]:
-    try:
-        df = pd.read_csv(io.StringIO(contenido_csv))
-    except Exception as e:
-        logger.error(f"Error leyendo CSV para procesar: {e}")
+def procesar_csv(df: pd.DataFrame, mapeo: dict) -> list[dict]:
+    """Convierte cada fila del DataFrame en un movimiento normalizado.
+
+    Recibe el DataFrame ya leído (por leer_dataframe) más el mapeo de columnas
+    detectado por detectar_columnas_csv. La salida es una lista de dicts con
+    las claves fecha, descripción, monto y tipo, lista para clasificar.
+    """
+    if df is None or df.empty:
         return []
 
     col_fecha = mapeo.get("columna_fecha")

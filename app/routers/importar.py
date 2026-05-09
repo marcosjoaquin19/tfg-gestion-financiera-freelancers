@@ -12,14 +12,19 @@ from app.services.csv_service import (
     detectar_columnas_csv,
     detectar_posibles_duplicados,
     filtrar_no_duplicados,
+    leer_dataframe,
     procesar_csv,
 )
 from datetime import datetime
 
 router = APIRouter(prefix="/importar", tags=["Importar"])
 
-# Validación previa del archivo importado (Objetivo Específico 1 — TFG)
-EXTENSIONES_PERMITIDAS = {".csv"}
+# Validación previa del archivo importado (Objetivo Específico 1 — TFG).
+# Soportamos CSV (estándar de exportación bancaria) y XLSX (formato moderno
+# de Excel). Para .xls antiguo el usuario tiene que convertir desde el banco
+# o desde su Excel/LibreOffice — agregar soporte requeriría xlrd<2.0 que ya
+# no se mantiene activamente.
+EXTENSIONES_PERMITIDAS = {".csv", ".xlsx"}
 TAMANO_MAXIMO_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -68,23 +73,27 @@ async def preview_csv(
             detail=f"El archivo supera el tamaño máximo permitido ({limite_mb} MB).",
         )
 
-    try:
-        contenido = contenido_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        contenido = contenido_bytes.decode("latin-1")
+    # Toda la lógica posterior trabaja sobre un DataFrame, sin importar si
+    # vino de .csv o .xlsx. leer_dataframe se encarga de elegir el motor.
+    df = leer_dataframe(contenido_bytes, extension)
+    if df is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo leer el archivo. Verificá que sea un CSV o Excel válido.",
+        )
 
-    mapeo = detectar_columnas_csv(contenido, db)
+    mapeo = detectar_columnas_csv(df, db)
     if not mapeo:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se pudo detectar la estructura del CSV. Verificá que el archivo tenga encabezados claros.",
+            detail="No se pudo detectar la estructura del archivo. Verificá que tenga encabezados claros (fecha, descripción, monto).",
         )
 
-    todos = procesar_csv(contenido, mapeo)
+    todos = procesar_csv(df, mapeo)
     if not todos:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontraron movimientos válidos en el CSV.",
+            detail="No se encontraron movimientos válidos en el archivo.",
         )
 
     # La detección de duplicados se aplica sobre el lote completo, no solo

@@ -1,6 +1,8 @@
 import io
 from unittest.mock import patch
 
+import pandas as pd
+
 
 def test_importar_preview_sin_auth(client):
     csv_bytes = b"fecha,descripcion,monto\n2026-01-01,Adobe Photoshop,1200\n"
@@ -239,6 +241,51 @@ def test_caso_D_solapamiento_de_extractos_solo_omite_repetidos(client, auth_head
     data = response.json()
     assert data["importados"] == 2
     assert data["omitidos_por_duplicado"] == 2
+
+
+def test_importar_preview_extension_no_soportada(client, auth_headers):
+    # Subir .txt: el endpoint debe rechazarlo antes incluso de leer el contenido.
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("test.txt", io.BytesIO(b"cualquier cosa"), "text/plain")},
+        headers=auth_headers,
+    )
+    assert response.status_code == 400
+    assert "Formato no soportado" in response.json()["detail"]
+
+
+def test_importar_preview_xlsx_valido(client, auth_headers):
+    # Generamos un .xlsx en memoria con pandas + openpyxl. Esto recorre
+    # todo el camino real del endpoint: leer_dataframe → detectar columnas →
+    # procesar filas → detectar duplicados → clasificar preview.
+    df = pd.DataFrame([
+        {"fecha": "2026-01-01", "descripcion": "Adobe Photoshop", "monto": -1200},
+        {"fecha": "2026-01-02", "descripcion": "Pago cliente Acme", "monto": 5000},
+    ])
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+
+    response = client.post(
+        "/importar/preview",
+        files={
+            "archivo": (
+                "extracto.xlsx",
+                buffer,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_filas"] == 2
+    # El detector reconoce las columnas aunque vengan de Excel.
+    assert data["mapeo_detectado"]["columna_fecha"] == "fecha"
+    assert data["mapeo_detectado"]["columna_descripcion"] == "descripcion"
+    # Una fila negativa (gasto) y una positiva (ingreso).
+    tipos = {fila["tipo"] for fila in data["preview"]}
+    assert tipos == {"gasto", "ingreso"}
 
 
 def test_descripcion_normalizada_iguala_mayusculas_y_tildes(client, auth_headers):
