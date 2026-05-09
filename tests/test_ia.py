@@ -31,11 +31,13 @@ def test_clasificar_gasto_exitoso(client, auth_headers):
 
 
 def test_clasificar_gasto_baja_confianza_marca_revision(client, auth_headers):
-    # Si el ML local devuelve confianza < 0.65, se sugiere "Otros" y se marca
-    # para revisión manual. NUNCA se llama a un servicio externo.
+    # Si el ML local devuelve confianza por debajo del umbral, se sugiere
+    # "Otros" y se marca para revisión manual. NUNCA se llama a un servicio
+    # externo. Usamos 0.15 para garantizar que quede bajo cualquier umbral
+    # razonable que pueda ajustarse en el futuro.
     mock_ml = {
         "categoria": "Software",
-        "confianza": 0.30,
+        "confianza": 0.15,
         "fuente": "ml_propio",
         "algoritmo": "naive_bayes",
     }
