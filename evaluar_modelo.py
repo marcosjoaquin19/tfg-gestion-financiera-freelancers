@@ -43,7 +43,8 @@ def main():
         matriz = resultado["matriz_confusion"]["matriz"]
 
         # Encabezado con etiquetas truncadas
-        print(f"  {'real \\ pred':<18}", end="")
+        encabezado = "real / pred"
+        print(f"  {encabezado:<18}", end="")
         for lbl in labels:
             print(f"{lbl[:5]:>6}", end="")
         print()
