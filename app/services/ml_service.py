@@ -572,6 +572,55 @@ def evaluar_reentrenamiento_automatico(db: Session, usuario_id: int, motivo: str
     }
 
 
+def evaluar_modelo_base(db: Session) -> dict:
+    """Mide la performance del modelo base con cross-validation 5-fold.
+
+    Devuelve accuracy global, métricas por categoría (precision, recall, f1)
+    y matriz de confusión. Se usa antes de ampliar el dataset para diagnosticar
+    qué categorías están fallando, y después para validar la mejora.
+
+    Cross-validation 5-fold significa que cada ejemplo se predice cinco veces
+    (entrenando con el resto del dataset cada vez) y se promedia. Es una
+    métrica más honesta que evaluar sobre el mismo dataset de entrenamiento.
+    """
+    from sklearn.model_selection import cross_val_predict
+    from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
+    X = [desc for desc, _ in DATASET_BASE]
+    y = [cat for _, cat in DATASET_BASE]
+    n = len(X)
+
+    algoritmo = _elegir_algoritmo(n)
+    pipeline = _crear_pipeline(algoritmo)
+
+    # cross_val_predict da la predicción de cada ejemplo cuando NO formó parte
+    # del fold de entrenamiento. Esa es la métrica que reportamos.
+    y_pred = cross_val_predict(pipeline, X, y, cv=5)
+
+    accuracy = accuracy_score(y, y_pred)
+    report = classification_report(y, y_pred, output_dict=True, zero_division=0)
+    matriz = confusion_matrix(y, y_pred, labels=CATEGORIAS_VALIDAS)
+
+    return {
+        "accuracy_global": float(accuracy),
+        "por_categoria": {
+            cat: {
+                "precision": float(report[cat]["precision"]),
+                "recall": float(report[cat]["recall"]),
+                "f1": float(report[cat]["f1-score"]),
+                "support": int(report[cat]["support"]),
+            }
+            for cat in CATEGORIAS_VALIDAS if cat in report
+        },
+        "matriz_confusion": {
+            "labels": list(CATEGORIAS_VALIDAS),
+            "matriz": matriz.tolist(),
+        },
+        "n_ejemplos_total": n,
+        "algoritmo": algoritmo,
+    }
+
+
 def obtener_estado_modelo(db: Session, usuario_id: int) -> dict:
     modelo_usuario = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id == usuario_id,
