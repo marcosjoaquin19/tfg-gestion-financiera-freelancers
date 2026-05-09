@@ -725,7 +725,10 @@ def entrenar_modelo_base(db: Session) -> ModeloClasificador:
         ModeloClasificador.activo == True,
     ).first()
 
-    if existente and existente.n_ejemplos >= 200:
+    # Solo saltamos el reentrenamiento si ya está entrenado con TODOS los
+    # ejemplos disponibles. Si el dataset creció (ej: ampliación del corpus),
+    # forzamos un fit nuevo para que el modelo persistido refleje la realidad.
+    if existente and existente.n_ejemplos >= len(DATASET_BASE):
         return existente
 
     X = [desc for desc, _ in DATASET_BASE]
