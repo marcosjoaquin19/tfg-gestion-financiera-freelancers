@@ -68,16 +68,16 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     else:
         estado = "rojo"
 
-    # Meses hasta superar el límite
+    # Meses hasta superar el límite anual.
+    # Las proyecciones se generan con frecuencia mensual (una fila por mes,
+    # ver prophet_service), así que el ingreso mensual promedio es el total
+    # proyectado dividido la cantidad de meses proyectados.
     meses_para_limite = None
-    if proyecciones:
-        dias_proyectados = len(proyecciones)
-        if dias_proyectados > 0 and total_proyectado_restante > 0:
-            ingreso_diario = total_proyectado_restante / dias_proyectados
-            ingreso_mensual = ingreso_diario * 30
-            restante = limite_anual - facturado_anual
-            if ingreso_mensual > 0 and restante > 0:
-                meses_para_limite = max(0, round(restante / ingreso_mensual, 1))
+    if proyecciones and total_proyectado_restante > 0:
+        ingreso_mensual = total_proyectado_restante / len(proyecciones)
+        restante = limite_anual - facturado_anual
+        if ingreso_mensual > 0 and restante > 0:
+            meses_para_limite = max(0, round(restante / ingreso_mensual, 1))
 
     # Categoría siguiente
     idx = CATEGORIAS_ORDEN.index(cat)
