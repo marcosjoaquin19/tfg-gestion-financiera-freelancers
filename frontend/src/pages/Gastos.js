@@ -61,6 +61,9 @@ export default function Gastos() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [clasificando, setClasificando] = useState(false);
+  // Resultado de la última clasificación con IA: categoría sugerida, confianza
+  // y si quedó marcada como sujeta a revisión (confianza por debajo del umbral).
+  const [clasificacion, setClasificacion] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [soloDuplicados, setSoloDuplicados] = useState(false);
   const [form, setForm] = useState({
@@ -83,6 +86,8 @@ export default function Gastos() {
 
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    // Si cambia la descripción, la clasificación previa deja de corresponder.
+    if (e.target.name === 'descripcion') setClasificacion(null);
   }
 
   async function handleClasificar() {
@@ -91,6 +96,10 @@ export default function Gastos() {
     try {
       const res = await api.post('/gastos/clasificar', { descripcion: form.descripcion });
       setForm((prev) => ({ ...prev, categoria: res.data.categoria_sugerida }));
+      setClasificacion({
+        confianza: res.data.confianza,
+        requiereRevision: res.data.requiere_revision,
+      });
     } catch (_) {
     } finally {
       setClasificando(false);
@@ -109,6 +118,7 @@ export default function Gastos() {
       });
       setShowForm(false);
       setForm({ descripcion: '', monto: '', categoria: 'Software', fecha: todayISO() });
+      setClasificacion(null);
       await fetchGastos();
     } catch (_) {
     } finally {
@@ -184,6 +194,28 @@ export default function Gastos() {
                 >
                   {clasificando ? 'Clasificando...' : 'Clasificar con IA'}
                 </button>
+
+                {/* Resultado de la clasificación: confianza y aviso de revisión.
+                    Si la confianza quedó por debajo del umbral, el backend marca
+                    requiere_revision y le pedimos al usuario que verifique. */}
+                {clasificacion && (
+                  <div style={{ marginTop: '8px' }}>
+                    {clasificacion.requiereRevision ? (
+                      <span style={{
+                        display: 'inline-block', fontSize: '12px',
+                        background: '#2d1f00', color: '#fbbf24',
+                        borderRadius: '4px', padding: '4px 9px',
+                      }}>
+                        ⚠ Confianza baja ({Math.round((clasificacion.confianza || 0) * 100)}%).
+                        Revisá la categoría sugerida antes de guardar.
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: '12px', color: '#4ade80' }}>
+                        Categoría sugerida con {Math.round((clasificacion.confianza || 0) * 100)}% de confianza.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Monto */}
