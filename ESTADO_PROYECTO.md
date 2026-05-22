@@ -1,6 +1,6 @@
 # ESTADO DEL PROYECTO — TFG Freelancers API
 
-> Generado automáticamente el 2026-04-15. Descripción exhaustiva del estado actual del sistema.
+> Actualizado el 2026-05-22. Descripción exhaustiva del estado actual del sistema.
 
 ---
 
@@ -25,6 +25,10 @@
 | Manipulación datos | pandas | 2.2.1 |
 | Cliente IA | groq | 0.13.0 |
 | Migraciones BD | alembic | 1.13.1 |
+| Clasificador NLP | scikit-learn | 1.4.2 |
+| Serialización de modelos | joblib | 1.4.0 |
+| Generación de PDF | reportlab | 4.1.0 |
+| Lectura de Excel | openpyxl | 3.1.2 |
 
 ### Base de datos
 | Componente | Tecnología | Versión |
@@ -49,7 +53,7 @@
 | Componente | Tecnología |
 |---|---|
 | Contenedores | Docker + Docker Compose 3.8 |
-| Modelo IA | Groq llama-3.3-70b-versatile |
+| Modelo IA externo | Groq llama-3.3-70b-versatile — solo resúmenes y recomendaciones |
 
 ---
 
@@ -65,6 +69,9 @@ proyecto-tfg/
 ├── requirements.txt                          # Dependencias Python con versiones exactas
 ├── seed_categorias_monotributo.py            # Script seed: categorías A-K del Monotributo
 ├── seed_ingresos.py                          # Script seed: ingresos de ejemplo
+├── seed_demo.py                              # Script seed: usuario y datos de demostración
+├── seed_modelo_base.py                       # Script seed: entrena y persiste el clasificador base
+├── evaluar_modelo.py                         # Script: evalúa el clasificador con validación cruzada
 │
 ├── app/
 │   ├── __init__.py
@@ -81,7 +88,8 @@ proyecto-tfg/
 │   │   ├── proyeccion.py
 │   │   ├── alerta_auditoria.py
 │   │   ├── categoria_monotributo.py
-│   │   └── cache_clasificacion.py
+│   │   ├── cache_clasificacion.py
+│   │   └── modelo_clasificador.py
 │   │
 │   ├── schemas/
 │   │   ├── __init__.py
@@ -96,9 +104,11 @@ proyecto-tfg/
 │   │   ├── __init__.py
 │   │   ├── auth.py                           # Hash/verificación contraseñas, JWT, CRUD usuario
 │   │   ├── auditoria.py                      # Módulo M3: detección duplicados, anomalías, discrepancias
+│   │   ├── ml_service.py                     # Clasificador NLP local (Naive Bayes/SVM + TF-IDF), reentrenamiento
 │   │   ├── prophet_service.py                # Proyecciones con Prophet o media móvil (fallback)
-│   │   ├── ia_service.py                     # Groq: clasificación gastos, resumen, recomendaciones
-│   │   ├── csv_service.py                    # Importación CSV: detección columnas, parsing, clasificación
+│   │   ├── ia_service.py                     # Clasificación (delega en ml_service) + Groq para resumen/recomendaciones
+│   │   ├── csv_service.py                    # Importación CSV/Excel: detección columnas, parsing, duplicados
+│   │   ├── reportes_service.py               # Generación del reporte mensual en PDF (ReportLab)
 │   │   └── monotributo_service.py            # Estado Monotributo, verificación pago mensual
 │   │
 │   └── routers/
@@ -111,15 +121,18 @@ proyecto-tfg/
 │       ├── proyecciones.py                   # POST generar + GET /proyecciones/
 │       ├── resumen.py                        # GET /resumen/financiero
 │       ├── recomendaciones.py                # GET /recomendaciones/
-│       ├── importar.py                       # POST /importar/preview + /importar/confirmar
-│       └── monotributo.py                    # GET /monotributo/estado + /pago, PATCH /categoria
+│       ├── importar.py                       # POST /importar/preview + /importar/confirmar (CSV y Excel)
+│       ├── monotributo.py                    # GET /monotributo/estado + /pago, PATCH /categoria
+│       ├── ml.py                             # GET /ml/estado, POST /ml/reentrenar, POST /ml/corregir
+│       └── reportes.py                       # GET /reportes/pdf — reporte mensual descargable
 │
 ├── alembic/
 │   ├── env.py                                # Setup Alembic: lee .env, importa modelos
 │   ├── script.py.mako                        # Template para scripts de migración
 │   └── versions/
 │       ├── 0001_initial_schema.py            # Migración inicial: todas las tablas base
-│       └── 0002_tabla_categoria_monotributo.py  # Tabla categorias_monotributo
+│       ├── 0002_tabla_categoria_monotributo.py  # Tabla categorias_monotributo
+│       └── 0003_tabla_modelo_clasificador.py    # Tabla modelos_clasificador
 │
 ├── tests/
 │   ├── __init__.py
@@ -128,12 +141,13 @@ proyecto-tfg/
 │   ├── test_ingresos.py
 │   ├── test_gastos.py
 │   ├── test_facturas.py
-│   ├── test_alertas.py
 │   ├── test_proyecciones.py
 │   ├── test_auditoria.py
 │   ├── test_ia.py
 │   ├── test_importar.py
-│   └── test_monotributo.py
+│   ├── test_monotributo.py
+│   ├── test_ml.py
+│   └── test_reportes.py
 │
 └── frontend/
     ├── Dockerfile                            # Node 18-alpine, npm start
@@ -293,7 +307,24 @@ class TipoAlerta(str, Enum):
 | categoria | String | NOT NULL |
 | fecha_creacion | DateTime | server_default=now(), NOT NULL |
 
-**Propósito:** Evitar llamadas redundantes a la API de Groq al clasificar gastos.
+**Propósito:** Registra descripciones ya clasificadas. Histórico: nació como caché de respuestas de Groq; con el clasificador local la tabla quedó en desuso (ver sección 7).
+
+---
+
+### Tabla: `modelos_clasificador`
+
+| Columna | Tipo | Restricciones |
+|---|---|---|
+| id | Integer | PK, index |
+| usuario_id | Integer | FK usuarios.id, nullable, index — NULL = modelo base compartido |
+| modelo_serializado | Text | NOT NULL — pipeline scikit-learn serializado con joblib + base64 |
+| algoritmo | String(20) | NOT NULL — "naive_bayes" o "svm" |
+| precision | Float | nullable — accuracy media por validación cruzada |
+| n_ejemplos | Integer | default=0 — tamaño del dataset de entrenamiento |
+| fecha_entrenamiento | DateTime(tz) | server_default=now() |
+| activo | Boolean | default=True |
+
+**Propósito:** Persiste el clasificador entrenado. Existe un modelo base (`usuario_id` NULL) entrenado sobre el dataset de 600 ejemplos, y modelos personalizados por usuario cuando éste acumula 20 o más gastos propios.
 
 ---
 
@@ -324,7 +355,7 @@ class TipoAlerta(str, Enum):
 
 | Método | Ruta | Body / Params | Respuesta | Notas |
 |---|---|---|---|---|
-| POST | `/gastos/clasificar` | `{descripcion}` | `{categoria_sugerida}` | Llama servicio IA, sin persistir |
+| POST | `/gastos/clasificar` | `{descripcion}` | `{categoria_sugerida, fuente, confianza, requiere_revision}` | Clasificador NLP local; marca para revisión si la confianza < 0.30 |
 | POST | `/gastos/` | `GastoCreate` | `GastoResponse` (201) | usuario_id del JWT |
 | GET | `/gastos/` | `?categoria, solo_duplicados, limite, offset` | `list[GastoResponse]` | Filtro por duplicados marcados |
 | GET | `/gastos/{id}` | — | `GastoResponse` | Verifica ownership |
@@ -387,8 +418,8 @@ class TipoAlerta(str, Enum):
 
 | Método | Ruta | Body | Respuesta | Notas |
 |---|---|---|---|---|
-| POST | `/importar/preview` | `UploadFile` (CSV) | `{total_filas, preview, mapeo_detectado}` | Groq detecta columnas; procesa primeras 20 filas |
-| POST | `/importar/confirmar` | `{movimientos, mapeo}` | `{importados, ingresos_creados, gastos_creados}` | Crea ingresos y gastos en bulk |
+| POST | `/importar/preview` | `UploadFile` (CSV o XLSX) | `{total_filas, preview, mapeo_detectado, resumen}` | Detección heurística local de columnas; marca posibles duplicados; preview de 20 filas |
+| POST | `/importar/confirmar` | `{movimientos, mapeo}` | `{importados, ingresos_creados, gastos_creados, omitidos_por_duplicado}` | Importación bulk transaccional e idempotente |
 
 ---
 
@@ -399,6 +430,24 @@ class TipoAlerta(str, Enum):
 | GET | `/monotributo/estado` | — | Objeto de estado o `{sin_categoria: true}` | Incluye porcentaje, proyección, alerta verde/amarillo/rojo |
 | GET | `/monotributo/pago` | — | `{pagado, mes, anio, monto_esperado, gasto_encontrado}` | Busca Gasto con categoria="Monotributo" del mes actual |
 | PATCH | `/monotributo/categoria` | `UsuarioUpdateMonotributo` | `UsuarioResponse` | Valida que la categoría exista y esté activa |
+
+---
+
+### Clasificador ML — `/ml`
+
+| Método | Ruta | Body | Respuesta | Notas |
+|---|---|---|---|---|
+| GET | `/ml/estado` | — | Estado del modelo (algoritmo, precisión, n_ejemplos, propio/base) | — |
+| POST | `/ml/reentrenar` | — | Resultado del reentrenamiento | Modelo personalizado si hay ≥20 gastos propios; si no, usa el base |
+| POST | `/ml/corregir` | `{descripcion, categoria_correcta}` | `{mensaje, nuevo_estado, ...}` | Registra la corrección y reentrena; 422 si la categoría es inválida |
+
+---
+
+### Reportes — `/reportes`
+
+| Método | Ruta | Params | Respuesta | Notas |
+|---|---|---|---|---|
+| GET | `/reportes/pdf` | `?mes, anio` | `application/pdf` (descarga) | Reporte mensual consolidado; default: mes/año actual |
 
 ---
 
@@ -454,8 +503,9 @@ GROQ_MODEL=llama-3.3-70b-versatile
 |---|---|---|
 | `0001` | `0001_initial_schema.py` | Crea enums PostgreSQL (EstadoFactura, TipoAlerta) + tablas: usuarios, ingresos, gastos, facturas, proyecciones, alertas_auditoria, cache_clasificacion |
 | `0002` | `0002_tabla_categoria_monotributo.py` | Crea tabla categorias_monotributo + índice único en columna `letra` |
+| `0003` | `0003_tabla_modelo_clasificador.py` | Crea tabla modelos_clasificador (clasificador NLP serializado) |
 
-Ambas migraciones son **idempotentes** (verifican existencia antes de crear).
+Las tres migraciones son **idempotentes** (verifican existencia antes de crear).
 
 ---
 
@@ -481,10 +531,13 @@ Ambas migraciones son **idempotentes** (verifican existencia antes de crear).
 - No se permite editar ni eliminar facturas con `estado=PAGADA` (HTTP 409).
 - Solo se permite cambiar el estado vía `PATCH /facturas/{id}/estado` (datos históricos inmutables).
 
-### Clasificación IA con caché
-- Los gastos clasificados por Groq se cachean en `cache_clasificacion` por descripción normalizada.
-- Reintentos automáticos en rate limit (máx. 3 intentos, espera 20s).
-- Categorías disponibles: Software, Hardware, Infraestructura, Marketing, Servicios, Capacitación, Suscripciones, Transporte, Alimentación, Impuestos, Monotributo, Otros.
+### Clasificación con ML local (soberanía de datos)
+- La clasificación de gastos corre **100% local**: la descripción nunca se transmite a servicios externos.
+- Modelo base entrenado sobre un dataset de 600 ejemplos etiquetados; selección automática Naive Bayes / SVM según volumen, sobre vectorización TF-IDF.
+- Reentrenamiento automático: al acumular 20+ gastos propios se entrena un modelo personalizado que combina el dataset base con los ejemplos del usuario; las correcciones manuales también disparan reentrenamiento.
+- Si la confianza de la predicción es inferior a 0.30, se sugiere "Otros" y se marca el gasto para revisión manual.
+- Groq se reserva exclusivamente para el resumen financiero y las recomendaciones, sobre datos numéricos agregados, con fallback local determinístico.
+- Categorías: Software, Hardware, Infraestructura, Marketing, Servicios, Capacitación, Suscripciones, Transporte, Alimentación, Impuestos, Monotributo, Otros.
 
 ### Monotributo
 - El estado se calcula dinámicamente combinando ingresos reales + proyecciones Prophet.
@@ -515,19 +568,25 @@ Ambas migraciones son **idempotentes** (verifican existencia antes de crear).
 - [x] Detección de pago Monotributo faltante en el mes
 - [x] Alertas persistidas en BD con resolución manual por el usuario
 
-#### Módulo IA — Groq / LLaMA 3.3
-- [x] Clasificación automática de gastos con caché en BD
-- [x] Resumen financiero mensual en lenguaje natural
-- [x] Recomendaciones personalizadas basadas en estado financiero
+#### Clasificador NLP local (Naive Bayes / SVM)
+- [x] Clasificación automática de gastos 100% local, sin servicios externos
+- [x] Modelo base entrenado sobre 600 ejemplos etiquetados
+- [x] Reentrenamiento automático con las correcciones del usuario
+- [x] Marca para revisión manual cuando la confianza es baja
+
+#### Módulo IA externa — Groq / LLaMA 3.3
+- [x] Resumen financiero mensual en lenguaje natural (con fallback local)
+- [x] Recomendaciones personalizadas sobre datos agregados (con fallback local)
 
 #### Proyecciones Prophet
 - [x] Generación de proyecciones mensuales con intervalos de confianza
 - [x] Fallback a media móvil cuando hay pocos datos históricos
 
-#### Importación CSV
-- [x] Detección automática de columnas con IA (Groq)
-- [x] Preview de importación con clasificación previa
-- [x] Confirmación e importación bulk de movimientos
+#### Importación de movimientos (CSV / Excel)
+- [x] Detección heurística local de columnas (sin servicios externos)
+- [x] Soporte multiformato: CSV y XLSX
+- [x] Preview con clasificación previa y detección de duplicados
+- [x] Confirmación e importación bulk transaccional e idempotente
 
 #### Monotributo
 - [x] Tabla de categorías en BD con seed (A–K, servicios)
@@ -535,29 +594,33 @@ Ambas migraciones son **idempotentes** (verifican existencia antes de crear).
 - [x] Verificación de pago mensual
 - [x] Actualización de categoría del usuario
 
+#### Reportes
+- [x] Reporte mensual consolidado en PDF descargable (ReportLab)
+
 #### Infraestructura
 - [x] Docker Compose con 3 servicios (db, api, frontend)
-- [x] Migraciones Alembic con 2 revisiones aplicadas
-- [x] Suite de tests con 10 módulos (SQLite in-memory)
+- [x] Migraciones Alembic con 3 revisiones aplicadas
+- [x] Suite de tests con 11 módulos (SQLite in-memory)
 
 ### Pendiente / Mejoras identificadas ⚠️
 
-#### Seguridad (crítico)
-- [ ] **`.env` expuesto en git** — credenciales de BD y GROQ_API_KEY son visibles
-- [ ] **SECRET_KEY débil** — cambiar a clave aleatoria segura antes de producción
+#### Seguridad
+- [x] **SECRET_KEY** — regenerada a clave aleatoria de 64 caracteres
+- [x] **`.env`** — fuera del control de versiones (`.gitignore`) + `.env.example` documentado
+- [ ] **SECRET_KEY antigua en el historial** — mitigada por la rotación (la clave vieja ya no es válida); reescribir el historial es opcional
 - [ ] **CORS de producción** — configurar orígenes reales en deploy
 
 #### Funcionalidad
 - [ ] Filtros por rango de fechas en ingresos/gastos (solo hay por categoría)
 - [ ] Endpoint de estadísticas/totales (ingresos vs gastos por período)
-- [ ] Exportación a CSV o PDF desde el sistema
 - [ ] Webhook o notificaciones de alertas (email/push)
 - [ ] Soporte multi-actividad Monotributo (solo "servicios" implementado)
 - [ ] Gestión de clientes (entidad propia en lugar de solo `cliente_nombre` en facturas)
 - [ ] Paginación total_count en headers para el frontend
 
 #### Calidad de código
-- [ ] `services/prophet_service.py` — lógica ya está separada correctamente
+- [ ] Tabla `cache_clasificacion` en desuso desde la migración al clasificador local — pendiente de eliminar
+- [ ] Alerta de Monotributo impago reutiliza el tipo `FACTURA_IMPAGA` — falta un tipo de enum propio
 - [ ] Cobertura de tests del frontend (no existe)
 - [ ] Tests de integración con PostgreSQL real (conftest usa SQLite)
 - [ ] Documentación OpenAPI enriquecida (descriptions, examples en schemas)
@@ -594,6 +657,10 @@ pytest-cov==5.0.0
 python-multipart==0.0.9
 groq==0.13.0
 alembic==1.13.1
+scikit-learn==1.4.2
+joblib==1.4.0
+reportlab==4.1.0
+openpyxl==3.1.2
 ```
 
 ### Dependencias por grupo funcional
@@ -604,10 +671,11 @@ alembic==1.13.1
 | Base de datos | sqlalchemy, psycopg2-binary, alembic |
 | Validación | pydantic, email-validator |
 | Autenticación | python-jose, passlib, bcrypt |
-| IA / ML | groq, prophet, cmdstanpy, pandas |
+| IA / ML | scikit-learn, joblib, prophet, cmdstanpy, pandas, groq |
+| Reportes e importación | reportlab, openpyxl |
 | Utilidades | python-dotenv |
 | Testing | pytest, pytest-cov, httpx |
 
 ---
 
-*Documento generado el 2026-04-15 mediante análisis exhaustivo de todos los archivos del proyecto.*
+*Documento actualizado el 2026-05-22. Refleja el clasificador NLP local, los módulos de ML y reportes, la rotación de credenciales y la suite de tests ampliada.*
