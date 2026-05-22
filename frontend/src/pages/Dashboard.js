@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [gastos, setGastos] = useState([]);
   const [proyecciones, setProyecciones] = useState([]);
   const [recomendaciones, setRecomendaciones] = useState(null);
+  const [descargando, setDescargando] = useState(false);
 
   const now = new Date();
   const mesActual = now.getMonth() + 1;
@@ -89,6 +90,30 @@ export default function Dashboard() {
   const primeraRec = recomendaciones?.recomendaciones?.[0] || 'Sin recomendaciones disponibles.';
   const genConIA = recomendaciones?.generado_con_ia ?? false;
 
+  // Descarga el reporte mensual en PDF. El endpoint devuelve el archivo binario,
+  // así que lo pedimos como blob y forzamos la descarga creando un enlace temporal.
+  async function descargarReportePDF() {
+    setDescargando(true);
+    try {
+      const res = await api.get('/reportes/pdf', {
+        params: { mes: mesActual, anio: anioActual },
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = `reporte_${anioActual}-${String(mesActual).padStart(2, '0')}.pdf`;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('No se pudo generar el reporte. Intentá nuevamente en unos segundos.');
+    } finally {
+      setDescargando(false);
+    }
+  }
+
   if (loading) {
     return (
       <Layout activeSection="Dashboard">
@@ -104,7 +129,22 @@ export default function Dashboard() {
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500, color: '#f8fafc' }}>Dashboard</h1>
-        <span style={{ fontSize: '13px', color: '#64748b' }}>{periodoLabel}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span style={{ fontSize: '13px', color: '#64748b' }}>{periodoLabel}</span>
+          <button
+            onClick={descargarReportePDF}
+            disabled={descargando}
+            style={{
+              background: descargando ? '#1e293b' : '#3b82f6',
+              color: descargando ? '#64748b' : '#ffffff',
+              border: 'none', borderRadius: '6px', padding: '8px 14px',
+              fontSize: '13px', fontWeight: 500,
+              cursor: descargando ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {descargando ? 'Generando...' : 'Descargar reporte PDF'}
+          </button>
+        </div>
       </div>
 
       {/* Métricas */}
