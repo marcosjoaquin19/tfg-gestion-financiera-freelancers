@@ -835,15 +835,20 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
 
 
 def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id: int) -> None:
+    """Persiste una corrección explícita aportada por el usuario desde el
+    playground del clasificador (POST /ml/corregir). La corrección se usa
+    como ejemplo de entrenamiento adicional en el próximo reentrenamiento."""
     try:
         descripcion_norm = descripcion.strip().lower()
         existente = db.query(CacheClasificacion).filter(
-            CacheClasificacion.descripcion_normalizada == descripcion_norm
+            CacheClasificacion.usuario_id == usuario_id,
+            CacheClasificacion.descripcion_normalizada == descripcion_norm,
         ).first()
         if existente:
             existente.categoria = categoria
         else:
             db.add(CacheClasificacion(
+                usuario_id=usuario_id,
                 descripcion_normalizada=descripcion_norm,
                 categoria=categoria,
             ))
@@ -863,12 +868,21 @@ def reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
     X_usuario = [g.descripcion.strip().lower() for g in gastos if g.descripcion and g.categoria]
     y_usuario = [g.categoria for g in gastos if g.descripcion and g.categoria]
 
+    # Correcciones explícitas del usuario desde el playground (/ml/corregir).
+    # No dependen de que existan gastos reales asociados: son enseñanza directa
+    # al modelo. Por eso entran como ejemplos de entrenamiento del usuario.
+    correcciones = db.query(CacheClasificacion).filter(
+        CacheClasificacion.usuario_id == usuario_id,
+    ).all()
+    X_correcciones = [c.descripcion_normalizada for c in correcciones]
+    y_correcciones = [c.categoria for c in correcciones]
+
     X_base = [desc for desc, _ in DATASET_BASE]
     y_base = [cat for _, cat in DATASET_BASE]
 
-    X = X_base + X_usuario
-    y = y_base + y_usuario
-    n = len(X_usuario)
+    X = X_base + X_usuario + X_correcciones
+    y = y_base + y_usuario + y_correcciones
+    n = len(X_usuario) + len(X_correcciones)
 
     if n < 20:
         modelo_base = db.query(ModeloClasificador).filter(

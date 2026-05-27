@@ -212,7 +212,7 @@ def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
     if not estado["pagado"] and estado["monto_esperado"] is not None:
         alerta = _crear_alerta(
             usuario_id,
-            TipoAlerta.FACTURA_IMPAGA,
+            TipoAlerta.MONOTRIBUTO_IMPAGO,
             f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
             f"Cuota esperada: ${estado['monto_esperado']:,.0f}",
             monto=estado["monto_esperado"],

@@ -30,8 +30,7 @@ def reentrenar(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    resultado = ml_service.reentrenar_modelo_usuario(db, current_user.id)
-    return resultado
+    return ml_service.reentrenar_modelo_usuario(db, current_user.id)
 
 
 @router.post("/corregir")
@@ -40,6 +39,10 @@ def corregir(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Registra una corrección explícita del usuario sobre una clasificación
+    del playground y dispara el reentrenamiento del modelo. La corrección se
+    persiste por usuario y entra como ejemplo de entrenamiento en el próximo
+    fit, sin necesidad de que el usuario haya creado un gasto real."""
     if datos.categoria_correcta not in CATEGORIAS_VALIDAS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

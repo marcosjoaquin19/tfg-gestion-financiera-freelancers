@@ -18,6 +18,8 @@ class TipoAlerta(enum.Enum):
     RIESGO_RECATEGORIZACION = "riesgo_recategorizacion"
     FACTURA_IMPAGA = "factura_impaga"
     COMISION_EXCESIVA = "comision_excesiva"
+    MONOTRIBUTO_IMPAGO = "monotributo_impago"
+    # falta el registro del gasto de la cuota mensual de Monotributo
 
 class AlertaAuditoria(Base):
     __tablename__ = "alertas_auditoria"

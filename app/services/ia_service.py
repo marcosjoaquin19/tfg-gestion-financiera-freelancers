@@ -259,7 +259,11 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
     try:
         resultado_ml = ml_service.clasificar_gasto(descripcion, db, usuario_id)
         if resultado_ml["confianza"] >= UMBRAL_CONFIANZA_ML:
-            ml_service.registrar_ejemplo(descripcion, resultado_ml["categoria"], db, usuario_id)
+            # Ya no registramos la predicción del modelo como "ejemplo": el
+            # reentrenamiento se alimenta de gastos reales (creados o
+            # corregidos por el usuario), no de las propias predicciones del
+            # clasificador. Persistir las predicciones inflaría la señal y
+            # reforzaría el sesgo del modelo en lugar de corregirlo.
             return {
                 "categoria_sugerida": resultado_ml["categoria"],
                 "fuente": "ml_propio",
