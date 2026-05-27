@@ -303,11 +303,14 @@ class TipoAlerta(str, Enum):
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | id | Integer | PK, index |
-| descripcion_normalizada | String | UNIQUE, index, NOT NULL |
+| usuario_id | Integer | FK usuarios.id, nullable, index |
+| descripcion_normalizada | String | NOT NULL, index |
 | categoria | String | NOT NULL |
 | fecha_creacion | DateTime | server_default=now(), NOT NULL |
 
-**Propósito:** Registra descripciones ya clasificadas. Histórico: nació como caché de respuestas de Groq; con el clasificador local la tabla quedó en desuso (ver sección 7).
+**Restricciones:** UNIQUE compuesto sobre (usuario_id, descripcion_normalizada).
+
+**Propósito:** Almacena correcciones explícitas que el usuario aporta desde el playground del clasificador (`POST /ml/corregir`). Cada fila es un ejemplo de entrenamiento adicional que entra en el próximo reentrenamiento del modelo personalizado del usuario, sin requerir que exista un gasto real asociado. Históricamente fue caché de respuestas de Groq y conservó el nombre por compatibilidad con migraciones previas.
 
 ---
 
@@ -439,7 +442,7 @@ class TipoAlerta(str, Enum):
 |---|---|---|---|---|
 | GET | `/ml/estado` | — | Estado del modelo (algoritmo, precisión, n_ejemplos, propio/base) | — |
 | POST | `/ml/reentrenar` | — | Resultado del reentrenamiento | Modelo personalizado si hay ≥20 gastos propios; si no, usa el base |
-| POST | `/ml/corregir` | `{descripcion, categoria_correcta}` | `{mensaje, nuevo_estado, ...}` | Registra la corrección y reentrena; 422 si la categoría es inválida |
+| POST | `/ml/corregir` | `{descripcion, categoria_correcta}` | `{mensaje, nuevo_estado, ...}` | Persiste la corrección por usuario y la usa como ejemplo en el reentrenamiento; 422 si la categoría es inválida |
 
 ---
 
@@ -504,8 +507,9 @@ GROQ_MODEL=llama-3.3-70b-versatile
 | `0001` | `0001_initial_schema.py` | Crea enums PostgreSQL (EstadoFactura, TipoAlerta) + tablas: usuarios, ingresos, gastos, facturas, proyecciones, alertas_auditoria, cache_clasificacion |
 | `0002` | `0002_tabla_categoria_monotributo.py` | Crea tabla categorias_monotributo + índice único en columna `letra` |
 | `0003` | `0003_tabla_modelo_clasificador.py` | Crea tabla modelos_clasificador (clasificador NLP serializado) |
+| `0004` | `0004_alerta_monotributo_y_drop_cache.py` | Agrega valor `monotributo_impago` al enum tipoalerta; recrea cache_clasificacion con `usuario_id` y UNIQUE compuesto |
 
-Las tres migraciones son **idempotentes** (verifican existencia antes de crear).
+Las cuatro migraciones son **idempotentes** (verifican existencia antes de crear).
 
 ---
 
@@ -619,8 +623,8 @@ Las tres migraciones son **idempotentes** (verifican existencia antes de crear).
 - [ ] Paginación total_count en headers para el frontend
 
 #### Calidad de código
-- [ ] Tabla `cache_clasificacion` en desuso desde la migración al clasificador local — pendiente de eliminar
-- [ ] Alerta de Monotributo impago reutiliza el tipo `FACTURA_IMPAGA` — falta un tipo de enum propio
+- [x] Tabla `cache_clasificacion` repurposed como almacén de correcciones por usuario (migración 0004)
+- [x] Alerta de Monotributo impago: tipo de enum propio `MONOTRIBUTO_IMPAGO` (migración 0004)
 - [ ] Cobertura de tests del frontend (no existe)
 - [ ] Tests de integración con PostgreSQL real (conftest usa SQLite)
 - [ ] Documentación OpenAPI enriquecida (descriptions, examples en schemas)

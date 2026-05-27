@@ -127,3 +127,20 @@ def test_corregir_categoria_valida(client, auth_headers):
     data = response.json()
     assert "nuevo_estado" in data
     assert data["mensaje"]
+
+
+def test_correccion_persiste_y_se_usa_en_reentrenamiento(client, auth_headers, db):
+    # Una corrección explícita debe quedar persistida y debe sumarse como
+    # ejemplo al próximo reentrenamiento del modelo del usuario.
+    from app.models.cache_clasificacion import CacheClasificacion
+
+    client.post(
+        "/ml/corregir",
+        json={"descripcion": "xyz token único de prueba", "categoria_correcta": "Marketing"},
+        headers=auth_headers,
+    )
+    persistidas = db.query(CacheClasificacion).filter(
+        CacheClasificacion.descripcion_normalizada == "xyz token único de prueba",
+    ).all()
+    assert len(persistidas) == 1
+    assert persistidas[0].categoria == "Marketing"

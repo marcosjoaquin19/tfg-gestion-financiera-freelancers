@@ -15,8 +15,7 @@ def test_clasificar_gasto_exitoso(client, auth_headers):
         "fuente": "ml_propio",
         "algoritmo": "naive_bayes",
     }
-    with patch("app.services.ml_service.clasificar_gasto", return_value=mock_ml), \
-         patch("app.services.ml_service.registrar_ejemplo"):
+    with patch("app.services.ml_service.clasificar_gasto", return_value=mock_ml):
         response = client.post(
             "/gastos/clasificar",
             json={"descripcion": "Adobe Photoshop"},
