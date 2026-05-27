@@ -130,8 +130,9 @@ def test_corregir_categoria_valida(client, auth_headers):
 
 
 def test_correccion_persiste_y_se_usa_en_reentrenamiento(client, auth_headers, db):
-    # Una corrección explícita debe quedar persistida y debe sumarse como
-    # ejemplo al próximo reentrenamiento del modelo del usuario.
+    # Una corrección explícita debe quedar persistida con la forma normalizada
+    # (sin tildes, lowercase, colapso de espacios) y debe sumarse como ejemplo
+    # al próximo reentrenamiento del modelo del usuario.
     from app.models.cache_clasificacion import CacheClasificacion
 
     client.post(
@@ -140,7 +141,8 @@ def test_correccion_persiste_y_se_usa_en_reentrenamiento(client, auth_headers, d
         headers=auth_headers,
     )
     persistidas = db.query(CacheClasificacion).filter(
-        CacheClasificacion.descripcion_normalizada == "xyz token único de prueba",
+        # NFKD + sin tildes → "único" se persiste como "unico"
+        CacheClasificacion.descripcion_normalizada == "xyz token unico de prueba",
     ).all()
     assert len(persistidas) == 1
     assert persistidas[0].categoria == "Marketing"
