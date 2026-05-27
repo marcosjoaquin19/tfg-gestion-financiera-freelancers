@@ -18,6 +18,8 @@ class ProyeccionResponse(BaseModel):
 
 
 class ProyeccionGenerarRequest(BaseModel):
-    periodos: int = 30
-    # cuántos días hacia adelante predecir, default 30
-    # Prophet genera una fila por cada día futuro
+    periodos: int = 6
+    # cuántos meses hacia adelante predecir, default 6 (alineado con HU-09:
+    # "proyección de ingresos para los próximos seis meses").
+    # Prophet se invoca con freq="MS" (Month Start), así que cada fila del
+    # forecast corresponde al primer día de un mes futuro.
