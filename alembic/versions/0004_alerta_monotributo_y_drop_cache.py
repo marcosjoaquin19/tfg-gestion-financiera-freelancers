@@ -35,20 +35,27 @@ def upgrade() -> None:
     inspector = sa.inspect(conn)
 
     # ── Enum tipoalerta: agregar MONOTRIBUTO_IMPAGO ───────────────────────
+    # IMPORTANTE: el valor PG tiene que coincidir con lo que SQLAlchemy
+    # serializa al insertar. Con `Column(Enum(TipoAlerta))` y `values_callable`
+    # por defecto, SQLAlchemy usa el `.name` del miembro Python (es decir, la
+    # forma EN MAYÚSCULAS), no el `.value`. Los valores del enum en la BD
+    # respetan esa convención (`GASTO_DUPLICADO`, etc.). Por eso acá agregamos
+    # `MONOTRIBUTO_IMPAGO` en mayúsculas.
+    #
     # `ALTER TYPE ... ADD VALUE` no soporta ejecutarse dentro de una
-    # transacción en versiones antiguas de PostgreSQL. Usamos autocommit
-    # aislado y verificamos antes que el valor no exista para ser idempotentes.
+    # transacción en PG viejos. Usamos autocommit aislado y verificamos antes
+    # que el valor no exista para ser idempotentes.
     if conn.dialect.name == "postgresql":
         existe = conn.execute(
             sa.text(
                 "SELECT 1 FROM pg_enum e "
                 "JOIN pg_type t ON t.oid = e.enumtypid "
-                "WHERE t.typname = 'tipoalerta' AND e.enumlabel = 'monotributo_impago'"
+                "WHERE t.typname = 'tipoalerta' AND e.enumlabel = 'MONOTRIBUTO_IMPAGO'"
             )
         ).scalar()
         if not existe:
             with op.get_context().autocommit_block():
-                op.execute("ALTER TYPE tipoalerta ADD VALUE 'monotributo_impago'")
+                op.execute("ALTER TYPE tipoalerta ADD VALUE 'MONOTRIBUTO_IMPAGO'")
 
     # ── cache_clasificacion: recrear con usuario_id ───────────────────────
     if inspector.has_table("cache_clasificacion"):
