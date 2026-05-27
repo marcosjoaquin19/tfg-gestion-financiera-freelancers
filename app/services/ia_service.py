@@ -249,13 +249,43 @@ UMBRAL_CONFIANZA_ML = 0.30
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict:
     """Clasifica un gasto usando exclusivamente el modelo ML local.
 
+    Orden de resolución:
+
+    1. Si el usuario YA corrigió explícitamente esta misma descripción
+       (entrada en cache_clasificacion con su usuario_id), devolver la
+       corrección directamente con confianza 1.0. Es ground truth aportado
+       por el dueño de los datos: no hay nada que predecir.
+
+    2. Si no hay corrección previa, invocar el clasificador NLP local.
+
+    3. Si la confianza del ML está por debajo del umbral, sugerir "Otros"
+       y marcar para revisión manual (HU-04).
+
     Política de soberanía de datos del TFG: la descripción del gasto NUNCA se
-    envía a servicios externos. Si el clasificador local devuelve confianza
-    inferior al umbral, se sugiere "Otros" y se marca para revisión manual del
-    usuario. Las correcciones del usuario alimentan futuros reentrenamientos.
+    envía a servicios externos. Las correcciones del usuario alimentan los
+    futuros reentrenamientos y además sirven de atajo en el paso 1.
     """
     from app.services import ml_service
+    from app.models.cache_clasificacion import CacheClasificacion
 
+    # Paso 1: lookup de corrección explícita previa del usuario. La
+    # normalización es la misma que usa registrar_ejemplo al persistir
+    # (NFKD + sin tildes + colapso de espacios + lowercase + strip), así
+    # variaciones tipográficas (mayúsculas, espacios extra) matchean igual.
+    descripcion_norm = ml_service.normalizar_descripcion(descripcion)
+    correccion = db.query(CacheClasificacion).filter(
+        CacheClasificacion.usuario_id == usuario_id,
+        CacheClasificacion.descripcion_normalizada == descripcion_norm,
+    ).first()
+    if correccion is not None:
+        return {
+            "categoria_sugerida": correccion.categoria,
+            "fuente": "correccion_usuario",
+            "confianza": 1.0,
+            "requiere_revision": False,
+        }
+
+    # Paso 2 y 3: clasificador ML local + umbral de revisión.
     try:
         resultado_ml = ml_service.clasificar_gasto(descripcion, db, usuario_id)
         if resultado_ml["confianza"] >= UMBRAL_CONFIANZA_ML:

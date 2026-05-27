@@ -25,16 +25,21 @@ const selectStyle = {
 };
 
 function BadgeFuente({ fuente }) {
-  const isML = fuente === 'ml_propio';
+  // Cada fuente tiene su color: correcciones del usuario son ground truth,
+  // por eso van en violeta para distinguirse del ML predictivo.
+  const config = {
+    correccion_usuario: { label: 'Corrección tuya', bg: '#3b1d5c', color: '#c4b5fd' },
+    ml_propio:          { label: 'ML Propio',       bg: '#14532d', color: '#4ade80' },
+  };
+  const { label, bg, color } = config[fuente] || { label: 'IA', bg: '#1e3a5f', color: '#3b82f6' };
   return (
     <span style={{
-      background: isML ? '#14532d' : '#1e3a5f',
-      color: isML ? '#4ade80' : '#3b82f6',
+      background: bg, color,
       fontSize: '11px', fontWeight: 600,
       padding: '3px 10px', borderRadius: '20px',
       display: 'inline-block',
     }}>
-      {isML ? 'ML Propio' : 'Groq IA'}
+      {label}
     </span>
   );
 }

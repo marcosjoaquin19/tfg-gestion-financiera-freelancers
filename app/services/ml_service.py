@@ -1,5 +1,7 @@
 import base64
 import logging
+import re
+import unicodedata
 from io import BytesIO
 from typing import Optional
 
@@ -834,12 +836,27 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
         }
 
 
+def normalizar_descripcion(descripcion: str) -> str:
+    """Forma canónica para comparar descripciones de gastos.
+
+    Insensible a mayúsculas, tildes y espacios múltiples: el usuario debería
+    poder corregir "Adobe Photoshop" una vez y que la corrección se aplique
+    también a "adobe  photoshop" o "ADOBE PHOTOSHOP". Es la misma estrategia
+    que csv_service usa para detectar duplicados en importaciones bancarias.
+    """
+    if not descripcion:
+        return ""
+    nfkd = unicodedata.normalize("NFKD", descripcion)
+    sin_tildes = "".join(c for c in nfkd if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", sin_tildes.lower().strip())
+
+
 def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id: int) -> None:
     """Persiste una corrección explícita aportada por el usuario desde el
     playground del clasificador (POST /ml/corregir). La corrección se usa
     como ejemplo de entrenamiento adicional en el próximo reentrenamiento."""
     try:
-        descripcion_norm = descripcion.strip().lower()
+        descripcion_norm = normalizar_descripcion(descripcion)
         existente = db.query(CacheClasificacion).filter(
             CacheClasificacion.usuario_id == usuario_id,
             CacheClasificacion.descripcion_normalizada == descripcion_norm,
