@@ -433,6 +433,7 @@ class TipoAlerta(str, Enum):
 | GET | `/monotributo/estado` | — | Objeto de estado o `{sin_categoria: true}` | Incluye porcentaje, proyección, alerta verde/amarillo/rojo |
 | GET | `/monotributo/pago` | — | `{pagado, mes, anio, monto_esperado, gasto_encontrado}` | Busca Gasto con categoria="Monotributo" del mes actual |
 | PATCH | `/monotributo/categoria` | `UsuarioUpdateMonotributo` | `UsuarioResponse` | Valida que la categoría exista y esté activa |
+| GET | `/monotributo/facturacion-12-meses` | — | `{facturacion_12_meses, desde, hasta, categoria}` | Facturación móvil 12 meses (criterio AFIP); usa índice compuesto `(usuario_id, fecha)` |
 
 ---
 
@@ -508,8 +509,9 @@ GROQ_MODEL=llama-3.3-70b-versatile
 | `0002` | `0002_tabla_categoria_monotributo.py` | Crea tabla categorias_monotributo + índice único en columna `letra` |
 | `0003` | `0003_tabla_modelo_clasificador.py` | Crea tabla modelos_clasificador (clasificador NLP serializado) |
 | `0004` | `0004_alerta_monotributo_y_drop_cache.py` | Agrega valor `monotributo_impago` al enum tipoalerta; recrea cache_clasificacion con `usuario_id` y UNIQUE compuesto |
+| `0005` | `0005_indices_temporales.py` | Índices compuestos `(usuario_id, fecha)` en ingresos, gastos y facturas para soportar consultas rolling 12 meses (sugerencia del docente) |
 
-Las cuatro migraciones son **idempotentes** (verifican existencia antes de crear).
+Las cinco migraciones son **idempotentes** (verifican existencia antes de crear).
 
 ---
 
