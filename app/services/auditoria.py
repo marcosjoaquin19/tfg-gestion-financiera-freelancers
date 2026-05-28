@@ -4,6 +4,7 @@ from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.services.monotributo_service import verificar_pago_monotributo
+from app.services.formato import formato_pesos_ar
 import statistics
 
 
@@ -164,7 +165,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.GASTO_DUPLICADO,
-            f"Posible gasto duplicado: ${gasto_a.monto:.2f} en '{gasto_a.categoria}' "
+            f"Posible gasto duplicado: {formato_pesos_ar(gasto_a.monto)} en '{gasto_a.categoria}' "
             f"registrado el {gasto_a.fecha.date()} y el {gasto_b.fecha.date()}",
             monto=gasto_a.monto,
         ))
@@ -177,8 +178,8 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.ANOMALIA_ESTADISTICA,
-            f"Gasto inusualmente alto: ${gasto.monto:.2f} en '{gasto.categoria}' "
-            f"(promedio de la categoría: ${media:.2f}, desviación: ${desviacion:.2f})",
+            f"Gasto inusualmente alto: {formato_pesos_ar(gasto.monto)} en '{gasto.categoria}' "
+            f"(promedio de la categoría: {formato_pesos_ar(media)}, desviación: {formato_pesos_ar(desviacion)})",
             monto=gasto.monto,
         ))
         conteo["anomalias"] += 1
@@ -190,7 +191,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.DISCREPANCIA_FACTURACION,
-            f"Factura vencida sin cobrar: ${factura.monto:.2f} a '{factura.cliente_nombre}' "
+            f"Factura vencida sin cobrar: {formato_pesos_ar(factura.monto)} a '{factura.cliente_nombre}' "
             f"(venció el {factura.fecha_vencimiento.date()})",
             monto=factura.monto,
         ))
@@ -214,7 +215,7 @@ def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
             usuario_id,
             TipoAlerta.MONOTRIBUTO_IMPAGO,
             f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
-            f"Cuota esperada: ${estado['monto_esperado']:,.0f}",
+            f"Cuota esperada: {formato_pesos_ar(estado['monto_esperado'], decimales=0)}",
             monto=estado["monto_esperado"],
         )
         return 1, alerta

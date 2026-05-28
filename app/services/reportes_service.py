@@ -32,6 +32,7 @@ from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
 from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.categoria_monotributo import CategoriaMonotributo
+from app.services.formato import formato_pesos_ar
 
 
 MESES_ES = {
@@ -168,14 +169,8 @@ def _alertas_pendientes(db: Session, usuario_id: int) -> list[AlertaAuditoria]:
 # ── Helpers de formato ───────────────────────────────────────────────────────
 
 def _fmt_pesos(valor) -> str:
-    # Formato argentino: separador de miles con punto, decimales con coma.
-    # ej: 1234567.89 → "$ 1.234.567,89"
-    if valor is None:
-        return "-"
-    n = float(valor)
-    entero, decimal = f"{n:,.2f}".split(".")
-    entero = entero.replace(",", ".")
-    return f"$ {entero},{decimal}"
+    # Formato argentino centralizado en services.formato (compartido con auditoria).
+    return formato_pesos_ar(valor)
 
 
 def _fmt_porcentaje(valor: float) -> str:
