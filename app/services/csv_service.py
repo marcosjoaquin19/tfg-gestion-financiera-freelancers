@@ -103,7 +103,9 @@ def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | Non
                 texto = contenido_bytes.decode("utf-8")
             except UnicodeDecodeError:
                 texto = contenido_bytes.decode("latin-1")
-            return pd.read_csv(io.StringIO(texto))
+            # sep=None + engine='python' auto-detecta coma, punto-coma y tabulación.
+            # Cubre Galicia (;), Brubank (\t), y extractos genéricos (,).
+            return pd.read_csv(io.StringIO(texto), sep=None, engine="python")
         if extension == ".xlsx":
             # openpyxl es la dependencia que pandas usa por debajo para .xlsx.
             return pd.read_excel(io.BytesIO(contenido_bytes), engine="openpyxl")
