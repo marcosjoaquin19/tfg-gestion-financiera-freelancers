@@ -1,6 +1,6 @@
 # ESTADO DEL PROYECTO — TFG Freelancers API
 
-> Actualizado el 2026-05-22. Descripción exhaustiva del estado actual del sistema.
+> Actualizado el 2026-05-28. Descripción exhaustiva del estado actual del sistema.
 
 ---
 
@@ -421,7 +421,7 @@ class TipoAlerta(str, Enum):
 
 | Método | Ruta | Body | Respuesta | Notas |
 |---|---|---|---|---|
-| POST | `/importar/preview` | `UploadFile` (CSV o XLSX) | `{total_filas, preview, mapeo_detectado, resumen}` | Detección heurística local de columnas; marca posibles duplicados; preview de 20 filas |
+| POST | `/importar/preview` | `UploadFile` (CSV o XLSX) | `{total_filas, preview, mapeo_detectado, resumen}` | Detección heurística local de columnas y separador (`,` `;` tab); marca posibles duplicados; preview de 20 filas |
 | POST | `/importar/confirmar` | `{movimientos, mapeo}` | `{importados, ingresos_creados, gastos_creados, omitidos_por_duplicado}` | Importación bulk transaccional e idempotente |
 
 ---
@@ -541,6 +541,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 - La clasificación de gastos corre **100% local**: la descripción nunca se transmite a servicios externos.
 - Modelo base entrenado sobre un dataset de 600 ejemplos etiquetados; selección automática Naive Bayes / SVM según volumen, sobre vectorización TF-IDF.
 - Reentrenamiento automático: al acumular 20+ gastos propios se entrena un modelo personalizado que combina el dataset base con los ejemplos del usuario; las correcciones manuales también disparan reentrenamiento.
+- **Cortocircuito de correcciones**: antes de invocar el ML, `clasificar_gasto` busca un match exacto en las correcciones previas del usuario (`cache_clasificacion`). Si existe, devuelve esa categoría con confianza 1.0 y `fuente=correccion_usuario`, sin esperar al reentrenamiento. El match usa normalización canónica (NFKD sin tildes + colapso de espacios + minúsculas), tolerante a variantes tipográficas.
 - Si la confianza de la predicción es inferior a 0.30, se sugiere "Otros" y se marca el gasto para revisión manual.
 - Groq se reserva exclusivamente para el resumen financiero y las recomendaciones, sobre datos numéricos agregados, con fallback local determinístico.
 - Categorías: Software, Hardware, Infraestructura, Marketing, Servicios, Capacitación, Suscripciones, Transporte, Alimentación, Impuestos, Monotributo, Otros.
@@ -590,6 +591,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 
 #### Importación de movimientos (CSV / Excel)
 - [x] Detección heurística local de columnas (sin servicios externos)
+- [x] Auto-detección de separador CSV (coma, punto-coma, tabulación) — cubre formatos de bancos argentinos como Galicia
 - [x] Soporte multiformato: CSV y XLSX
 - [x] Preview con clasificación previa y detección de duplicados
 - [x] Confirmación e importación bulk transaccional e idempotente
@@ -606,7 +608,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 #### Infraestructura
 - [x] Docker Compose con 3 servicios (db, api, frontend)
 - [x] Migraciones Alembic con 3 revisiones aplicadas
-- [x] Suite de tests con 11 módulos (SQLite in-memory)
+- [x] Suite de tests con 11 módulos, 97 tests (SQLite in-memory)
 
 ### Pendiente / Mejoras identificadas ⚠️
 
@@ -684,4 +686,4 @@ openpyxl==3.1.2
 
 ---
 
-*Documento actualizado el 2026-05-22. Refleja el clasificador NLP local, los módulos de ML y reportes, la rotación de credenciales y la suite de tests ampliada.*
+*Documento actualizado el 2026-05-28. Refleja el clasificador NLP local con cortocircuito de correcciones, la auto-detección de separador en importación CSV, los módulos de ML y reportes, la rotación de credenciales y la suite de 97 tests.*
