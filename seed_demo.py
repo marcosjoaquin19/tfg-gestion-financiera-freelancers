@@ -74,43 +74,61 @@ INGRESOS_POR_MES = [
      ("Honorarios soporte Nube Digital", 720000)],
 ]
 
-# Gastos: variados por categoría, distribuidos en cada mes.
+# Gastos: variados por categoría, con día explícito. Los datos están diseñados
+# para que la auditoría (HU-08) dispare sus cuatro detectores en la defensa:
+#
+#  • DUPLICADO  → dos "Adobe Creative Cloud" de $38.000 en enero (días 3 y 5,
+#                 dentro de la ventana de 3 días, misma categoría).
+#  • ANOMALÍA   → "Servidor dedicado AWS Reserved" de $900.000 en marzo, muy por
+#                 encima de la media de Infraestructura (que tiene 7 gastos, así
+#                 el z-score supera 2σ; con menos de 5 el detector no actúa).
+#  • DISCREPANCIA → factura de Consultora Aurora vencida sin cobrar (ver facturas).
+#  • MONOTRIBUTO IMPAGO → mayo (mes en curso) NO tiene pago de Monotributo.
+#
+# Cada gasto es (descripcion, monto, categoria, dia).
 GASTOS_POR_MES = [
-    [("Suscripción Adobe Creative Cloud", 38000, "Suscripciones"),
-     ("Notebook Lenovo ThinkPad", 1450000, "Hardware"),
-     ("AWS EC2 hosting mensual", 92000, "Infraestructura"),
-     ("Honorarios contadora enero", 85000, "Servicios"),
-     ("Pago monotributo enero", 48000, "Monotributo"),
-     ("Almuerzo reunión cliente", 32000, "Alimentación"),
-     ("Uber a reunión Brand Studio", 14500, "Transporte")],
-    [("Suscripción Adobe Creative Cloud", 38000, "Suscripciones"),
-     ("Licencia JetBrains anual", 165000, "Software"),
-     ("AWS EC2 hosting mensual", 95000, "Infraestructura"),
-     ("Honorarios contadora febrero", 85000, "Servicios"),
-     ("Pago monotributo febrero", 48000, "Monotributo"),
-     ("Curso Platzi escuela de datos", 54000, "Capacitación"),
-     ("Nafta YPF estación de servicio", 41000, "Transporte")],
-    [("Suscripción Adobe Creative Cloud", 39000, "Suscripciones"),
-     ("Monitor LG UltraGear 27", 480000, "Hardware"),
-     ("AWS EC2 hosting mensual", 98000, "Infraestructura"),
-     ("Honorarios contadora marzo", 90000, "Servicios"),
-     ("Pago monotributo marzo", 51000, "Monotributo"),
-     ("Publicidad Google Ads campaña", 120000, "Marketing"),
-     ("Cena cliente restaurante", 46000, "Alimentación")],
-    [("Suscripción Adobe Creative Cloud", 39000, "Suscripciones"),
-     ("Ingresos brutos CABA declaración", 138000, "Impuestos"),
-     ("AWS EC2 hosting mensual", 101000, "Infraestructura"),
-     ("Honorarios contadora abril", 90000, "Servicios"),
-     ("Pago monotributo abril", 51000, "Monotributo"),
-     ("Teclado y mouse Logitech", 96000, "Hardware"),
-     ("Uber viajes a reuniones", 28000, "Transporte")],
-    [("Suscripción Adobe Creative Cloud", 40000, "Suscripciones"),
-     ("Dominio y certificado SSL anual", 72000, "Infraestructura"),
-     ("AWS EC2 hosting mensual", 104000, "Infraestructura"),
-     ("Honorarios contadora mayo", 95000, "Servicios"),
-     ("Pago monotributo mayo", 54000, "Monotributo"),
-     ("Workshop React avanzado online", 68000, "Capacitación"),
-     ("Almuerzo coworking mensual", 52000, "Alimentación")],
+    # Enero — incluye el par duplicado de Adobe (días 3 y 5).
+    [("Suscripción Adobe Creative Cloud", 38000, "Suscripciones", 3),
+     ("Suscripción Adobe Creative Cloud", 38000, "Suscripciones", 5),
+     ("Notebook Lenovo ThinkPad", 1450000, "Hardware", 8),
+     ("AWS EC2 hosting mensual", 92000, "Infraestructura", 10),
+     ("Honorarios contadora enero", 85000, "Servicios", 12),
+     ("Pago monotributo enero", 48000, "Monotributo", 15),
+     ("Almuerzo reunión cliente", 32000, "Alimentación", 18),
+     ("Uber a reunión Brand Studio", 14500, "Transporte", 22)],
+    # Febrero
+    [("Suscripción Adobe Creative Cloud", 38000, "Suscripciones", 3),
+     ("Licencia JetBrains anual", 165000, "Software", 6),
+     ("AWS EC2 hosting mensual", 95000, "Infraestructura", 10),
+     ("Honorarios contadora febrero", 85000, "Servicios", 12),
+     ("Pago monotributo febrero", 48000, "Monotributo", 15),
+     ("Curso Platzi escuela de datos", 54000, "Capacitación", 18),
+     ("Nafta YPF estación de servicio", 41000, "Transporte", 22)],
+    # Marzo — incluye el outlier de Infraestructura (anomalía estadística).
+    [("Suscripción Adobe Creative Cloud", 39000, "Suscripciones", 3),
+     ("Monitor LG UltraGear 27", 480000, "Hardware", 6),
+     ("AWS EC2 hosting mensual", 98000, "Infraestructura", 10),
+     ("Servidor dedicado AWS Reserved", 900000, "Infraestructura", 11),
+     ("Honorarios contadora marzo", 90000, "Servicios", 12),
+     ("Pago monotributo marzo", 51000, "Monotributo", 15),
+     ("Publicidad Google Ads campaña", 120000, "Marketing", 18),
+     ("Cena cliente restaurante", 46000, "Alimentación", 22)],
+    # Abril
+    [("Suscripción Adobe Creative Cloud", 39000, "Suscripciones", 3),
+     ("Ingresos brutos CABA declaración", 138000, "Impuestos", 6),
+     ("AWS EC2 hosting mensual", 101000, "Infraestructura", 10),
+     ("Honorarios contadora abril", 90000, "Servicios", 12),
+     ("Pago monotributo abril", 51000, "Monotributo", 15),
+     ("Teclado y mouse Logitech", 96000, "Hardware", 18),
+     ("Uber viajes a reuniones", 28000, "Transporte", 22)],
+    # Mayo (mes en curso) — SIN pago de Monotributo, a propósito, para que la
+    # auditoría dispare la alerta de cuota impaga.
+    [("Suscripción Adobe Creative Cloud", 40000, "Suscripciones", 3),
+     ("Dominio y certificado SSL anual", 72000, "Infraestructura", 6),
+     ("AWS EC2 hosting mensual", 104000, "Infraestructura", 10),
+     ("Honorarios contadora mayo", 95000, "Servicios", 12),
+     ("Workshop React avanzado online", 68000, "Capacitación", 18),
+     ("Almuerzo coworking mensual", 52000, "Alimentación", 22)],
 ]
 
 
@@ -123,8 +141,7 @@ def crear_movimientos(db, usuario):
                 usuario_id=usuario.id, descripcion=desc, monto=monto,
                 categoria="Servicios", fecha=datetime(anio, mes, dia, 10, 0),
             ))
-        for j, (desc, monto, cat) in enumerate(GASTOS_POR_MES[i]):
-            dia = 3 + j * 3
+        for desc, monto, cat, dia in GASTOS_POR_MES[i]:
             db.add(Gasto(
                 usuario_id=usuario.id, descripcion=desc, monto=monto,
                 categoria=cat, fecha=datetime(anio, mes, dia, 12, 0),

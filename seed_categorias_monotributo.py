@@ -2,6 +2,9 @@
 Inserta (o actualiza) las 11 categorías de monotributo vigentes desde 2026-02-01.
 Ejecutar desde la raíz del proyecto:
     python seed_categorias_monotributo.py
+
+También exporta seed_categorias(db) para reutilizar desde otros seeds
+(p. ej. seed_demo.py) sin ejecutar nada al importar el módulo.
 """
 from datetime import date
 from app.database import SessionLocal
@@ -23,29 +26,44 @@ CATEGORIAS = [
 
 FECHA_VIGENCIA = date(2026, 2, 1)
 
-db = SessionLocal()
-try:
-    for datos in CATEGORIAS:
-        existente = db.query(CategoriaMonotributo).filter(
-            CategoriaMonotributo.letra == datos["letra"]
-        ).first()
-        if existente:
-            existente.limite_anual = datos["limite_anual"]
-            existente.cuota_mensual = datos["cuota_mensual"]
-            existente.fecha_vigencia = FECHA_VIGENCIA
-            existente.activa = True
-            print(f"  Actualizada categoría {datos['letra']}")
-        else:
-            db.add(CategoriaMonotributo(
-                letra=datos["letra"],
-                limite_anual=datos["limite_anual"],
-                cuota_mensual=datos["cuota_mensual"],
-                actividad="servicios",
-                fecha_vigencia=FECHA_VIGENCIA,
-                activa=True,
-            ))
-            print(f"  Insertada categoría {datos['letra']}")
-    db.commit()
-    print("Seed completado: 11 categorías cargadas.")
-finally:
-    db.close()
+
+def seed_categorias(db=None):
+    """Inserta o actualiza las 11 categorías. Idempotente.
+
+    Si no se pasa una sesión, abre y cierra una propia. Si se pasa (desde otro
+    seed que ya tiene sesión abierta), opera sobre ella y NO la cierra.
+    """
+    propia = db is None
+    if propia:
+        db = SessionLocal()
+    try:
+        insertadas = actualizadas = 0
+        for datos in CATEGORIAS:
+            existente = db.query(CategoriaMonotributo).filter(
+                CategoriaMonotributo.letra == datos["letra"]
+            ).first()
+            if existente:
+                existente.limite_anual = datos["limite_anual"]
+                existente.cuota_mensual = datos["cuota_mensual"]
+                existente.fecha_vigencia = FECHA_VIGENCIA
+                existente.activa = True
+                actualizadas += 1
+            else:
+                db.add(CategoriaMonotributo(
+                    letra=datos["letra"],
+                    limite_anual=datos["limite_anual"],
+                    cuota_mensual=datos["cuota_mensual"],
+                    actividad="servicios",
+                    fecha_vigencia=FECHA_VIGENCIA,
+                    activa=True,
+                ))
+                insertadas += 1
+        db.commit()
+        print(f"Categorías Monotributo: {insertadas} insertadas, {actualizadas} actualizadas.")
+    finally:
+        if propia:
+            db.close()
+
+
+if __name__ == "__main__":
+    seed_categorias()
