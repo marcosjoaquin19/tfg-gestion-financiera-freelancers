@@ -20,7 +20,28 @@ docker compose ps
 curl -s http://localhost:8000/health      # {"status":"ok",...}
 ```
 
-### 0.2 Poblar los datos de demostración
+### 0.2 Entrenar el modelo base del clasificador (una sola vez por BD)
+
+El clasificador de gastos necesita un modelo base entrenado. Si la base de
+datos es nueva (o se recreó el volumen), hay que entrenarlo:
+
+```bash
+docker compose exec api python seed_modelo_base.py
+# Esperado: {'mensaje': 'Modelo base entrenado', 'algoritmo': 'svm',
+#            'precision': 0.76, 'n_ejemplos': 600, ...}
+
+# El proceso del API cachea el modelo en memoria, así que reiniciarlo
+# garantiza que tome el modelo recién entrenado:
+docker compose restart api
+```
+
+> **Cómo saber si falta este paso:** si en la demo el clasificador devuelve
+> "Otros" con confianza ~0.21 para *todas* las descripciones, el modelo base
+> no está cargado. Correr este paso y reiniciar el API lo resuelve.
+> Verificación rápida: `GET /ml/estado` debe responder
+> `"tipo_modelo": "base", "modelo_base": true`.
+
+### 0.3 Poblar los datos de demostración
 
 ```bash
 docker compose exec api python seed_demo.py
@@ -42,7 +63,7 @@ Seed demo completado.
 > Asegura por sí mismo que las categorías de Monotributo existan, así que
 > un solo comando deja todo listo.
 
-### 0.3 Generar proyecciones y auditoría (para que el demo tenga datos vivos)
+### 0.4 Generar proyecciones y auditoría (para que el demo tenga datos vivos)
 
 Estos dos se disparan desde la UI durante la demo, pero conviene pre-cargarlos
 para que las pantallas no aparezcan vacías si se navega en otro orden:
@@ -60,13 +81,14 @@ curl -s -X POST http://localhost:8000/alertas/ejecutar-auditoria \
   -H "Authorization: Bearer $TOKEN" > /dev/null
 ```
 
-### 0.4 Checklist pre-defensa
+### 0.5 Checklist pre-defensa
 
 - [ ] `docker compose ps` → 3 servicios `Up`
+- [ ] `GET /ml/estado` → `"tipo_modelo": "base"` (modelo base entrenado)
 - [ ] `http://localhost:3000` abre el login
 - [ ] Login `demo@freelancecontrol.com` / `demo1234` funciona
 - [ ] Dashboard muestra ingresos/gastos (no vacío)
-- [ ] Pantalla Monotributo muestra semáforo **rojo** y sugiere categoría **E**
+- [ ] Pantalla Monotributo muestra semáforo **rojo** (~131% proyectado), categoría siguiente **E**
 - [ ] Video backup grabado y accesible (por si falla la red/proyector)
 
 ---
@@ -89,11 +111,18 @@ ingresos y gastos de enero a mayo 2026.
 
 ## 2. Carga de gasto con clasificación automática (≈1 min) — HU-04
 
-**Hacer:** ir a **Gastos** → nuevo gasto → escribir solo la descripción, por
-ejemplo `Suscripción Adobe Creative Cloud`, y un monto.
+**Hacer:** ir a **Gastos** → nuevo gasto → escribir solo la descripción (por
+ejemplo `Licencia Microsoft Office 365` o `Hosting servidor web`) y un monto.
 
-**Se ve:** el sistema sugiere automáticamente la categoría (**Suscripciones**)
-con un valor de confianza, sin que el usuario la elija.
+**Se ve:** el sistema sugiere automáticamente una categoría con un valor de
+confianza, sin que el usuario la elija. Si la confianza queda por debajo del
+30%, sugiere "Otros" y marca el gasto para revisión.
+
+> **Antes de la defensa, probá 2–3 descripciones reales** y quedate con las
+> que el modelo clasifique con buena confianza (el modelo base tiene ~76% de
+> precisión, así que no todas las descripciones aciertan). Así mostrás un caso
+> de acierto claro y, si querés, uno que cae en "Otros" para introducir el
+> paso siguiente (la corrección).
 
 **Decir:**
 > "La categoría la infiere un clasificador de lenguaje natural que corre
@@ -145,17 +174,26 @@ automáticamente, y marca de posibles duplicados.
 
 **Hacer:** ir a **Alertas** → ejecutar auditoría.
 
-**Se ve:** se generan alertas de varios tipos. Con los datos del seed:
-- **2 anomalías estadísticas** (gastos muy por encima de la media de su categoría — la notebook y el monitor)
-- **3 discrepancias de facturación** (facturas vencidas sin cobrar)
-- **1 monotributo impago** (no hay pago de la cuota del mes en curso)
+**Se ve:** se generan **4 alertas, una de cada tipo** (los datos del seed están
+diseñados para disparar los cuatro detectores):
+- **Gasto duplicado** — dos "Adobe Creative Cloud" de $ 38.000,00 en
+  Suscripciones, registrados el 03 y el 05 de enero (dentro de la ventana de 3 días).
+- **Anomalía estadística** — "Servidor dedicado AWS Reserved" de $ 900.000,00 en
+  Infraestructura, muy por encima de la media de la categoría ($ 208.857,14, z > 2σ).
+- **Discrepancia de facturación** — factura de Consultora Aurora por $ 430.000,00
+  vencida sin cobrar (venció el 2026-04-20).
+- **Monotributo impago** — no se registró el pago de la cuota de mayo (mes en
+  curso); cuota esperada $ 72.414.
 
 **Decir:**
-> "La auditoría corre cuatro detectores: gastos duplicados dentro de una
-> ventana de tres días, anomalías estadísticas por z-score mayor a 2 sigma,
-> facturas vencidas sin cobrar, y la cuota de Monotributo del mes sin pagar.
-> Las alertas ya resueltas se conservan como historial; las pendientes se
-> regeneran en cada corrida para no acumular duplicados."
+> "La auditoría corre cuatro detectores y acá vemos uno de cada tipo: gastos
+> duplicados dentro de una ventana de tres días, anomalías estadísticas por
+> z-score mayor a 2 sigma —fíjense que el servidor de $900.000 se desvía de la
+> media de Infraestructura—, facturas vencidas sin cobrar, y la cuota de
+> Monotributo del mes sin pagar. Un detalle de diseño: la anomalía solo se
+> evalúa si la categoría tiene al menos 5 gastos, porque con menos datos la
+> desviación estándar no es confiable. Las alertas resueltas se conservan como
+> historial; las pendientes se regeneran en cada corrida para no duplicarlas."
 
 ---
 
@@ -164,20 +202,27 @@ automáticamente, y marca de posibles duplicados.
 **Hacer:** ir a **Monotributo**.
 
 **Se ve (con los datos del seed):**
-- Categoría actual: **D** (límite anual $16.450.000)
-- Facturación real del año: ~$13,5 M → **82%** del límite
-- Proyección anual (Prophet): ~$21,3 M → **129%** del límite
-- Semáforo: **ROJO**
-- Sugerencia: recategorizar a **E**
+- Categoría actual: **D** (límite anual $ 27.540.988)
+- Facturación real del año: **$ 13.370.000 → 48,5%** del límite (uso real a hoy)
+- Proyección anual (Prophet): **$ 36.075.854 → ~131%** del límite (uso proyectado)
+- Semáforo: **ROJO** (proyección por encima del 90%)
+- Faltan ~**3,7 meses** para superar el límite al ritmo proyectado
+- Próxima categoría sugerida: **E**
 
 **Decir:**
 > "Esta es la pantalla que cruza los dos modelos. El acumulado real va por el
-> 82% del límite de la categoría D. Pero el sistema no se queda en el presente:
-> proyecta los ingresos con Prophet hasta el cierre del año fiscal, y esa
-> proyección supera el límite. Por eso el semáforo está en rojo y sugiere
-> pasar a categoría E **antes** de que AFIP fuerce la recategorización.
-> Es el valor diferencial: anticipa el riesgo fiscal en vez de reportarlo
-> cuando ya es tarde."
+> 48% del límite de la categoría D —tranquilo si miramos solo el presente—.
+> Pero el sistema no se queda ahí: proyecta los ingresos con Prophet hasta el
+> cierre del año fiscal, y esa proyección supera el límite anual. Por eso el
+> semáforo está en rojo y avisa que, al ritmo actual, en unos 3 o 4 meses se
+> pasa de categoría. Sugiere recategorizar a la E **antes** de que AFIP lo
+> fuerce. Ese es el valor diferencial: anticipa el riesgo fiscal mirando la
+> proyección, no solo lo ya facturado."
+
+> **Distinción importante para la defensa:** el "48,5%" es el porcentaje **ya
+> facturado** (pasado); el semáforo se calcula sobre el porcentaje **proyectado**
+> a fin de año (131%). Son dos métricas distintas y conviene saber explicarlo:
+> el sistema decide el color por la proyección, no por lo facturado a hoy.
 
 ---
 
@@ -219,8 +264,9 @@ y auditoría. Montos en formato argentino ($ 1.234.567,89). Disclaimer al pie.
 | Categoría Monotributo | D |
 | Período de datos | Enero–Mayo 2026 |
 | Ingresos | 15 (3/mes, 5 meses) |
-| Gastos | 35 (7/mes, en 9 categorías) |
-| Facturas | 6 (pagadas, pendientes y una vencida) |
+| Gastos | 36 (en 11 categorías; incluye 2 marcados como duplicados) |
+| Facturas | 6 (2 pagadas, 3 pendientes vigentes, 1 vencida sin cobrar) |
+| Alertas al auditar | 4 (una de cada tipo) |
 
 ## Apéndice — Plan B si algo falla en vivo
 
@@ -230,4 +276,5 @@ y auditoría. Montos en formato argentino ($ 1.234.567,89). Disclaimer al pie.
 | El frontend no levanta | Mostrar la API por Swagger en `http://localhost:8000/docs` |
 | Datos raros / corruptos | Re-correr `docker compose exec api python seed_demo.py` |
 | El semáforo no aparece | Confirmar categorías: el seed las asegura; si no, correr `seed_categorias_monotributo.py` |
-| Una pantalla queda vacía | Re-disparar proyecciones y auditoría (paso 0.3) |
+| El clasificador devuelve "Otros" siempre (conf ~0.21) | Falta el modelo base: correr `seed_modelo_base.py` y `docker compose restart api` (paso 0.2) |
+| Una pantalla queda vacía | Re-disparar proyecciones y auditoría (paso 0.4) |
