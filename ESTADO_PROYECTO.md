@@ -1,6 +1,6 @@
 # ESTADO DEL PROYECTO — TFG Freelancers API
 
-> Actualizado el 2026-05-28. Descripción exhaustiva del estado actual del sistema.
+> Actualizado el 2026-05-30. Descripción exhaustiva del estado actual del sistema.
 
 ---
 
@@ -580,6 +580,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 - [x] Modelo base entrenado sobre 600 ejemplos etiquetados
 - [x] Reentrenamiento automático con las correcciones del usuario
 - [x] Marca para revisión manual cuando la confianza es baja
+- [x] **Cortocircuito de correcciones**: `clasificar_gasto` busca primero en `cache_clasificacion` del usuario; si existe match (normalización NFKD + espacios + lowercase), devuelve la corrección con confianza 1.0 sin invocar el ML
 
 #### Módulo IA externa — Groq / LLaMA 3.3
 - [x] Resumen financiero mensual en lenguaje natural (con fallback local)
@@ -607,8 +608,17 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 
 #### Infraestructura
 - [x] Docker Compose con 3 servicios (db, api, frontend)
-- [x] Migraciones Alembic con 3 revisiones aplicadas
+- [x] Migraciones Alembic con 5 revisiones aplicadas
 - [x] Suite de tests con 11 módulos, 97 tests (SQLite in-memory)
+- [x] Smoke tests end-to-end sobre PostgreSQL real (S2.1–S2.4)
+
+#### Demo y documentación
+- [x] `seed_demo.py` — pobla usuario "María Fernández" con datos de 5 meses; idempotente; dispara los 4 detectores de auditoría en la defensa
+- [x] `seed_categorias_monotributo.py` — refactorizado a función `seed_categorias(db)` reutilizable
+- [x] `docs/DEMO.md` — guión paso a paso (8 pasos cronometrados, checklist, plan B)
+- [x] `docs/extractos_ejemplo/` — CSVs de Galicia (`;`), Santander (`,`), Brubank (`,`)
+- [x] `docs/roadmap_final.png` — mapa visual del roadmap hasta la defensa
+- [x] `docs/gen_roadmap.py` — script reproducible para regenerar el mapa
 
 ### Pendiente / Mejoras identificadas ⚠️
 
@@ -686,4 +696,4 @@ openpyxl==3.1.2
 
 ---
 
-*Documento actualizado el 2026-05-28. Refleja el clasificador NLP local con cortocircuito de correcciones, la auto-detección de separador en importación CSV, los módulos de ML y reportes, la rotación de credenciales y la suite de 97 tests.*
+*Documento actualizado el 2026-05-30. Refleja el estado completo: Semana 2 cerrada (S2.1–S2.5), 97 tests verdes, 5 migraciones Alembic, seed demo idempotente con 4 detectores de auditoría activos, docs/DEMO.md con guión real verificado en Postgres. Pendiente: Semana 3 (informe final, métricas reales de clasificador, manual de usuario) y Semana 4 (defensa).*
