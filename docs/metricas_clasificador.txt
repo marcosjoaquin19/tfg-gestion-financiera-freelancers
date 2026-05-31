@@ -1,0 +1,38 @@
+==============================================================================
+  EVALUACIÓN DEL MODELO BASE — algoritmo: svm
+  Total de ejemplos: 600
+  Accuracy global: 0.7600  (76.00%)
+==============================================================================
+
+── Métricas por categoría (ordenadas de peor a mejor f1) ──
+  Categoría           Precision     Recall         F1    N
+  --------------------------------------------------------
+  Marketing               0.628      0.540      0.581   50
+  Servicios               0.667      0.600      0.632   50
+  Hardware                0.667      0.720      0.692   50
+  Software                0.679      0.720      0.699   50
+  Suscripciones           0.589      0.860      0.699   50
+  Infraestructura         0.745      0.700      0.722   50
+  Otros                   0.727      0.800      0.762   50
+  Alimentación            0.878      0.720      0.791   50
+  Capacitación            0.921      0.700      0.795   50
+  Transporte              0.913      0.840      0.875   50
+  Impuestos               0.887      0.940      0.913   50
+  Monotributo             0.942      0.980      0.961   50
+
+── Matriz de confusión (filas=real, columnas=predicho) ──
+  real / pred        Softw Hardw Infra Marke Servi Capac Suscr Trans Alime Impue Monot Otros
+  Software             36*    1     4     1     0     1     6     0     0     0     1     0 
+  Hardware              3    36*    0     2     1     0     2     0     0     1     0     5 
+  Infraestructura       2     3    35*    3     1     0     6     0     0     0     0     0 
+  Marketing             3     1     5    27*    4     2     4     0     0     1     2     1 
+  Servicios             1     4     0     3    30*    0     4     1     2     1     0     4 
+  Capacitación          2     1     1     4     1    35*    5     1     0     0     0     0 
+  Suscripciones         4     1     1     0     1     0    43*    0     0     0     0     0 
+  Transporte            0     1     0     0     0     0     3    42*    2     2     0     0 
+  Alimentación          0     1     0     1     5     0     0     2    36*    0     0     5 
+  Impuestos             0     2     0     1     0     0     0     0     0    47*    0     0 
+  Monotributo           0     0     0     0     0     0     0     0     0     1    49*    0 
+  Otros                 2     3     1     1     2     0     0     0     1     0     0    40*
+
+(* indica aciertos, valores fuera de la diagonal son confusiones)
