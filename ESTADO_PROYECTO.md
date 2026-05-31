@@ -696,7 +696,7 @@ openpyxl==3.1.2
 
 ---
 
-*Documento actualizado el 2026-05-31. Refleja el estado completo: Semanas 2 y 3 cerradas. Semana 2 (S2.1–S2.5): 97 tests verdes, 5 migraciones Alembic, seed demo idempotente con 4 detectores de auditoría activos, docs/DEMO.md con guión real verificado en Postgres. Semana 3 (S3.1–S3.6): métricas reales del clasificador (accuracy 76% por CV 5-fold) con gráficos, capítulos de cierre del informe (Implementación, Pruebas, Conclusiones) alineados con los 6 objetivos específicos, y manual de usuario completo (22 págs) verificado contra el sistema. Pendiente: Semana 4 (defensa: slides, demo guionada, video backup, preguntas anticipadas).*
+*Documento actualizado el 2026-05-31. Refleja el estado completo: Semanas 2, 3 y 4 cerradas. Semana 2 (S2.1–S2.5): 97 tests verdes, 5 migraciones Alembic, seed demo idempotente con 4 detectores de auditoría activos, docs/DEMO.md con guión real verificado en Postgres. Semana 3 (S3.1–S3.6): métricas reales del clasificador (accuracy 76% por CV 5-fold) con gráficos, capítulos de cierre del informe (Implementación, Pruebas, Conclusiones) alineados con los 6 objetivos específicos, y manual de usuario completo (22 págs) verificado contra el sistema. Semana 4 (defensa): deck de 14 slides (docs/FreelanceControl_Defensa.pptx), guión de demo cronometrado de 5 min y banco de preguntas anticipadas. Único pendiente deliberado: el video backup de la demo (a grabar por el alumno).*
 
 ---
 
@@ -715,3 +715,7 @@ openpyxl==3.1.2
 | `FreelanceControl_Informe_Capitulos.pdf` | Informe final (9 págs, con anexo de métricas) | S3.3–S3.5 |
 | `gen_informe_pdf.py` | Generador reproducible del informe en PDF | S3.3–S3.5 |
 | `FreelanceControl_Manual_Completo.pdf` | Manual de usuario y documentación técnica (22 págs) | S3.6 |
+| `FreelanceControl_Defensa.pptx` | Deck de defensa, 14 slides (navy + semáforo) | S4.1 |
+| `gen_slides.js` | Generador reproducible del deck (pptxgenjs) | S4.1 |
+| `GUION_DEMO_5MIN.md` | Guión cronometrado de la demo en vivo (5 min) | S4.2 |
+| `PREGUNTAS_ANTICIPADAS.md` | Banco de preguntas del jurado con respuestas preparadas | S4.4 |
