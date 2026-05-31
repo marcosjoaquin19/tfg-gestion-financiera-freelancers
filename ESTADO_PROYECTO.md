@@ -1,6 +1,6 @@
 # ESTADO DEL PROYECTO — TFG Freelancers API
 
-> Actualizado el 2026-05-30. Descripción exhaustiva del estado actual del sistema.
+> Actualizado el 2026-05-31. Descripción exhaustiva del estado actual del sistema.
 
 ---
 
@@ -696,4 +696,22 @@ openpyxl==3.1.2
 
 ---
 
-*Documento actualizado el 2026-05-30. Refleja el estado completo: Semana 2 cerrada (S2.1–S2.5), 97 tests verdes, 5 migraciones Alembic, seed demo idempotente con 4 detectores de auditoría activos, docs/DEMO.md con guión real verificado en Postgres. Pendiente: Semana 3 (informe final, métricas reales de clasificador, manual de usuario) y Semana 4 (defensa).*
+*Documento actualizado el 2026-05-31. Refleja el estado completo: Semanas 2 y 3 cerradas. Semana 2 (S2.1–S2.5): 97 tests verdes, 5 migraciones Alembic, seed demo idempotente con 4 detectores de auditoría activos, docs/DEMO.md con guión real verificado en Postgres. Semana 3 (S3.1–S3.6): métricas reales del clasificador (accuracy 76% por CV 5-fold) con gráficos, capítulos de cierre del informe (Implementación, Pruebas, Conclusiones) alineados con los 6 objetivos específicos, y manual de usuario completo (22 págs) verificado contra el sistema. Pendiente: Semana 4 (defensa: slides, demo guionada, video backup, preguntas anticipadas).*
+
+---
+
+## 9. Entregables de documentación (docs/)
+
+| Archivo | Descripción | Origen |
+|---|---|---|
+| `DEMO.md` | Guión de demostración paso a paso (8 pasos, checklist, plan B) | S2.5 |
+| `extractos_ejemplo/` | CSVs de Galicia, Santander, Brubank para demo de importación | S2.5 |
+| `roadmap_final.png` + `gen_roadmap.py` | Mapa visual del roadmap hasta la defensa | Roadmap |
+| `metricas_clasificador.txt` | Salida cruda de `evaluar_modelo.py` (accuracy, P/R/F1, matriz) | S3.1 |
+| `metricas_f1_por_categoria.png` | Gráfico de barras precision/recall/F1 por categoría | S3.2 |
+| `metricas_matriz_confusion.png` | Heatmap de la matriz de confusión | S3.2 |
+| `gen_graficos_metricas.py` | Generador reproducible de los gráficos de métricas | S3.2 |
+| `informe_capitulos.md` | Fuente editable de los capítulos de cierre | S3.3–S3.5 |
+| `FreelanceControl_Informe_Capitulos.pdf` | Informe final (9 págs, con anexo de métricas) | S3.3–S3.5 |
+| `gen_informe_pdf.py` | Generador reproducible del informe en PDF | S3.3–S3.5 |
+| `FreelanceControl_Manual_Completo.pdf` | Manual de usuario y documentación técnica (22 págs) | S3.6 |
