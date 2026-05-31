@@ -20,39 +20,41 @@ ACCURACY = 0.76
 N_EJEMPLOS = 600
 
 # (categoria, precision, recall, f1)  — ordenadas peor→mejor f1
+# Datos REALES de la corrida de evaluar_modelo.py (ver metricas_clasificador.txt).
 METRICAS = [
-    ("Otros",           0.500, 0.480, 0.489),
-    ("Servicios",       0.604, 0.580, 0.592),
-    ("Hardware",        0.681, 0.640, 0.660),
-    ("Infraestructura", 0.760, 0.760, 0.760),
-    ("Capacitación",    0.745, 0.760, 0.752),
-    ("Software",        0.787, 0.740, 0.763),
-    ("Marketing",       0.820, 0.820, 0.820),
-    ("Suscripciones",   0.787, 0.820, 0.803),
-    ("Transporte",      0.880, 0.880, 0.880),
-    ("Alimentación",    0.843, 0.860, 0.851),
-    ("Impuestos",       0.860, 0.860, 0.860),
-    ("Monotributo",     0.860, 0.920, 0.889),
+    ("Marketing",       0.628, 0.540, 0.581),
+    ("Servicios",       0.667, 0.600, 0.632),
+    ("Hardware",        0.667, 0.720, 0.692),
+    ("Software",        0.679, 0.720, 0.699),
+    ("Suscripciones",   0.589, 0.860, 0.699),
+    ("Infraestructura", 0.745, 0.700, 0.722),
+    ("Otros",           0.727, 0.800, 0.762),
+    ("Alimentación",    0.878, 0.720, 0.791),
+    ("Capacitación",    0.921, 0.700, 0.795),
+    ("Transporte",      0.913, 0.840, 0.875),
+    ("Impuestos",       0.887, 0.940, 0.913),
+    ("Monotributo",     0.942, 0.980, 0.961),
 ]
 
 LABELS = ["Software", "Hardware", "Infraestructura", "Marketing", "Servicios",
           "Capacitación", "Suscripciones", "Transporte", "Alimentación",
           "Impuestos", "Monotributo", "Otros"]
 
-# Matriz de confusión real (filas=real, columnas=predicho), mismo orden que LABELS
+# Matriz de confusión real (filas=real, columnas=predicho), mismo orden que LABELS.
+# Copiada exactamente de metricas_clasificador.txt.
 MATRIZ = [
-    [37, 1, 3, 0, 2, 1, 2, 0, 0, 0, 0, 4],
-    [2, 32, 3, 1, 1, 1, 1, 1, 0, 1, 0, 7],
-    [1, 2, 38, 0, 1, 0, 1, 0, 0, 1, 0, 6],
-    [0, 0, 0, 41, 3, 1, 1, 0, 0, 0, 0, 4],
-    [2, 1, 1, 2, 29, 3, 0, 1, 2, 2, 1, 6],
-    [1, 0, 0, 1, 2, 38, 2, 0, 0, 0, 0, 6],
-    [1, 0, 1, 1, 0, 1, 41, 0, 0, 0, 1, 4],
-    [0, 1, 0, 0, 1, 0, 0, 44, 1, 0, 0, 3],
-    [0, 0, 0, 0, 1, 0, 0, 2, 43, 0, 0, 4],
-    [0, 0, 0, 0, 1, 0, 0, 0, 1, 43, 2, 3],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 46, 2],
-    [3, 2, 2, 1, 4, 2, 3, 2, 2, 1, 0, 24],
+    [36, 1, 4, 1, 0, 1, 6, 0, 0, 0, 1, 0],
+    [3, 36, 0, 2, 1, 0, 2, 0, 0, 1, 0, 5],
+    [2, 3, 35, 3, 1, 0, 6, 0, 0, 0, 0, 0],
+    [3, 1, 5, 27, 4, 2, 4, 0, 0, 1, 2, 1],
+    [1, 4, 0, 3, 30, 0, 4, 1, 2, 1, 0, 4],
+    [2, 1, 1, 4, 1, 35, 5, 1, 0, 0, 0, 0],
+    [4, 1, 1, 0, 1, 0, 43, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0, 0, 3, 42, 2, 2, 0, 0],
+    [0, 1, 0, 1, 5, 0, 0, 2, 36, 0, 0, 5],
+    [0, 2, 0, 1, 0, 0, 0, 0, 0, 47, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 49, 0],
+    [2, 3, 1, 1, 2, 0, 0, 0, 1, 0, 0, 40],
 ]
 
 

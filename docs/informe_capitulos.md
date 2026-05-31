@@ -189,15 +189,21 @@ clasificación de texto corto en español con vocabulario heterogéneo y que el
 umbral de confianza deriva los casos dudosos a revisión manual.
 
 El análisis por categoría revela un desempeño dispar pero coherente con la
-naturaleza del problema. Las categorías con vocabulario distintivo obtuvieron los
-mejores resultados: Monotributo (F1 = 0,889), Transporte (F1 = 0,880) e Impuestos
-(F1 = 0,860). En el extremo opuesto, la categoría "Otros" (F1 = 0,489) y
-"Servicios" (F1 = 0,592) presentaron el desempeño más bajo, un comportamiento
-esperable dado que ambas funcionan como categorías semánticamente amplias que se
-solapan con varias otras. La matriz de confusión confirma este diagnóstico: las
-confusiones se concentran en la columna "Otros", lo que indica que el modelo, ante
-la duda, tiende a la categoría genérica antes que a una incorrecta específica
-—precisamente el comportamiento conservador que el diseño busca.
+naturaleza del problema. Las categorías con vocabulario distintivo y acotado
+obtuvieron los mejores resultados: Monotributo (F1 = 0,961), Impuestos
+(F1 = 0,913) y Transporte (F1 = 0,875). En el extremo opuesto, Marketing
+(F1 = 0,581) y Servicios (F1 = 0,632) presentaron el desempeño más bajo, un
+comportamiento esperable dado que son categorías semánticamente amplias cuyo
+vocabulario se solapa con el de otras: un gasto de Marketing puede mencionar
+software o servicios, y "Servicios" abarca honorarios de naturaleza muy diversa.
+La matriz de confusión confirma este diagnóstico. Se observa además una confusión
+sistemática hacia la categoría Suscripciones —varias categorías tecnológicas
+(Software, Infraestructura, Capacitación) derivan parte de sus casos hacia ella—,
+atribuible a que muchos servicios profesionales se contratan hoy bajo modalidad
+de suscripción, lo que vuelve el vocabulario parcialmente compartido. Cabe destacar
+que la categoría "Otros" alcanzó un F1 de 0,762, lo que indica que el modelo
+distingue correctamente los gastos genuinamente inclasificables en lugar de usar
+"Otros" como vertedero de la incertidumbre.
 
 Las métricas detalladas, la matriz de confusión completa y los gráficos
 correspondientes se incluyen como anexos de este informe y son reproducibles
