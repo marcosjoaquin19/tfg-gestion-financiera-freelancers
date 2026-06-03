@@ -1,6 +1,12 @@
 # ESTADO DEL PROYECTO — TFG Freelancers API
 
 > Actualizado el 2026-05-31. Descripción exhaustiva del estado actual del sistema.
+>
+> 📌 **Para arrancar un análisis del proyecto desde cero (sesión nueva), leer
+> primero `HANDOFF.md`** (o `docs/HANDOFF.pdf`): contiene el resumen ejecutivo,
+> el mapa módulo por módulo, cómo levantar y probar todo, y qué falta hasta la
+> entrega. Este documento (`ESTADO_PROYECTO.md`) es el detalle técnico exhaustivo
+> tabla-por-tabla y endpoint-por-endpoint que complementa al handoff.
 
 ---
 
