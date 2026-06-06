@@ -3,19 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../api';
 
-const CATEGORIAS_SERVICIOS = {
-  A: { limite_anual: 10277988,  cuota_mensual: 42387 },
-  B: { limite_anual: 15068988,  cuota_mensual: 48251 },
-  C: { limite_anual: 21010988,  cuota_mensual: 56502 },
-  D: { limite_anual: 27540988,  cuota_mensual: 72414 },
-  E: { limite_anual: 34650988,  cuota_mensual: 102548 },
-  F: { limite_anual: 45280988,  cuota_mensual: 129045 },
-  G: { limite_anual: 56510988,  cuota_mensual: 174378 },
-  H: { limite_anual: 79130988,  cuota_mensual: 447347 },
-  I: { limite_anual: 94500988,  cuota_mensual: 606019 },
-  J: { limite_anual: 101430988, cuota_mensual: 805938 },
-  K: { limite_anual: 108357084, cuota_mensual: 1080000 },
-};
+// La escala de categorías se trae del backend (GET /monotributo/categorias, que
+// lee la tabla `categorias_monotributo`). Única fuente de verdad: se actualiza en
+// un solo lugar (seed_categorias_monotributo.py) y el frontend la consume.
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -43,6 +33,7 @@ const selectStyle = {
 export default function Monotributo() {
   const [estado, setEstado] = useState(null);
   const [pago, setPago] = useState(null);
+  const [categorias, setCategorias] = useState({});  // escala traída del backend, key = letra
   const [loading, setLoading] = useState(true);
   const [catSeleccionada, setCatSeleccionada] = useState('A');
   const [guardando, setGuardando] = useState(false);
@@ -51,12 +42,18 @@ export default function Monotributo() {
 
   async function fetchData() {
     setLoading(true);
-    const [estRes, pagRes] = await Promise.allSettled([
+    const [estRes, pagRes, catRes] = await Promise.allSettled([
       api.get('/monotributo/estado'),
       api.get('/monotributo/pago'),
+      api.get('/monotributo/categorias'),
     ]);
     if (estRes.status === 'fulfilled') setEstado(estRes.value.data);
     if (pagRes.status === 'fulfilled') setPago(pagRes.value.data);
+    if (catRes.status === 'fulfilled') {
+      const obj = {};
+      for (const c of catRes.value.data) obj[c.letra] = c;
+      setCategorias(obj);
+    }
     setLoading(false);
   }
 
@@ -87,7 +84,7 @@ export default function Monotributo() {
   // ── Estado sin categoría ─────────────────────────────────────────────────
 
   if (!estado || estado.sin_categoria) {
-    const infoPreview = catSeleccionada ? CATEGORIAS_SERVICIOS[catSeleccionada] : null;
+    const infoPreview = catSeleccionada ? categorias[catSeleccionada] : null;
     return (
       <Layout activeSection="Monotributo">
         <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -111,7 +108,7 @@ export default function Monotributo() {
               onChange={(e) => setCatSeleccionada(e.target.value)}
               style={{ ...selectStyle, marginBottom: '12px' }}
             >
-              {Object.keys(CATEGORIAS_SERVICIOS).map((c) => (
+              {Object.keys(categorias).map((c) => (
                 <option key={c} value={c}>Categoría {c}</option>
               ))}
             </select>
@@ -150,7 +147,7 @@ export default function Monotributo() {
   const colores = ESTADO_COLORS[estado.estado] || ESTADO_COLORS.verde;
   const pct = Math.min(estado.porcentaje_usado, 100);
   const catSiguienteInfo = estado.categoria_siguiente
-    ? CATEGORIAS_SERVICIOS[estado.categoria_siguiente]
+    ? categorias[estado.categoria_siguiente]
     : null;
 
   return (
@@ -224,7 +221,7 @@ export default function Monotributo() {
                 onChange={(e) => setCatSeleccionada(e.target.value)}
                 style={{ ...selectStyle, width: 'auto', padding: '5px 10px', fontSize: '13px' }}
               >
-                {Object.keys(CATEGORIAS_SERVICIOS).map((c) => (
+                {Object.keys(categorias).map((c) => (
                   <option key={c} value={c}>Categoría {c}</option>
                 ))}
               </select>

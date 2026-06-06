@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
+from app.models.categoria_monotributo import CategoriaMonotributo
 from app.schemas.usuario import UsuarioResponse, UsuarioUpdateMonotributo
 from app.dependencies import get_current_user
 from app.services.monotributo_service import (
@@ -16,6 +17,33 @@ from app.services.monotributo_service import (
 )
 
 router = APIRouter(prefix="/monotributo", tags=["Monotributo"])
+
+
+@router.get("/categorias")
+def listar_categorias(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Escala vigente de categorías (única fuente de verdad para el frontend).
+
+    Evita duplicar la tabla de montos en el cliente: el front consume esto en
+    lugar de tener los valores hardcodeados.
+    """
+    cats = (
+        db.query(CategoriaMonotributo)
+        .filter(CategoriaMonotributo.activa == True)
+        .order_by(CategoriaMonotributo.limite_anual.asc())
+        .all()
+    )
+    return [
+        {
+            "letra": c.letra,
+            "limite_anual": float(c.limite_anual),
+            "cuota_mensual": float(c.cuota_mensual),
+            "actividad": c.actividad,
+        }
+        for c in cats
+    ]
 
 
 @router.get("/estado")

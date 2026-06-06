@@ -1,7 +1,11 @@
 """
-Inserta (o actualiza) las 11 categorías de monotributo vigentes desde 2026-02-01.
-Ejecutar desde la raíz del proyecto:
+Inserta (o actualiza) las 11 categorías de monotributo (PRESTACIÓN DE SERVICIOS)
+vigentes desde junio 2026. Ejecutar desde la raíz del proyecto:
     python seed_categorias_monotributo.py
+
+Fuente: escala publicada para junio 2026 (cruzada entre Ámbito y Estudio Brady,
+valores idénticos en ambas). NOTA: son datos impositivos que ARCA actualiza
+periódicamente → verificar contra arca.gob.ar antes de usar en producción/defensa.
 
 También exporta seed_categorias(db) para reutilizar desde otros seeds
 (p. ej. seed_demo.py) sin ejecutar nada al importar el módulo.
@@ -11,20 +15,20 @@ from app.database import SessionLocal
 from app.models.categoria_monotributo import CategoriaMonotributo
 
 CATEGORIAS = [
-    {"letra": "A", "limite_anual": 10277988,  "cuota_mensual": 42387},
-    {"letra": "B", "limite_anual": 15068988,  "cuota_mensual": 48251},
-    {"letra": "C", "limite_anual": 21010988,  "cuota_mensual": 56502},
-    {"letra": "D", "limite_anual": 27540988,  "cuota_mensual": 72414},
-    {"letra": "E", "limite_anual": 34650988,  "cuota_mensual": 102548},
-    {"letra": "F", "limite_anual": 45280988,  "cuota_mensual": 129045},
-    {"letra": "G", "limite_anual": 56510988,  "cuota_mensual": 174378},
-    {"letra": "H", "limite_anual": 79130988,  "cuota_mensual": 447347},
-    {"letra": "I", "limite_anual": 94500988,  "cuota_mensual": 606019},
-    {"letra": "J", "limite_anual": 101430988, "cuota_mensual": 805938},
-    {"letra": "K", "limite_anual": 108357084, "cuota_mensual": 1080000},
+    {"letra": "A", "limite_anual": 10277988.13,  "cuota_mensual": 42386.74},
+    {"letra": "B", "limite_anual": 15058447.71,  "cuota_mensual": 48250.78},
+    {"letra": "C", "limite_anual": 21113696.52,  "cuota_mensual": 56501.85},
+    {"letra": "D", "limite_anual": 26212853.42,  "cuota_mensual": 72414.10},
+    {"letra": "E", "limite_anual": 30833964.37,  "cuota_mensual": 102537.97},
+    {"letra": "F", "limite_anual": 38642048.36,  "cuota_mensual": 129045.32},
+    {"letra": "G", "limite_anual": 46211109.37,  "cuota_mensual": 197108.23},
+    {"letra": "H", "limite_anual": 70113407.33,  "cuota_mensual": 447346.93},
+    {"letra": "I", "limite_anual": 78479211.62,  "cuota_mensual": 824802.26},
+    {"letra": "J", "limite_anual": 89872640.30,  "cuota_mensual": 999007.65},
+    {"letra": "K", "limite_anual": 108357084.05, "cuota_mensual": 1381687.90},
 ]
 
-FECHA_VIGENCIA = date(2026, 2, 1)
+FECHA_VIGENCIA = date(2026, 6, 1)
 
 
 def seed_categorias(db=None):
