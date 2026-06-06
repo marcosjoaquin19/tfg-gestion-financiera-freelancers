@@ -108,3 +108,38 @@ def test_auditoria_no_duplica_alertas(client, auth_headers):
     alertas = client.get("/alertas/?solo_pendientes=false", headers=auth_headers).json()
     # debe haber exactamente 1 alerta, no 2
     assert len([a for a in alertas if a["tipo"] == "gasto_duplicado"]) == 1
+
+
+def test_alerta_resuelta_no_reaparece(client, auth_headers):
+    # Creamos un duplicado y lo detectamos
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+
+    alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
+    # El usuario la resuelve (acknowledge)
+    client.patch(f"/alertas/{alerta_id}/resolver", json={"resuelta": True}, headers=auth_headers)
+
+    # Re-ejecutamos: la condición sigue existiendo, pero NO debe generar una nueva
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    pendientes = client.get("/alertas/?solo_pendientes=true", headers=auth_headers).json()
+    assert len([a for a in pendientes if a["tipo"] == "gasto_duplicado"]) == 0
+
+
+def test_eliminar_gasto_duplicado_resuelve_de_raiz(client, auth_headers):
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+
+    alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
+    # Eliminamos el gasto repetido de raíz desde la alerta
+    resp = client.delete(f"/alertas/{alerta_id}/gasto-duplicado", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["resuelta"] is True
+
+    # Quedó un solo gasto y ya no hay duplicados
+    gastos = client.get("/gastos/", headers=auth_headers).json()
+    assert len(gastos) == 1
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    pendientes = client.get("/alertas/?solo_pendientes=true", headers=auth_headers).json()
+    assert len([a for a in pendientes if a["tipo"] == "gasto_duplicado"]) == 0

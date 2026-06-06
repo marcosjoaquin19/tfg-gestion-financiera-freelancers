@@ -51,6 +51,7 @@ function loadChartJS(callback) {
 
 export default function Proyecciones() {
   const [proyecciones, setProyecciones] = useState([]);
+  const [historico, setHistorico]       = useState([]);  // ingresos reales agrupados por mes
   const [loading, setLoading]           = useState(true);
   const [generando, setGenerando]       = useState(false);
   const canvasRef = useRef(null);
@@ -59,10 +60,27 @@ export default function Proyecciones() {
   async function fetchProyecciones() {
     setLoading(true);
     try {
-      const res = await api.get('/proyecciones/', { params: { limite: 12 } });
-      setProyecciones(res.data);
+      // Traemos proyecciones + ingresos reales (para dibujar el histórico).
+      const [resP, resI] = await Promise.all([
+        api.get('/proyecciones/', { params: { limite: 12 } }),
+        api.get('/ingresos/', { params: { limite: 200 } }),
+      ]);
+      setProyecciones(resP.data);
+
+      // Agrupamos los ingresos reales por mes (misma lógica que usa Prophet).
+      const porMes = {};
+      for (const ing of resI.data) {
+        const d = new Date(ing.fecha);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
+        porMes[key] = (porMes[key] || 0) + parseFloat(ing.monto || 0);
+      }
+      const hist = Object.entries(porMes)
+        .map(([ds, y]) => ({ ds, y }))
+        .sort((a, b) => new Date(a.ds) - new Date(b.ds));
+      setHistorico(hist);
     } catch (_) {
       setProyecciones([]);
+      setHistorico([]);
     } finally {
       setLoading(false);
     }
@@ -83,10 +101,27 @@ export default function Proyecciones() {
       }
 
       const Chart = window.Chart;
-      const labels = proyecciones.map(p => mesLabel(p.fecha_proyeccion));
-      const lower  = proyecciones.map(p => parseFloat(p.monto_lower));
-      const yhat   = proyecciones.map(p => parseFloat(p.monto_proyectado));
-      const upper  = proyecciones.map(p => parseFloat(p.monto_upper));
+
+      // Eje X = meses históricos + meses proyectados.
+      const labels = [
+        ...historico.map(h => mesLabel(h.ds)),
+        ...proyecciones.map(p => mesLabel(p.fecha_proyeccion)),
+      ];
+
+      const H = historico.length;
+      const P = proyecciones.length;
+
+      // Serie histórica real (null en los meses futuros).
+      const histData = [...historico.map(h => h.y), ...Array(P).fill(null)];
+
+      // Las series de proyección arrancan en el ÚLTIMO punto histórico (conexión
+      // visual), por eso van con null hasta ahí y luego los valores proyectados.
+      const lastHistY = H > 0 ? historico[H - 1].y : null;
+      const pad = Array(Math.max(H - 1, 0)).fill(null);
+      const conexion = H > 0 ? [lastHistY] : [];
+      const lower = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_lower))];
+      const yhat  = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_proyectado))];
+      const upper = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_upper))];
 
       chartRef.current = new Chart(canvasRef.current, {
         type: 'line',
@@ -148,6 +183,18 @@ export default function Proyecciones() {
               fill: false,
               tension: 0.3,
             },
+            // ── Histórico real (lo que efectivamente ingresó) ────────────────
+            {
+              label: 'Histórico (real)',
+              data: histData,
+              borderColor: '#e2e8f0',
+              borderWidth: 2.5,
+              backgroundColor: 'transparent',
+              pointRadius: 4,
+              pointBackgroundColor: '#e2e8f0',
+              fill: false,
+              tension: 0.3,
+            },
           ],
         },
         options: {
@@ -199,11 +246,12 @@ export default function Proyecciones() {
         chartRef.current = null;
       }
     };
-  }, [proyecciones]);
+  }, [proyecciones, historico]);
 
   const promedio  = avg(proyecciones, 'monto_proyectado');
   const pesimista = avg(proyecciones, 'monto_lower');
   const optimista = avg(proyecciones, 'monto_upper');
+  const histPromedio = avg(historico, 'y');  // promedio mensual real, para verificar coherencia
 
   const thStyle = {
     padding: '12px 16px', fontSize: '12px', color: '#475569',
@@ -269,12 +317,20 @@ export default function Proyecciones() {
           {/* ── Gráfico Chart.js ── */}
           <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '20px', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
-                Proyección mensual de ingresos
-              </p>
+              <div>
+                <p style={{ margin: 0, fontSize: '13px', color: '#64748b', fontWeight: 500 }}>
+                  Histórico real + proyección a 6 meses
+                </p>
+                {historico.length > 0 && (
+                  <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#475569' }}>
+                    Promedio histórico mensual: <strong style={{ color: '#94a3b8' }}>{fmtMonto(histPromedio)}</strong> · la proyección parte de ahí
+                  </p>
+                )}
+              </div>
               {/* ── Leyenda HTML personalizada ── */}
               <div style={{ display: 'flex', gap: '20px' }}>
                 {[
+                  { color: '#e2e8f0', dash: false, label: 'Histórico'  },
                   { color: '#3b82f6', dash: false, label: 'Proyectado' },
                   { color: '#ef4444', dash: true,  label: 'Pesimista'  },
                   { color: '#22c55e', dash: true,  label: 'Optimista'  },

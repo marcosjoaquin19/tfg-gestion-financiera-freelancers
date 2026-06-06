@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../api';
 
@@ -66,9 +67,14 @@ export default function Gastos() {
   const [clasificacion, setClasificacion] = useState(null);
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [soloDuplicados, setSoloDuplicados] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  // Ordenamiento por columna (mismo comportamiento que Ingresos): el primer
+  // criterio manda. Click en Fecha/Monto: inactivo→desc, desc→asc, asc→se quita.
+  const [orden, setOrden] = useState([{ campo: 'fecha', dir: 'desc' }]);
   const [form, setForm] = useState({
     descripcion: '', monto: '', categoria: 'Software', fecha: todayISO(),
   });
+  const location = useLocation();
 
   async function fetchGastos() {
     setLoading(true);
@@ -83,6 +89,22 @@ export default function Gastos() {
   }
 
   useEffect(() => { fetchGastos(); }, []);
+
+  // Si venimos desde el Clasificador con una descripción/categoría ya elegida,
+  // abrimos el formulario pre-cargado para que el usuario no reescriba nada.
+  useEffect(() => {
+    const st = location.state;
+    if (st && (st.descripcion || st.categoria)) {
+      setForm((prev) => ({
+        ...prev,
+        descripcion: st.descripcion || prev.descripcion,
+        categoria: st.categoria || prev.categoria,
+      }));
+      setShowForm(true);
+      // Limpiamos el state para que un refresh no vuelva a pre-cargar.
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -134,12 +156,56 @@ export default function Gastos() {
     } catch (_) {}
   }
 
+  function toggleOrden(campo) {
+    setOrden((prev) => {
+      const actual = prev.find((c) => c.campo === campo);
+      if (!actual) return [...prev, { campo, dir: 'desc' }];
+      if (actual.dir === 'desc') {
+        return prev.map((c) => (c.campo === campo ? { ...c, dir: 'asc' } : c));
+      }
+      return prev.filter((c) => c.campo !== campo);
+    });
+  }
+
+  function indicadorOrden(campo) {
+    const idx = orden.findIndex((c) => c.campo === campo);
+    if (idx === -1) return '';
+    const flecha = orden[idx].dir === 'asc' ? '↑' : '↓';
+    const prio = orden.length > 1 ? ` ${idx + 1}°` : '';
+    return ` ${flecha}${prio}`;
+  }
+
+  const periodoMes = (f) => {
+    const d = new Date(f);
+    return d.getFullYear() * 12 + d.getMonth();
+  };
+
   let gastosFiltrados = filtroCategoria
     ? gastos.filter((g) => g.categoria === filtroCategoria)
     : gastos;
   if (soloDuplicados) {
     gastosFiltrados = gastosFiltrados.filter((g) => g.es_duplicado);
   }
+  // Búsqueda libre: matchea descripción o categoría (sin distinguir mayúsculas).
+  const termino = busqueda.trim().toLowerCase();
+  if (termino) {
+    gastosFiltrados = gastosFiltrados.filter(
+      (g) =>
+        g.descripcion.toLowerCase().includes(termino) ||
+        g.categoria.toLowerCase().includes(termino)
+    );
+  }
+
+  gastosFiltrados = [...gastosFiltrados].sort((a, b) => {
+    for (const criterio of orden) {
+      const cmp =
+        criterio.campo === 'monto'
+          ? a.monto - b.monto
+          : periodoMes(a.fecha) - periodoMes(b.fecha);
+      if (cmp !== 0) return criterio.dir === 'asc' ? cmp : -cmp;
+    }
+    return new Date(b.fecha) - new Date(a.fecha);
+  });
 
   const thStyle = {
     padding: '12px 16px', fontSize: '12px', color: '#475569',
@@ -282,7 +348,33 @@ export default function Gastos() {
       )}
 
       {/* Filtros */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        {/* Buscador con lupa */}
+        <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '200px', maxWidth: '360px' }}>
+          <span style={{
+            position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+            color: '#64748b', fontSize: '14px', pointerEvents: 'none',
+          }}>🔍</span>
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por descripción o categoría..."
+            style={{ ...inputStyle, paddingLeft: '36px' }}
+            onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
+            onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
+          />
+          {busqueda && (
+            <span
+              onClick={() => setBusqueda('')}
+              style={{
+                position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                color: '#64748b', fontSize: '15px', cursor: 'pointer', userSelect: 'none',
+              }}
+              title="Limpiar búsqueda"
+            >×</span>
+          )}
+        </div>
         <select
           value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}
           style={{ ...inputStyle, width: 'auto', minWidth: '180px', cursor: 'pointer' }}
@@ -303,9 +395,15 @@ export default function Gastos() {
       <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
         {/* Header */}
         <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.5fr 1.5fr 1.5fr 90px', borderBottom: '1px solid #1e293b' }}>
-          {['Descripción', 'Categoría', 'Fecha', 'Monto', ''].map((h) => (
-            <div key={h} style={thStyle}>{h}</div>
-          ))}
+          <div style={thStyle}>Descripción</div>
+          <div style={thStyle}>Categoría</div>
+          <div style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleOrden('fecha')}>
+            Fecha{indicadorOrden('fecha')}
+          </div>
+          <div style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleOrden('monto')}>
+            Monto{indicadorOrden('monto')}
+          </div>
+          <div style={thStyle}></div>
         </div>
 
         {/* Filas */}
