@@ -291,7 +291,7 @@ export default function Clasificador() {
 
             <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => navigate('/gastos')}
+                onClick={() => navigate('/gastos', { state: { descripcion: descripcion.trim(), categoria: categoriaCorrecta || resultado.categoria } })}
                 style={{
                   flex: 1, background: 'transparent', border: '1px solid #3b82f6',
                   color: '#3b82f6', borderRadius: '8px',

@@ -5,7 +5,8 @@ from app.models.usuario import Usuario
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.schemas.alerta import AlertaResponse, AlertaResolverUpdate
 from app.dependencies import get_current_user
-from app.services.auditoria import ejecutar_auditoria
+from app.models.gasto import Gasto
+from app.services.auditoria import ejecutar_auditoria, detectar_gastos_duplicados
 
 
 router = APIRouter(prefix="/alertas", tags=["Alertas de Auditoría"])
@@ -83,6 +84,71 @@ def resolver_alerta(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
 
     alerta.resuelta = datos.resuelta
+    db.commit()
+    db.refresh(alerta)
+    return alerta
+
+
+@router.delete("/resueltas", status_code=status.HTTP_200_OK)
+def limpiar_alertas_resueltas(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Borra del historial todas las alertas ya resueltas del usuario.
+    Nota: si el problema de fondo sigue existiendo, la próxima auditoría lo
+    volverá a detectar (al borrar la huella, deja de estar 'silenciado')."""
+    n = db.query(AlertaAuditoria).filter(
+        AlertaAuditoria.usuario_id == current_user.id,
+        AlertaAuditoria.resuelta == True,
+    ).delete()
+    db.commit()
+    return {"eliminadas": n}
+
+
+@router.delete("/{alerta_id}/gasto-duplicado", response_model=AlertaResponse)
+def eliminar_gasto_duplicado(
+    alerta_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Resuelve de raíz una alerta de gasto duplicado: elimina el gasto repetido
+    (el más reciente del par) y marca la alerta como resuelta. Al desaparecer la
+    condición, la auditoría tampoco la vuelve a detectar."""
+    alerta = db.query(AlertaAuditoria).filter(
+        AlertaAuditoria.id == alerta_id,
+        AlertaAuditoria.usuario_id == current_user.id,
+    ).first()
+
+    if not alerta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
+
+    if alerta.tipo != TipoAlerta.GASTO_DUPLICADO:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta acción solo aplica a alertas de gasto duplicado",
+        )
+
+    # Re-detectamos el par usando la misma lógica del módulo de auditoría y
+    # ubicamos el que coincide con el monto de la alerta.
+    pares = detectar_gastos_duplicados(db, current_user.id)
+    objetivo = None      # el gasto repetido a eliminar (el más reciente del par)
+    sobreviviente = None
+    for gasto_a, gasto_b in pares:
+        if alerta.monto_involucrado is not None and float(gasto_a.monto) == float(alerta.monto_involucrado):
+            objetivo, sobreviviente = gasto_b, gasto_a
+            break
+
+    if objetivo is not None:
+        db.delete(objetivo)
+        db.flush()
+        # Si el que queda ya no forma parte de ningún par, dejá de marcarlo duplicado.
+        ids_dup = {g.id for par in detectar_gastos_duplicados(db, current_user.id) for g in par}
+        if sobreviviente is not None and sobreviviente.id not in ids_dup:
+            superv = db.query(Gasto).filter(Gasto.id == sobreviviente.id).first()
+            if superv:
+                superv.es_duplicado = False
+
+    alerta.resuelta = True
     db.commit()
     db.refresh(alerta)
     return alerta

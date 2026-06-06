@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';
 
-const CATEGORIAS = ['Desarrollo', 'Consultoría', 'Diseño', 'Marketing', 'Otros'];
+const CATEGORIAS = [
+  'Desarrollo', 'Desarrollo Web', 'Desarrollo Mobile', 'Diseño',
+  'Consultoría', 'Marketing Digital', 'Redacción y Contenido',
+  'Soporte y Mantenimiento', 'Capacitación', 'Servicios', 'Otros',
+];
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -59,6 +63,15 @@ export default function Ingresos() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
+  // Ordenamiento multi-criterio: lista de {campo, dir}. El PRIMER elemento manda
+  // y el resto desempata. "Fecha" agrupa por MES (no por día), así dos ingresos
+  // del mismo mes empatan y el siguiente criterio (monto) los ordena adentro.
+  // Click en un encabezado:
+  //   no activo  → se suma como desc al final (desempate del que ya estaba)
+  //   activo desc → cambia a asc
+  //   activo asc  → se saca del orden
+  const [orden, setOrden] = useState([{ campo: 'fecha', dir: 'desc' }]);
+  const [formError, setFormError] = useState('');
   const [form, setForm] = useState({
     descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO(),
   });
@@ -78,23 +91,59 @@ export default function Ingresos() {
   useEffect(() => { fetchIngresos(); }, []);
 
   function handleFormChange(e) {
+    if (e.target.name === 'monto') setFormError('');
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  }
+
+  function toggleOrden(campo) {
+    setOrden((prev) => {
+      const actual = prev.find((c) => c.campo === campo);
+      // No estaba activo → se suma como desempate al final.
+      if (!actual) return [...prev, { campo, dir: 'desc' }];
+      // Estaba en desc → cambia a asc.
+      if (actual.dir === 'desc') {
+        return prev.map((c) => (c.campo === campo ? { ...c, dir: 'asc' } : c));
+      }
+      // Estaba en asc → se saca del orden.
+      return prev.filter((c) => c.campo !== campo);
+    });
+  }
+
+  function indicadorOrden(campo) {
+    const idx = orden.findIndex((c) => c.campo === campo);
+    if (idx === -1) return '';
+    const flecha = orden[idx].dir === 'asc' ? '↑' : '↓';
+    // Si hay más de un criterio activo, mostramos número de prioridad (1°, 2°...)
+    const prio = orden.length > 1 ? ` ${idx + 1}°` : '';
+    return ` ${flecha}${prio}`;
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setFormError('');
+    const montoNum = parseFloat(form.monto);
+    if (!(montoNum > 0)) {
+      setFormError('El monto debe ser mayor a 0');
+      return;
+    }
     setSaving(true);
     try {
       await api.post('/ingresos/', {
         descripcion: form.descripcion,
-        monto: parseFloat(form.monto),
+        monto: montoNum,
         categoria: form.categoria,
         fecha: form.fecha + 'T00:00:00',
       });
       setShowForm(false);
       setForm({ descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO() });
       await fetchIngresos();
-    } catch (_) {
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setFormError(detail.map((d) => d.msg).join(', '));
+      } else {
+        setFormError(detail || 'No se pudo guardar el ingreso');
+      }
     } finally {
       setSaving(false);
     }
@@ -108,9 +157,36 @@ export default function Ingresos() {
     } catch (_) {}
   }
 
+  // El filtro ofrece TODAS las categorías canónicas (las mismas que el alta)
+  // MÁS cualquier categoría que ya exista en los datos cargados (registros viejos
+  // como "Software", "Infraestructura", "Servicios"). Así el filtro y el alta
+  // coinciden, y nunca se pierde la posibilidad de filtrar un registro existente.
+  const categoriasDisponibles = Array.from(
+    new Set([...CATEGORIAS, ...ingresos.map((i) => i.categoria)])
+  ).sort((a, b) => a.localeCompare(b, 'es'));
+
   const ingresosFiltrados = filtroCategoria
     ? ingresos.filter((i) => i.categoria === filtroCategoria)
     : ingresos;
+
+  // "Fecha" se compara por período año-mes (no por día), para que los ingresos
+  // del mismo mes empaten y el monto pueda ordenarlos dentro del mes.
+  const periodoMes = (f) => {
+    const d = new Date(f);
+    return d.getFullYear() * 12 + d.getMonth();
+  };
+
+  const ingresosOrdenados = [...ingresosFiltrados].sort((a, b) => {
+    for (const criterio of orden) {
+      const cmp =
+        criterio.campo === 'monto'
+          ? a.monto - b.monto
+          : periodoMes(a.fecha) - periodoMes(b.fecha);
+      if (cmp !== 0) return criterio.dir === 'asc' ? cmp : -cmp;
+    }
+    // Desempate final: fecha exacta, más reciente primero.
+    return new Date(b.fecha) - new Date(a.fecha);
+  });
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -127,7 +203,7 @@ export default function Ingresos() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500, color: '#f8fafc' }}>Ingresos</h1>
         <button
-          onClick={() => setShowForm((v) => !v)}
+          onClick={() => { setShowForm((v) => !v); setFormError(''); }}
           style={{
             background: '#3b82f6', color: '#fff', border: 'none',
             borderRadius: '8px', padding: '8px 16px', fontSize: '14px',
@@ -157,7 +233,7 @@ export default function Ingresos() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Monto</label>
                 <input
-                  name="monto" type="number" step="0.01" min="0" required value={form.monto} onChange={handleFormChange}
+                  name="monto" type="number" step="0.01" required value={form.monto} onChange={handleFormChange}
                   placeholder="0.00"
                   style={inputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
@@ -185,6 +261,9 @@ export default function Ingresos() {
                 />
               </div>
             </div>
+            {formError && (
+              <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 12px 0' }}>{formError}</p>
+            )}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="submit" disabled={saving}
@@ -197,7 +276,7 @@ export default function Ingresos() {
                 {saving ? 'Guardando...' : 'Guardar'}
               </button>
               <button
-                type="button" onClick={() => setShowForm(false)}
+                type="button" onClick={() => { setShowForm(false); setFormError(''); }}
                 style={{
                   background: 'transparent', color: '#94a3b8',
                   border: '1px solid #1e293b', borderRadius: '8px',
@@ -218,7 +297,7 @@ export default function Ingresos() {
           style={{ ...inputStyle, width: 'auto', minWidth: '180px', cursor: 'pointer' }}
         >
           <option value="">Todas las categorías</option>
-          {CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+          {categoriasDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
@@ -226,9 +305,15 @@ export default function Ingresos() {
       <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
         {/* Header */}
         <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.5fr 1.5fr 1.5fr 90px', borderBottom: '1px solid #1e293b' }}>
-          {['Descripción', 'Categoría', 'Fecha', 'Monto', ''].map((h) => (
-            <div key={h} style={thStyle}>{h}</div>
-          ))}
+          <div style={thStyle}>Descripción</div>
+          <div style={thStyle}>Categoría</div>
+          <div style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleOrden('fecha')}>
+            Fecha{indicadorOrden('fecha')}
+          </div>
+          <div style={{ ...thStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleOrden('monto')}>
+            Monto{indicadorOrden('monto')}
+          </div>
+          <div style={thStyle}></div>
         </div>
 
         {/* Filas */}
@@ -236,18 +321,18 @@ export default function Ingresos() {
           <div style={{ padding: '32px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
             Cargando...
           </div>
-        ) : ingresosFiltrados.length === 0 ? (
+        ) : ingresosOrdenados.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: '#475569', fontSize: '14px' }}>
             No hay ingresos registrados
           </div>
         ) : (
-          ingresosFiltrados.map((ingreso, idx) => (
+          ingresosOrdenados.map((ingreso, idx) => (
             <div
               key={ingreso.id}
               style={{
                 display: 'grid', gridTemplateColumns: '3fr 1.5fr 1.5fr 1.5fr 90px',
                 alignItems: 'center',
-                borderBottom: idx < ingresosFiltrados.length - 1 ? '1px solid #1e293b' : 'none',
+                borderBottom: idx < ingresosOrdenados.length - 1 ? '1px solid #1e293b' : 'none',
               }}
             >
               <div style={{ padding: '12px 16px', fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

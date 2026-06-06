@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import statistics
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
+import numpy as np
 import pandas as pd
 import cmdstanpy  # noqa: F401 — debe importarse antes que Prophet para que use CMDSTANPY
 from prophet import Prophet
@@ -57,6 +58,10 @@ def _proyecciones_prophet(usuario_id: int, ingresos, periodos: int) -> list[Proy
     modelo.fit(df)
     # freq="MS" → Month Start: cada predicción es el primer día de cada mes
     futuro = modelo.make_future_dataframe(periods=periodos, freq="MS")
+    # Prophet calcula el intervalo de confianza (lower/upper) con simulación
+    # Monte Carlo. Fijamos la semilla para que el resultado sea REPRODUCIBLE:
+    # misma data → misma proyección, incluida la banda. Clave para defender el modelo.
+    np.random.seed(42)
     forecast = modelo.predict(futuro)
 
     return [

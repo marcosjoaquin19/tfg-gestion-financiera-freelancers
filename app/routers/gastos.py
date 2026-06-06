@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -8,10 +9,50 @@ from app.models.gasto import Gasto
 from app.schemas.gasto import GastoCreate, GastoResponse
 from app.dependencies import get_current_user
 from app.services.ia_service import clasificar_gasto
+from app.services.auditoria import VENTANA_DUPLICADOS_DIAS
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/gastos", tags=["Gastos"])
+
+
+def _marcar_duplicado_si_corresponde(db: Session, nuevo_gasto: Gasto) -> bool:
+    """Detección inmediata de duplicados al crear un gasto.
+
+    Si ya existe otro gasto del mismo usuario con igual monto y categoría
+    dentro de la ventana de días (misma regla que usa la Auditoría), marca
+    AMBOS como duplicados al instante. Así aparecen en "Solo duplicados" sin
+    necesidad de ejecutar la auditoría manualmente. La auditoría sigue siendo
+    la fuente para el resto de detectores (anomalías, facturas, etc.).
+    """
+    fecha = nuevo_gasto.fecha
+    fecha_naive = fecha.replace(tzinfo=None) if fecha.tzinfo else fecha
+    desde = fecha_naive - timedelta(days=VENTANA_DUPLICADOS_DIAS)
+    hasta = fecha_naive + timedelta(days=VENTANA_DUPLICADOS_DIAS)
+
+    candidatos = (
+        db.query(Gasto)
+        .filter(
+            Gasto.usuario_id == nuevo_gasto.usuario_id,
+            Gasto.id != nuevo_gasto.id,
+            Gasto.monto == nuevo_gasto.monto,
+            Gasto.categoria == nuevo_gasto.categoria,
+        )
+        .all()
+    )
+
+    coincidencias = [
+        g for g in candidatos
+        if desde <= (g.fecha.replace(tzinfo=None) if g.fecha.tzinfo else g.fecha) <= hasta
+    ]
+
+    if not coincidencias:
+        return False
+
+    nuevo_gasto.es_duplicado = True
+    for g in coincidencias:
+        g.es_duplicado = True
+    return True
 
 
 def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
@@ -81,6 +122,12 @@ def crear_gasto(
     db.add(nuevo_gasto)
     db.commit()
     db.refresh(nuevo_gasto)
+
+    # Marca duplicados al instante (mismo monto+categoría dentro de la ventana),
+    # para que se reflejen en "Solo duplicados" sin correr la auditoría a mano.
+    if _marcar_duplicado_si_corresponde(db, nuevo_gasto):
+        db.commit()
+        db.refresh(nuevo_gasto)
 
     # Aprende de a poco: cada N gastos nuevos, reentrenamos el modelo del
     # usuario en background. La política está en ml_service.

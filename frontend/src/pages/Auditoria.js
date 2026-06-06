@@ -18,6 +18,8 @@ const TIPO_CONFIG = {
   gasto_duplicado:           { color: '#fbbf24', label: 'Gasto duplicado' },
   anomalia_estadistica:      { color: '#f87171', label: 'Anomalía estadística' },
   discrepancia_facturacion:  { color: '#f87171', label: 'Discrepancia facturación' },
+  monotributo_impago:        { color: '#fbbf24', label: 'Monotributo impago' },
+  factura_impaga:            { color: '#f87171', label: 'Factura impaga' },
 };
 
 function ResolverBtn({ onClick }) {
@@ -47,12 +49,15 @@ export default function Auditoria() {
   const [ejecutando, setEjecutando] = useState(false);
   const [mensaje, setMensaje] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
-  const [soloPendientes, setSoloPendientes] = useState(false);
+  // Por defecto ocultamos las resueltas (pantalla limpia, sin lista infinita).
+  const [mostrarResueltas, setMostrarResueltas] = useState(false);
 
   async function fetchAlertas() {
     setLoading(true);
     try {
-      const res = await api.get('/alertas/', { params: { limite: 200 } });
+      // Traemos TODAS (incluidas las resueltas) para que se vean atenuadas con
+      // su etiqueta "Resuelta" y el filtro "Solo pendientes" tenga sentido.
+      const res = await api.get('/alertas/', { params: { limite: 200, solo_pendientes: false } });
       setAlertas(res.data);
     } catch (_) {
       setAlertas([]);
@@ -86,19 +91,49 @@ export default function Auditoria() {
     } catch (_) {}
   }
 
+  // Resuelve de raíz un gasto duplicado: elimina el gasto repetido y marca la
+  // alerta como resuelta. Refrescamos para reflejar el nuevo estado.
+  async function handleEliminarDuplicado(id) {
+    if (!window.confirm('Se eliminará el gasto repetido y la alerta quedará resuelta. ¿Continuar?')) return;
+    try {
+      await api.delete(`/alertas/${id}/gasto-duplicado`);
+      await fetchAlertas();
+    } catch (_) {}
+  }
+
+  // Reabre una alerta resuelta (vuelve a quedar pendiente).
+  async function handleReabrir(id) {
+    try {
+      await api.patch(`/alertas/${id}/resolver`, { resuelta: false });
+      setAlertas((prev) => prev.map((a) => a.id === id ? { ...a, resuelta: false } : a));
+    } catch (_) {}
+  }
+
+  // Borra del historial todas las alertas resueltas.
+  async function handleLimpiarResueltas() {
+    if (!window.confirm('Esto borra del historial todas las alertas resueltas. Si algún problema sigue existiendo, volverá a aparecer en la próxima auditoría. ¿Continuar?')) return;
+    try {
+      await api.delete('/alertas/resueltas');
+      await fetchAlertas();
+    } catch (_) {}
+  }
+
   let alertasFiltradas = alertas;
   if (filtroTipo) {
     alertasFiltradas = alertasFiltradas.filter((a) => a.tipo === filtroTipo);
   }
-  if (soloPendientes) {
+  if (!mostrarResueltas) {
     alertasFiltradas = alertasFiltradas.filter((a) => !a.resuelta);
   }
+  const totalResueltas = alertas.filter((a) => a.resuelta).length;
 
-  // Métricas
-  const duplicados    = alertas.filter((a) => a.tipo === 'gasto_duplicado').length;
-  const anomalias     = alertas.filter((a) => a.tipo === 'anomalia_estadistica').length;
-  const discrepancias = alertas.filter((a) => a.tipo === 'discrepancia_facturacion').length;
-  const monImpago     = alertas.filter((a) => a.tipo === 'factura_impaga').length;
+  // Métricas: contamos solo las ACTIVAS (no resueltas), que son las que el
+  // usuario todavía tiene que atender.
+  const activas       = alertas.filter((a) => !a.resuelta);
+  const duplicados    = activas.filter((a) => a.tipo === 'gasto_duplicado').length;
+  const anomalias     = activas.filter((a) => a.tipo === 'anomalia_estadistica').length;
+  const discrepancias = activas.filter((a) => a.tipo === 'discrepancia_facturacion').length;
+  const monImpago     = activas.filter((a) => a.tipo === 'monotributo_impago').length;
 
   return (
     <Layout activeSection="Auditoría">
@@ -156,14 +191,28 @@ export default function Auditoria() {
           <option value="gasto_duplicado">Gasto duplicado</option>
           <option value="anomalia_estadistica">Anomalía estadística</option>
           <option value="discrepancia_facturacion">Discrepancia facturación</option>
+          <option value="monotributo_impago">Monotributo impago</option>
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#94a3b8', cursor: 'pointer', userSelect: 'none' }}>
           <input
-            type="checkbox" checked={soloPendientes} onChange={(e) => setSoloPendientes(e.target.checked)}
+            type="checkbox" checked={mostrarResueltas} onChange={(e) => setMostrarResueltas(e.target.checked)}
             style={{ accentColor: '#3b82f6', width: '15px', height: '15px' }}
           />
-          Solo pendientes
+          Mostrar resueltas{totalResueltas > 0 ? ` (${totalResueltas})` : ''}
         </label>
+        {mostrarResueltas && totalResueltas > 0 && (
+          <button
+            onClick={handleLimpiarResueltas}
+            style={{
+              marginLeft: 'auto', background: 'transparent',
+              border: '1px solid #475569', color: '#94a3b8',
+              borderRadius: '8px', padding: '8px 14px',
+              fontSize: '13px', cursor: 'pointer',
+            }}
+          >
+            Limpiar historial
+          </button>
+        )}
       </div>
 
       {/* Lista de alertas */}
@@ -216,15 +265,42 @@ export default function Auditoria() {
                     </span>
                   </div>
                   {alerta.resuelta ? (
-                    <span style={{
-                      background: '#1a2e1a', color: '#4ade80',
-                      fontSize: '11px', fontWeight: 600,
-                      padding: '3px 10px', borderRadius: '4px',
-                    }}>
-                      Resuelta
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        background: '#1a2e1a', color: '#4ade80',
+                        fontSize: '11px', fontWeight: 600,
+                        padding: '3px 10px', borderRadius: '4px',
+                      }}>
+                        Resuelta
+                      </span>
+                      <button
+                        onClick={() => handleReabrir(alerta.id)}
+                        style={{
+                          background: 'transparent', border: '1px solid #475569',
+                          color: '#94a3b8', borderRadius: '6px',
+                          padding: '4px 12px', fontSize: '12px', cursor: 'pointer',
+                        }}
+                      >
+                        Reabrir
+                      </button>
+                    </div>
                   ) : (
-                    <ResolverBtn onClick={() => handleResolver(alerta.id)} />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {alerta.tipo === 'gasto_duplicado' && (
+                        <button
+                          onClick={() => handleEliminarDuplicado(alerta.id)}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid #f87171', color: '#f87171',
+                            borderRadius: '6px', padding: '4px 12px',
+                            fontSize: '12px', cursor: 'pointer',
+                          }}
+                        >
+                          Eliminar duplicado
+                        </button>
+                      )}
+                      <ResolverBtn onClick={() => handleResolver(alerta.id)} />
+                    </div>
                   )}
                 </div>
               </div>
