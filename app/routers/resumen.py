@@ -26,7 +26,7 @@ def resumen_financiero(
     mes_final = mes or hoy.month
     anio_final = anio or hoy.year
 
-    resumen, generado_con_ia = generar_resumen_financiero(
+    resumen, generado_con_ia, sin_datos = generar_resumen_financiero(
         usuario_id=current_user.id,
         db=db,
         mes=mes_final,
@@ -36,5 +36,6 @@ def resumen_financiero(
     return {
         "resumen": resumen,
         "generado_con_ia": generado_con_ia,
+        "sin_datos": sin_datos,
         "periodo": f"{MESES_ES[mes_final]} {anio_final}",
     }

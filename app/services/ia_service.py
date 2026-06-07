@@ -37,7 +37,8 @@ def _fallback_resumen(mes: int, anio: int, total_ingresos: Decimal, cant_ingreso
     )
 
 
-def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int) -> tuple[str, bool]:
+def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int) -> tuple[str, bool, bool]:
+    """Devuelve (texto, generado_con_ia, sin_datos)."""
     # Ingresos del mes
     ingresos = db.query(Ingreso).filter(
         Ingreso.usuario_id == usuario_id,
@@ -66,6 +67,15 @@ def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int
     cant_facturas_pend = len(facturas_pendientes)
     total_facturas_pend = sum(f.monto for f in facturas_pendientes) or Decimal("0")
 
+    # Mes sin actividad: no tiene sentido invocar la IA (devolvía textos raros
+    # mezclando facturas pendientes de otros meses). Mostramos un mensaje claro.
+    if cant_ingresos == 0 and total_gastos == 0:
+        mensaje = (
+            f"No registramos ingresos ni gastos en {MESES_ES[mes]} {anio}. "
+            f"Cuando cargues movimientos de este mes, vas a ver acá el resumen de tu situación financiera."
+        )
+        return mensaje, False, True
+
     # Armar contexto para el prompt
     detalle_gastos = ", ".join(
         f"{r.categoria}: ${r.total:.2f}" for r in gastos_por_categoria
@@ -86,7 +96,7 @@ Resumí la situación financiera destacando los puntos más relevantes."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return _fallback_resumen(mes, anio, total_ingresos, cant_ingresos,
-                                 total_gastos, cant_facturas_pend, total_facturas_pend), False
+                                 total_gastos, cant_facturas_pend, total_facturas_pend), False, False
 
     try:
         model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -98,29 +108,16 @@ Resumí la situación financiera destacando los puntos más relevantes."""
             temperature=0.7,
         )
         resumen = response.choices[0].message.content.strip()
-        return resumen, True
+        return resumen, True, False
 
     except Exception as e:
         logger.error(f"Error Groq generar_resumen_financiero: {e}")
         return _fallback_resumen(mes, anio, total_ingresos, cant_ingresos,
-                                 total_gastos, cant_facturas_pend, total_facturas_pend), False
+                                 total_gastos, cant_facturas_pend, total_facturas_pend), False, False
 
 
-def _recomendaciones_fallback(alertas, facturas_pend, facturas_venc, aumentos) -> list[str]:
-    recs = []
-    if alertas:
-        recs.append(f"Tenés {len(alertas)} alerta(s) de auditoría sin resolver. Revisalas para evitar problemas contables.")
-    if facturas_venc:
-        total = sum(f.monto for f in facturas_venc)
-        recs.append(f"Tenés {len(facturas_venc)} factura(s) vencida(s) por ${total:.2f}. Contactá a tus clientes para gestionar el cobro.")
-    if facturas_pend:
-        total = sum(f.monto for f in facturas_pend)
-        recs.append(f"Hay {len(facturas_pend)} factura(s) pendiente(s) por ${total:.2f}. Hacé seguimiento para mantener tu flujo de caja.")
-    for cat, pct in aumentos:
-        recs.append(f"Tus gastos en {cat} aumentaron un {pct:.0f}% respecto al mes anterior. Revisá si es un gasto recurrente necesario.")
-    if not recs:
-        recs.append("Tu situación financiera parece estable. Seguí registrando tus ingresos y gastos para mantener un buen control.")
-    return recs[:5]
+AHORRO_PCT_MIN = 0.10  # meta sana de ahorro: 10%–20% de los ingresos (regla 50/30/20)
+AHORRO_PCT_MAX = 0.20
 
 
 def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
@@ -171,68 +168,81 @@ def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
                 aumentos.append((cat, pct))
     aumentos.sort(key=lambda x: x[1], reverse=True)
 
-    # Proyecciones próximos 30 días
-    proyecciones = db.query(Proyeccion).filter(
-        Proyeccion.usuario_id == usuario_id,
-    ).order_by(Proyeccion.fecha_proyeccion).limit(30).all()
-    total_proyectado = sum(p.monto_proyectado for p in proyecciones) or Decimal("0")
+    # Superávit promedio mensual (ventana de 6 meses) para el consejo de ahorro.
+    from datetime import timedelta
+    from app.services.formato import formato_pesos_ar
+    desde = hoy - timedelta(days=180)
+    ingresos_win = db.query(Ingreso).filter(
+        Ingreso.usuario_id == usuario_id, Ingreso.fecha >= desde,
+    ).all()
+    gastos_win = db.query(Gasto).filter(
+        Gasto.usuario_id == usuario_id, Gasto.fecha >= desde,
+    ).all()
+    meses_set = (
+        {(i.fecha.year, i.fecha.month) for i in ingresos_win}
+        | {(g.fecha.year, g.fecha.month) for g in gastos_win}
+    )
+    n_meses = max(len(meses_set), 1)
+    prom_ing = float(sum(i.monto for i in ingresos_win) or 0) / n_meses
+    prom_gas = float(sum(g.monto for g in gastos_win) or 0) / n_meses
+    superavit = prom_ing - prom_gas
 
-    # Soberanía de datos: armamos el contexto con datos AGREGADOS solamente.
-    # Las descripciones individuales de alertas pueden incluir nombres de
-    # clientes, fechas específicas u otros datos identificables — por eso
-    # se reemplazan por conteos por tipo.
-    from collections import Counter
-    conteo_alertas = Counter(a.tipo.value for a in alertas)
-    alertas_txt = "\n".join(
-        f"- {tipo}: {cantidad} alerta(s) sin resolver"
-        for tipo, cantidad in conteo_alertas.items()
-    ) or "Ninguna"
+    # Recomendaciones determinísticas (sin IA): reglas sobre los datos. Estables,
+    # reproducibles y dinámicas (desaparecen cuando el problema se resuelve).
+    # Cada situación genera su propia recomendación, ordenadas por urgencia.
+    recs: list[str] = []
 
-    fact_pend_txt = f"{len(facturas_pend)} factura(s) pendientes por ${sum(f.monto for f in facturas_pend) or 0:.2f}"
-    fact_venc_txt = f"{len(facturas_venc)} factura(s) vencidas por ${sum(f.monto for f in facturas_venc) or 0:.2f}"
-    aumentos_txt = "\n".join(f"- {cat}: +{pct:.0f}%" for cat, pct in aumentos) or "Ningún aumento significativo"
-    proyeccion_txt = f"${total_proyectado:.2f} proyectados en los próximos 30 días" if proyecciones else "Sin proyecciones disponibles"
-
-    prompt = f"""Eres un asesor financiero para freelancers.
-Basándote en los datos financieros del usuario, generá entre 3 y 5 recomendaciones concretas y accionables en español.
-Cada recomendación debe ser una oración clara y directa. Devolvé SOLO las recomendaciones, una por línea, sin numeración ni viñetas.
-
-Alertas de auditoría sin resolver:
-{alertas_txt}
-
-Facturas: {fact_pend_txt} | {fact_venc_txt}
-
-Aumentos de gastos vs mes anterior:
-{aumentos_txt}
-
-Proyección de ingresos: {proyeccion_txt}"""
-
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key:
-        return {
-            "recomendaciones": _recomendaciones_fallback(alertas, facturas_pend, facturas_venc, aumentos),
-            "generado_con_ia": False,
-        }
-
-    try:
-        model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-        client = Groq(api_key=api_key)
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=400,
-            temperature=0.6,
+    if facturas_venc:
+        total = sum(f.monto for f in facturas_venc)
+        recs.append(
+            f"Tenés {len(facturas_venc)} factura(s) vencida(s) por {formato_pesos_ar(total)} sin cobrar. "
+            f"Contactá a esos clientes: es plata que ya deberías haber recibido."
         )
-        texto = response.choices[0].message.content.strip()
-        recomendaciones = [r.strip() for r in texto.splitlines() if r.strip()][:5]
-        return {"recomendaciones": recomendaciones, "generado_con_ia": True}
+    if alertas:
+        recs.append(
+            f"Tenés {len(alertas)} alerta(s) de auditoría sin resolver. "
+            f"Revisalas en la sección Auditoría para mantener tus datos sanos."
+        )
+    if facturas_pend:
+        total = sum(f.monto for f in facturas_pend)
+        recs.append(
+            f"Tenés {len(facturas_pend)} factura(s) pendiente(s) de cobro por {formato_pesos_ar(total)}. "
+            f"Hacé seguimiento para no cortar tu flujo de caja."
+        )
 
-    except Exception as e:
-        logger.error(f"Error Groq generar_recomendaciones: {e}")
-        return {
-            "recomendaciones": _recomendaciones_fallback(alertas, facturas_pend, facturas_venc, aumentos),
-            "generado_con_ia": False,
-        }
+    # Picos de gasto: valor agregado, no se ve en otro módulo.
+    for cat, pct in aumentos[:2]:
+        recs.append(
+            f"Tus gastos en {cat} subieron {pct:.0f}% respecto al mes anterior. "
+            f"Revisá si es un gasto necesario o si podés recortarlo."
+        )
+
+    # (3) Consejo de ahorro: SIEMPRE presente cuando hay ingresos. Dos casos.
+    if prom_ing > 0:
+        ahorro_min = prom_ing * AHORRO_PCT_MIN
+        ahorro_max = prom_ing * AHORRO_PCT_MAX
+        rango_pct = f"{int(AHORRO_PCT_MIN * 100)}%–{int(AHORRO_PCT_MAX * 100)}%"
+        if superavit > 0:
+            recs.append(
+                f"Este período te quedó superávit ({formato_pesos_ar(superavit)} por mes: cobrás más de lo que gastás). "
+                f"Aprovechalo y destiná entre el {rango_pct} de tus ingresos "
+                f"({formato_pesos_ar(ahorro_min)} a {formato_pesos_ar(ahorro_max)} por mes) a un fondo de reserva "
+                f"o una inversión conservadora como un plazo fijo."
+            )
+        else:
+            recs.append(
+                f"⚠️ No te quedó superávit: en promedio gastás tanto o más de lo que ingresás "
+                f"(déficit de {formato_pesos_ar(abs(superavit))} por mes). Ajustá tus gastos y apuntá a ahorrar al menos "
+                f"el {rango_pct} de lo que generás cada mes ({formato_pesos_ar(ahorro_min)} a {formato_pesos_ar(ahorro_max)})."
+            )
+
+    if not recs:
+        recs.append(
+            "Tu situación financiera está en orden: sin pendientes y con los gastos controlados. "
+            "Seguí registrando tus movimientos para mantener el control."
+        )
+
+    return {"recomendaciones": recs, "generado_con_ia": False}
 
 
 UMBRAL_CONFIANZA_ML = 0.30

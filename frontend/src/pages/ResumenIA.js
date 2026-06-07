@@ -69,6 +69,22 @@ export default function ResumenIA() {
         <div style={{ textAlign: 'center', color: '#64748b', fontSize: '14px', padding: '48px' }}>
           Generando resumen...
         </div>
+      ) : resumen && resumen.sin_datos ? (
+        <div style={{
+          background: '#161b27', border: '1px solid #1e293b',
+          borderRadius: '12px', padding: '28px', maxWidth: '700px',
+          display: 'flex', alignItems: 'center', gap: '14px',
+        }}>
+          <span style={{ fontSize: '26px' }}>📭</span>
+          <div>
+            <p style={{ margin: '0 0 4px 0', fontSize: '15px', color: '#e2e8f0', fontWeight: 500 }}>
+              {resumen.periodo}: sin movimientos
+            </p>
+            <p style={{ margin: 0, fontSize: '14px', color: '#64748b', lineHeight: 1.6 }}>
+              {resumen.resumen}
+            </p>
+          </div>
+        </div>
       ) : resumen ? (
         <div style={{ background: '#0f1e35', border: '1px solid #1e3a5f', borderRadius: '12px', padding: '28px', maxWidth: '700px' }}>
           {/* Header de la card */}

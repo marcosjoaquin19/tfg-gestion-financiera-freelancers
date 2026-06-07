@@ -82,7 +82,7 @@ export default function Recomendaciones() {
                   color: genConIA ? '#93c5fd' : '#64748b',
                   borderRadius: '4px', padding: '2px 8px',
                 }}>
-                  {genConIA ? 'generado con IA' : 'sin IA'}
+                  {genConIA ? 'generado con IA' : 'basado en tus datos'}
                 </span>
               </div>
             </div>

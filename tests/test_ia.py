@@ -88,7 +88,7 @@ def test_resumen_financiero_sin_auth(client):
 
 
 def test_resumen_financiero_exitoso(client, auth_headers):
-    mock_resumen = ("Tus finanzas están en orden este mes.", True)
+    mock_resumen = ("Tus finanzas están en orden este mes.", True, False)
     with patch("app.routers.resumen.generar_resumen_financiero", return_value=mock_resumen):
         response = client.get("/resumen/financiero?mes=3&anio=2026", headers=auth_headers)
     assert response.status_code == 200
