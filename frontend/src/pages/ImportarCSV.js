@@ -34,8 +34,9 @@ export default function ImportarCSV() {
 
   function handleFile(f) {
     if (!f) return;
-    if (!f.name.endsWith('.csv')) {
-      setErrorMsg('Solo se aceptan archivos .csv');
+    const nombre = f.name.toLowerCase();
+    if (!nombre.endsWith('.csv') && !nombre.endsWith('.xlsx')) {
+      setErrorMsg('Solo se aceptan archivos .csv o .xlsx');
       return;
     }
     setErrorMsg('');
@@ -172,13 +173,13 @@ export default function ImportarCSV() {
                   <p style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#94a3b8' }}>
                     Arrastrá tu CSV acá o hacé click para seleccionar
                   </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>Solo archivos .csv</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#475569' }}>Archivos .csv o .xlsx (Excel)</p>
                 </>
               )}
               <input
                 ref={inputRef}
                 type="file"
-                accept=".csv"
+                accept=".csv,.xlsx"
                 style={{ display: 'none' }}
                 onChange={(e) => handleFile(e.target.files[0])}
               />

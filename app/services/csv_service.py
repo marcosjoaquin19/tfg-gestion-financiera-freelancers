@@ -268,6 +268,14 @@ def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) 
     """
     resultado = []
     for mov in movimientos:
+        # El clasificador está entrenado con categorías de GASTO (Software,
+        # Suscripciones, Transporte...). Aplicárselo a un ingreso le asignaría
+        # una categoría que no existe en el módulo de ingresos y rompería sus
+        # filtros, así que los ingresos entran como "Otros" y el usuario los
+        # recategoriza si quiere.
+        if mov.get("tipo") != "gasto":
+            resultado.append({**mov, "categoria": "Otros"})
+            continue
         try:
             clasificacion = clasificar_gasto(mov["descripcion"], db, usuario_id)
             categoria = clasificacion.get("categoria_sugerida", "Otros")

@@ -213,6 +213,12 @@ def _estilos():
         textColor=colors.HexColor("#1f3a5f"),
     ))
     base.add(ParagraphStyle(
+        name="Celda",
+        parent=base["Normal"],
+        fontSize=8,
+        leading=10,
+    ))
+    base.add(ParagraphStyle(
         name="Pie",
         parent=base["Normal"],
         fontSize=8,
@@ -352,12 +358,12 @@ def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
     # a transmisiones a servicios externos.
     detalle_lineas = [["Tipo", "Detalle", "Monto"]]
     for a in alertas[:20]:  # cap visual razonable: si hay más, se ve en la app.
+        # Paragraph (no string plano) para que ReportLab haga wrap dentro de
+        # la columna: un string largo desborda la celda y pisa la de Monto.
         descripcion = a.descripcion or ""
-        if len(descripcion) > 90:
-            descripcion = descripcion[:87] + "..."
         detalle_lineas.append([
             a.tipo.value,
-            descripcion,
+            Paragraph(descripcion, estilos["Celda"]),
             _fmt_pesos(a.monto_involucrado) if a.monto_involucrado else "—",
         ])
     tabla_detalle = _tabla_estandar(detalle_lineas, col_widths=[4 * cm, 9 * cm, 3 * cm])

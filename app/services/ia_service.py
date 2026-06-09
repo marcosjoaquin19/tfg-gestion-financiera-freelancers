@@ -246,14 +246,13 @@ def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
 
 
 UMBRAL_CONFIANZA_ML = 0.30
-# El SVM lineal no devuelve probabilidades nativas: se calcula softmax sobre
-# decision_function() para obtener un score normalizado. Con 12 clases, las
-# confianzas reales rara vez superan 0.50 incluso en aciertos claros (porque
-# el softmax reparte densidad entre todas las categorías). Empíricamente, las
-# predicciones por debajo de 0.30 corresponden a casos donde dos o más
-# categorías compiten cabeza a cabeza y el modelo está dudando — esos sí se
-# marcan para revisión del usuario. Por encima de 0.30, en cambio, hay una
-# clase claramente dominante.
+# El SVM lineal no devuelve probabilidades nativas: la confianza se deriva de
+# la brecha entre el mejor y el segundo mejor margen de decision_function(),
+# mapeada a [0, 1) con 1 - e^(-brecha) (ver ml_service._confianza_svm). Vale 0
+# ante un empate (dos categorías compiten cabeza a cabeza) y tiende a 1 cuando
+# hay una clase claramente dominante. Por debajo de 0.30 (brecha < ~0.36) el
+# modelo está dudando y la predicción se marca para revisión del usuario; para
+# Naive Bayes se usa directamente la probabilidad de predict_proba.
 
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict:

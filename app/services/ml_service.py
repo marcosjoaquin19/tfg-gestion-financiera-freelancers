@@ -800,9 +800,23 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str]
         return pipeline, modelo_base.algoritmo
 
 
-def _softmax(x: np.ndarray) -> np.ndarray:
-    e_x = np.exp(x - np.max(x))
-    return e_x / e_x.sum()
+def _confianza_svm(scores: np.ndarray) -> tuple[int, float]:
+    """Confianza para LinearSVC a partir del margen entre las dos mejores clases.
+
+    El softmax directo sobre decision_function() no sirve como confianza: con
+    12 clases reparte densidad entre todas y hasta los aciertos claros quedan
+    en ~0.20, por debajo de cualquier umbral razonable. En cambio, la brecha
+    top1 - top2 sí refleja la duda del modelo: 0 ante un empate (dos clases
+    compiten cabeza a cabeza) y crece cuando hay una dominante. La mapeamos a
+    [0, 1) con 1 - e^(-brecha), monótona y acotada.
+    """
+    if len(scores) == 1:
+        # Caso binario: decision_function devuelve un único margen con signo.
+        idx = 1 if scores[0] > 0 else 0
+        return idx, float(1.0 - np.exp(-abs(float(scores[0]))))
+    orden = np.argsort(scores)[::-1]
+    brecha = float(scores[orden[0]] - scores[orden[1]])
+    return int(orden[0]), float(1.0 - np.exp(-brecha))
 
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
@@ -811,14 +825,14 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
         clases = pipeline.classes_
 
         if algoritmo == "svm":
-            scores = pipeline.decision_function([descripcion])[0]
-            probas = _softmax(np.array(scores, dtype=float))
+            scores = np.array(pipeline.decision_function([descripcion])[0], dtype=float).ravel()
+            idx, confianza = _confianza_svm(scores)
         else:
             probas = pipeline.predict_proba([descripcion])[0]
+            idx = int(np.argmax(probas))
+            confianza = float(probas[idx])
 
-        idx = int(np.argmax(probas))
         categoria = clases[idx]
-        confianza = float(probas[idx])
 
         return {
             "categoria": categoria,
