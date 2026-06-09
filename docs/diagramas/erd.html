@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #ffffff; }
+  #canvas {
+    position: relative;
+    width: 1240px;
+    height: 1180px;
+    background: #ffffff;
+    font-family: "Helvetica Neue", Arial, sans-serif;
+  }
+  svg.links { position: absolute; top: 0; left: 0; width: 1240px; height: 1180px; z-index: 0; }
+  .tbl {
+    position: absolute;
+    width: 270px;
+    background: #ffffff;
+    border: 1px solid #7d7d7d;
+    z-index: 1;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .tbl .hd {
+    text-align: center;
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: .4px;
+    color: #1f1f1f;
+    padding: 6px 4px;
+    border-bottom: 1px solid #7d7d7d;
+  }
+  .hd.red { background: #f8cecc; }
+  .hd.blue { background: #dae8fc; }
+  .tbl .fld {
+    font-size: 11.5px;
+    color: #222;
+    padding: 3px 8px;
+    border-bottom: 1px solid #ededed;
+    white-space: nowrap;
+  }
+  .tbl .fld:last-child { border-bottom: none; }
+  .pk { font-weight: 700; }
+  .key { color: #7a4f9e; font-weight: 700; }
+  .uk { color: #2f6f3e; font-weight: 700; }
+  .legend {
+    position: absolute;
+    width: 320px;
+    background: #ffffff;
+    border: 1px solid #b3b3b3;
+    z-index: 1;
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #333;
+    line-height: 1.5;
+  }
+  .legend b { display:block; margin-bottom:3px; font-size:11.5px; }
+</style>
+</head>
+<body>
+<div id="canvas">
+  <svg class="links">
+    <!-- lines from USUARIOS center (620,150) to each related table center; opaque boxes occlude the parts behind them -->
+    <g stroke="#8a8a8a" stroke-width="1.4" fill="none">
+      <line x1="620" y1="150" x2="165"  y2="150"/>   <!-- INGRESOS -->
+      <line x1="620" y1="150" x2="1075" y2="150"/>    <!-- GASTOS -->
+      <line x1="620" y1="150" x2="165"  y2="470"/>    <!-- FACTURAS -->
+      <line x1="620" y1="150" x2="1075" y2="470"/>    <!-- PROYECCIONES -->
+      <line x1="620" y1="150" x2="165"  y2="760"/>    <!-- ALERTAS_AUDITORIA -->
+      <line x1="620" y1="150" x2="620"  y2="760"/>    <!-- MODELOS_CLASIFICADOR -->
+      <line x1="620" y1="150" x2="620"  y2="1020"/>   <!-- CACHE_CLASIFICACION (corregido) -->
+    </g>
+  </svg>
+
+  <!-- ROW 1 -->
+  <div class="tbl" style="left:30px;  top:30px;">
+    <div class="hd red">INGRESOS</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int)</div>
+    <div class="fld">descripcion (string)</div>
+    <div class="fld">monto (numeric 12,2)</div>
+    <div class="fld">categoria (string)</div>
+    <div class="fld">fecha (datetime)</div>
+    <div class="fld">fecha_creacion (datetime)</div>
+  </div>
+
+  <div class="tbl" style="left:485px; top:30px;">
+    <div class="hd red">USUARIOS</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld">nombre (string)</div>
+    <div class="fld">email (string, <span class="uk">UK</span>)</div>
+    <div class="fld">password_hash (string)</div>
+    <div class="fld">es_activo (bool)</div>
+    <div class="fld">categoria_monotributo (str)</div>
+    <div class="fld">actividad_monotributo (str)</div>
+    <div class="fld">fecha_creacion (datetime)</div>
+  </div>
+
+  <div class="tbl" style="left:940px; top:30px;">
+    <div class="hd red">GASTOS</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int)</div>
+    <div class="fld">descripcion (string)</div>
+    <div class="fld">monto (numeric 12,2)</div>
+    <div class="fld">categoria (string)</div>
+    <div class="fld">fecha (datetime)</div>
+    <div class="fld">es_duplicado (bool)</div>
+    <div class="fld">fecha_creacion (datetime)</div>
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="tbl" style="left:30px;  top:330px;">
+    <div class="hd blue">FACTURAS</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int)</div>
+    <div class="fld">cliente_nombre (string)</div>
+    <div class="fld">descripcion (string)</div>
+    <div class="fld">monto (numeric 12,2)</div>
+    <div class="fld">estado (enum)</div>
+    <div class="fld">fecha_emision (datetime)</div>
+    <div class="fld">fecha_vencimiento (datetime)</div>
+    <div class="fld">fecha_pago (datetime, null)</div>
+    <div class="fld">fecha_creacion (datetime)</div>
+  </div>
+
+  <div class="tbl" style="left:940px; top:330px;">
+    <div class="hd blue">PROYECCIONES</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int)</div>
+    <div class="fld">fecha_proyeccion (datetime)</div>
+    <div class="fld">monto_proyectado (num)</div>
+    <div class="fld">monto_lower (num)</div>
+    <div class="fld">monto_upper (num)</div>
+    <div class="fld">fecha_generacion (datetime)</div>
+  </div>
+
+  <!-- ROW 3 -->
+  <div class="tbl" style="left:30px;  top:640px;">
+    <div class="hd blue">ALERTAS_AUDITORIA</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int)</div>
+    <div class="fld">tipo (enum)</div>
+    <div class="fld">descripcion (string)</div>
+    <div class="fld">monto_involucrado (num, null)</div>
+    <div class="fld">resuelta (bool)</div>
+    <div class="fld">fecha_deteccion (datetime)</div>
+  </div>
+
+  <div class="tbl" style="left:485px; top:640px;">
+    <div class="hd blue">MODELOS_CLASIFICADOR</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int, null)</div>
+    <div class="fld">modelo_serializado (text)</div>
+    <div class="fld">algoritmo (string)</div>
+    <div class="fld">precision (float)</div>
+    <div class="fld">n_ejemplos (int)</div>
+    <div class="fld">fecha_entrenamiento (dt)</div>
+    <div class="fld">activo (bool)</div>
+  </div>
+
+  <div class="tbl" style="left:940px; top:640px;">
+    <div class="hd blue">CATEGORIAS_MONOTRIBUTO</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld">letra (string, <span class="uk">UK</span>)</div>
+    <div class="fld">limite_anual (num 15,2)</div>
+    <div class="fld">cuota_mensual (num 12,2)</div>
+    <div class="fld">actividad (string)</div>
+    <div class="fld">fecha_vigencia (date)</div>
+    <div class="fld">activa (bool)</div>
+  </div>
+
+  <!-- ROW 4: leyenda + CACHE corregida -->
+  <div class="legend" style="left:30px; top:945px;">
+    <b>Leyenda</b>
+    PK = Primary Key (clave primaria)<br>
+    FK = Foreign Key (clave foránea)<br>
+    UK = Unique Key (clave única)<br>
+    || = relación uno (cardinalidad)<br>
+    &lt;&lt; = relación muchos (cardinalidad)<br>
+    Notación: ER de Chen con crow's foot
+  </div>
+
+  <div class="tbl" style="left:485px; top:910px;">
+    <div class="hd blue">CACHE_CLASIFICACION</div>
+    <div class="fld pk">PK · id (int)</div>
+    <div class="fld"><span class="key">FK</span> · usuario_id (int, null)</div>
+    <div class="fld">descripcion_normalizada (string)</div>
+    <div class="fld">categoria (string)</div>
+    <div class="fld">fecha_creacion (datetime)</div>
+    <div class="fld"><span class="uk">UK</span> (usuario_id, descripcion_normalizada)</div>
+  </div>
+
+</div>
+</body>
+</html>
