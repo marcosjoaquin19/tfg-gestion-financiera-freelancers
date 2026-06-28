@@ -8,7 +8,7 @@ funciona sin configuración manual.
 | Archivo | Banco | Separador | Formato fecha | Montos |
 |---|---|---|---|---|
 | `galicia.csv` | Galicia | `;` (punto y coma) | `dd/mm/yyyy` | Débito/Crédito en columnas separadas |
-| `santander.csv` | Santander | `,` (coma) | `yyyy-mm-dd` | Importe único con signo |
+| `mercadopago.csv` | Mercado Pago | `,` (coma) | `yyyy-mm-dd` | Columna `Valor` con signo (incluye Hora, ID, Medio, Saldo) |
 | `brubank.csv` | Brubank | `,` (coma) | `yyyy-mm-dd` | Monto único con signo |
 
 ## Cómo usarlos

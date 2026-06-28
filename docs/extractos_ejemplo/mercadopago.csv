@@ -1,0 +1,6 @@
+Fecha,Hora,ID de operación,Descripción,Medio,Valor,Saldo
+2026-06-02,09:14:22,80345112233,Cobro a cliente Cometa por servicio,Transferencia,175000.00,175000.00
+2026-06-05,18:40:01,80345118899,Pago QR Mercado Libre insumos,QR,-23400.75,151599.25
+2026-06-09,11:02:55,80345123344,Comision por cobro,Comisión,-6125.00,145474.25
+2026-06-14,20:15:33,80345130055,Cobro proyecto Estrella,Link de pago,98000.00,243474.25
+2026-06-18,08:51:10,80345137766,SUBE carga transporte,QR,-5000.00,238474.25
