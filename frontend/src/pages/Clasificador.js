@@ -1,3 +1,11 @@
+/**
+ * Pantalla Clasificador — playground del modelo de ML.
+ *
+ * Muestra el estado del clasificador de gastos (algoritmo, precisión, cantidad
+ * de ejemplos) y ofrece un "playground" para probar una descripción y ver qué
+ * categoría predice. Permite corregir la predicción y reentrenar el modelo
+ * (endpoints de /ml).
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';

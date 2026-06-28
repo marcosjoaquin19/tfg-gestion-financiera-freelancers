@@ -1,3 +1,11 @@
+"""
+Servicio de Autenticación — seguridad de contraseñas y tokens JWT.
+
+Centraliza las funciones de seguridad: hashear y verificar contraseñas (bcrypt)
+y crear/decodificar los tokens JWT que identifican al usuario en cada request.
+Lo usan el router de auth (login/registro) y la dependencia get_current_user.
+"""
+
 from passlib.context import CryptContext
 # CryptContext → maneja el hasheo de passwords, soporta múltiple algoritmos
 # nosotros vamos a usar bcrypt, que es el estándar actual
@@ -57,9 +65,8 @@ def hashear_password(password: str) -> str:
 
 
 def verificar_password(password_plano: str, password_hash: str) -> bool:
-    # compara el password que manda el usuario con el hash guardado en la BD
-    # devuelve True si coinciden, False si no
-    # Analogía: es como comparar una llave con una cerradura
+    # Compara la contraseña en texto plano con el hash guardado en la BD.
+    # Devuelve True si coinciden, False si no.
     return pwd_context.verify(password_plano, password_hash)
 
 

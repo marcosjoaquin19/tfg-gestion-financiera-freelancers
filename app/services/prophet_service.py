@@ -1,3 +1,12 @@
+"""
+Servicio de Proyecciones — predicción de ingresos con Prophet.
+
+Usa la librería Prophet (modelo de series temporales de Meta) para predecir los
+ingresos futuros del freelancer a partir de su historial. Devuelve, por período,
+el monto estimado y el rango (inferior/superior) del intervalo de confianza.
+Requiere un mínimo de ingresos históricos para entrenar; si no, no proyecta.
+"""
+
 from datetime import datetime, timezone
 import statistics
 from dateutil.relativedelta import relativedelta

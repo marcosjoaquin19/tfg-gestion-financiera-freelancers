@@ -1,3 +1,11 @@
+"""
+Tests del módulo de Facturas (/facturas).
+
+Verifican el CRUD y las reglas de negocio: vencimiento posterior a la emisión,
+cambios de estado (pendiente/pagada/vencida) y que una factura pagada no se
+pueda editar ni eliminar.
+"""
+
 FACTURA_BASE = {
     "cliente_nombre": "Acme Corp",
     "descripcion": "Desarrollo sitio web",

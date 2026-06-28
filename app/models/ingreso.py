@@ -1,3 +1,10 @@
+"""
+Modelo de datos: Ingreso.
+
+Representa la tabla `ingresos`. Cada fila es un cobro registrado por el
+freelancer (monto, categoría y fecha), asociado al usuario dueño.
+"""
+
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -7,11 +14,10 @@ class Ingreso(Base):
     __tablename__ = "ingresos"
 
     id = Column(Integer, primary_key=True, index=True)
-    
+
     usuario_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
-    # ForeignKey → este campo apunta a la tabla usuarios
-    # Analogía: es como una referencia cruzada entre planillas
-    
+    # ForeignKey → vincula el ingreso con su usuario en la tabla usuarios
+
     descripcion = Column(String(255), nullable=False)
     # ej: "Proyecto web para cliente X"
     
@@ -26,6 +32,5 @@ class Ingreso(Base):
     
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
 
-    # Relación con la tabla usuarios
-    # Analogía: desde un ingreso puedo acceder a los datos del usuario dueño
+    # Relación inversa: permite acceder al usuario dueño desde un ingreso.
     usuario = relationship("Usuario", back_populates="ingresos")

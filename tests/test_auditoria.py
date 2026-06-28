@@ -1,3 +1,11 @@
+"""
+Tests del módulo de Auditoría (/alertas).
+
+Verifican que la auditoría detecte correctamente las anomalías (gastos
+duplicados, montos atípicos, monotributo impago, etc.) y que las alertas se
+puedan listar y marcar como resueltas.
+"""
+
 from datetime import datetime, timedelta
 
 GASTO_BASE = {"descripcion": "Gasto test", "monto": 1000, "categoria": "Software", "fecha": "2026-03-01T10:00:00"}

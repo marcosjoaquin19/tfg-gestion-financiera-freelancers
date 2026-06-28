@@ -1,3 +1,14 @@
+"""
+Configuración compartida de los tests (pytest).
+
+Define las fixtures que reutilizan todos los archivos de test:
+  - db:                  base de datos SQLite en memoria, limpia por test.
+  - client:              cliente HTTP de prueba apuntando a la app real.
+  - usuario_registrado:  crea un usuario de prueba.
+  - auth_headers:        header Authorization ya autenticado para las requests.
+Usar SQLite en memoria hace que la suite sea rápida y no toque PostgreSQL.
+"""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

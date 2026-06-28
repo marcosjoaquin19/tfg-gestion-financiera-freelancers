@@ -1,3 +1,9 @@
+/**
+ * Pantalla Recomendaciones — consejos financieros.
+ *
+ * Muestra la lista de recomendaciones que el backend calcula de forma
+ * determinística a partir de los datos del usuario (endpoint /recomendaciones).
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

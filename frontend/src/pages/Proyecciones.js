@@ -1,3 +1,10 @@
+/**
+ * Pantalla Proyecciones — predicción de ingresos.
+ *
+ * Permite generar y visualizar (en un gráfico) la proyección de ingresos
+ * futuros calculada por el modelo Prophet en el backend. Muestra el monto
+ * estimado por período junto con su rango de confianza.
+ */
 import { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

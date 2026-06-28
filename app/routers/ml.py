@@ -1,3 +1,17 @@
+"""
+Router de Machine Learning — clasificador de gastos.
+
+Expone bajo /ml las operaciones del clasificador que asigna una categoría a un
+gasto a partir de su descripción. Permite consultar el estado del modelo,
+reentrenarlo con los datos del usuario y registrar correcciones manuales (que
+mejoran el modelo personalizado). El entrenamiento corre 100% local.
+
+Endpoints:
+  GET  /ml/estado     → info del modelo activo (algoritmo, precisión, ejemplos).
+  POST /ml/reentrenar → reentrena el modelo con los gastos del usuario.
+  POST /ml/corregir   → registra una corrección y reentrena al instante.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -12,11 +26,14 @@ router = APIRouter(prefix="/ml", tags=["ML"])
 CATEGORIAS_VALIDAS = ml_service.CATEGORIAS_VALIDAS
 
 
+# Cuerpo del request para corregir una clasificación desde el playground.
 class CorregirRequest(BaseModel):
     descripcion: str
     categoria_correcta: str
 
 
+# GET /ml/estado
+# Devuelve los datos del modelo activo del usuario (o del modelo base).
 @router.get("/estado")
 def estado_modelo(
     db: Session = Depends(get_db),
@@ -25,6 +42,8 @@ def estado_modelo(
     return ml_service.obtener_estado_modelo(db, current_user.id)
 
 
+# POST /ml/reentrenar
+# Reentrena el modelo personal del usuario con sus gastos y correcciones.
 @router.post("/reentrenar")
 def reentrenar(
     db: Session = Depends(get_db),

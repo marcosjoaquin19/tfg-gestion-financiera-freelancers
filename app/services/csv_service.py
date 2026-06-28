@@ -87,12 +87,42 @@ def _buscar_columna(columnas_norm: dict[str, str], sinonimos: list[str]) -> str 
 # Centralizamos acá la decisión de qué motor de pandas usar según la extensión.
 # Si después agregamos otro formato (ej: .ods) basta con sumar un branch.
 
+# Cuántas filas de cabecera inspeccionamos como mucho buscando el encabezado
+# real. Los preámbulos de homebanking rara vez pasan de unas pocas líneas;
+# 30 deja margen de sobra sin recorrer archivos enteros.
+MAX_FILAS_PREAMBULO = 30
+
+
+def _fila_es_encabezado(tokens: list) -> bool:
+    """Indica si una fila parece el encabezado real de la tabla de movimientos.
+
+    Criterio: contiene una columna de fecha y al menos una de descripción,
+    monto, débito o crédito. Reutiliza los mismos diccionarios de sinónimos
+    que la detección de columnas, así que es consistente con ella.
+    """
+    normalizados = [_normalizar(t) for t in tokens]
+    tiene_fecha = any(
+        any(sin in norm for sin in SINONIMOS_FECHA) for norm in normalizados
+    )
+    otros = SINONIMOS_DESCRIPCION + SINONIMOS_MONTO + SINONIMOS_DEBITO + SINONIMOS_CREDITO
+    tiene_otro = any(
+        any(sin in norm for sin in otros) for norm in normalizados
+    )
+    return tiene_fecha and tiene_otro
+
+
 def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | None:
     """Devuelve un DataFrame leído desde el contenido bruto del archivo.
 
     Acepta extensiones .csv y .xlsx. La extensión se compara en minúsculas
     con punto incluido. Si pandas no puede interpretar el contenido, devuelve
     None y el llamador decide cómo reportarlo al usuario.
+
+    Muchos exports reales (Galicia, Santander Río, BBVA, Macro, Nación)
+    anteponen filas de metadata (titular, CBU, período) antes de la tabla.
+    Antes de leer buscamos la fila que realmente parece el encabezado y
+    descartamos lo de arriba; si no hay preámbulo, arrancamos en la fila 0
+    igual que siempre.
     """
     extension = (extension or "").lower()
     try:
@@ -103,12 +133,37 @@ def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | Non
                 texto = contenido_bytes.decode("utf-8")
             except UnicodeDecodeError:
                 texto = contenido_bytes.decode("latin-1")
+
+            # Detectamos el preámbulo separando cada línea por los delimitadores
+            # típicos del homebanking argentino (; , o tab) y buscando la
+            # primera que tenga pinta de encabezado.
+            lineas = texto.splitlines()
+            inicio = 0
+            for i, linea in enumerate(lineas[:MAX_FILAS_PREAMBULO]):
+                if _fila_es_encabezado(re.split(r"[;,\t]", linea)):
+                    inicio = i
+                    break
+            if inicio > 0:
+                texto = "\n".join(lineas[inicio:])
+
             # sep=None + engine='python' auto-detecta coma, punto-coma y tabulación.
             # Cubre Galicia (;), Brubank (\t), y extractos genéricos (,).
             return pd.read_csv(io.StringIO(texto), sep=None, engine="python")
         if extension == ".xlsx":
             # openpyxl es la dependencia que pandas usa por debajo para .xlsx.
-            return pd.read_excel(io.BytesIO(contenido_bytes), engine="openpyxl")
+            # Leemos primero sin encabezado para poder localizar el preámbulo,
+            # y recién después re-leemos saltando las filas que sobran.
+            crudo = pd.read_excel(
+                io.BytesIO(contenido_bytes), engine="openpyxl", header=None
+            )
+            inicio = 0
+            for i in range(min(MAX_FILAS_PREAMBULO, len(crudo))):
+                if _fila_es_encabezado(crudo.iloc[i].tolist()):
+                    inicio = i
+                    break
+            return pd.read_excel(
+                io.BytesIO(contenido_bytes), engine="openpyxl", skiprows=inicio
+            )
     except Exception as e:
         logger.error(f"Error leyendo archivo ({extension}): {e}")
         return None

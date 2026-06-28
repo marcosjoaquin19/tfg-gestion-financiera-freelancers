@@ -1,3 +1,13 @@
+"""
+Router de Importación — carga masiva desde extractos bancarios.
+
+Expone bajo /importar la subida de extractos en CSV/XLSX. El flujo: el usuario
+sube el archivo, el sistema detecta automáticamente las columnas (fecha, monto,
+descripción), clasifica cada movimiento como ingreso o gasto, marca posibles
+duplicados y, tras la confirmación del usuario, guarda los movimientos en la BD.
+La lógica de parseo y clasificación vive en csv_service.
+"""
+
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel

@@ -1,3 +1,11 @@
+/**
+ * Pantalla Importar CSV — carga masiva de movimientos.
+ *
+ * Permite subir un extracto bancario (CSV/XLSX). El backend detecta las
+ * columnas, clasifica cada movimiento como ingreso o gasto y marca posibles
+ * duplicados; esta pantalla muestra la previsualización y, tras la confirmación
+ * del usuario, dispara el guardado (endpoints de /importar).
+ */
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';

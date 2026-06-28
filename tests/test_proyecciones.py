@@ -1,3 +1,10 @@
+"""
+Tests del módulo de Proyecciones (/proyecciones).
+
+Verifican la generación de proyecciones con Prophet (mockeado), el manejo del
+caso con pocos datos históricos y el listado de proyecciones guardadas.
+"""
+
 from unittest.mock import patch, MagicMock
 import pandas as pd
 

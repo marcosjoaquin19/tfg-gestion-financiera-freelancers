@@ -1,3 +1,16 @@
+"""
+Servicio de Machine Learning — clasificador de gastos por texto.
+
+Núcleo del clasificador NLP que asigna una categoría a un gasto según su
+descripción. Entrena modelos de scikit-learn (Naive Bayes o SVM lineal sobre
+features TF-IDF) usando un dataset base más los gastos y correcciones del
+usuario. El entrenamiento corre 100% local (soberanía de datos); el modelo se
+serializa y se guarda en la BD para reutilizarlo sin reentrenar cada vez.
+
+Funciones clave: clasificar(), reentrenar_modelo_usuario(), registrar_ejemplo()
+y obtener_estado_modelo().
+"""
+
 import base64
 import logging
 import re

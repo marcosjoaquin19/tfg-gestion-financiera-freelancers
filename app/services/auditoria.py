@@ -1,3 +1,12 @@
+"""
+Servicio de Auditoría — detección de inconsistencias y anomalías.
+
+Contiene la lógica que recorre los datos del usuario y genera alertas. Detecta
+gastos duplicados, montos atípicos (anomalías estadísticas), facturas impagas,
+monotributo sin pagar y riesgo de recategorización. Lo usa el router de alertas:
+ejecutar_auditoria() corre todas las reglas y persiste las alertas encontradas.
+"""
+
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models.gasto import Gasto

@@ -1,6 +1,14 @@
+/**
+ * Layout — estructura común de las pantallas privadas.
+ *
+ * Renderiza la barra lateral de navegación (sidebar) con los accesos a cada
+ * módulo y envuelve el contenido de cada página. Recibe `activeSection` para
+ * resaltar el ítem activo y muestra el contenido (children) a su derecha.
+ */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+// Definición del menú lateral: secciones y sus accesos a cada módulo de la app.
 const SIDEBAR_SECTIONS = [
   {
     title: 'GENERAL',

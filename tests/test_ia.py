@@ -1,3 +1,10 @@
+"""
+Tests del módulo de IA (/resumen y /recomendaciones).
+
+Verifican el resumen financiero (con la llamada a Groq mockeada) y las
+recomendaciones determinísticas, incluido el caso sin datos suficientes.
+"""
+
 from unittest.mock import patch
 
 

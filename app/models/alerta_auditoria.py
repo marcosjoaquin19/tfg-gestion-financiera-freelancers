@@ -1,10 +1,18 @@
+"""
+Modelo de datos: AlertaAuditoria.
+
+Representa la tabla `alertas_auditoria`. Cada fila es una anomalía detectada
+por el módulo de auditoría (gastos duplicados, montos atípicos, monotributo
+impago, etc.). El usuario puede marcarlas como resueltas desde la app.
+"""
+
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
 
-# Tipos de alertas que puede detectar el módulo M3
+# Tipos de alertas que puede detectar el módulo de auditoría.
 class TipoAlerta(enum.Enum):
     GASTO_DUPLICADO = "gasto_duplicado"
     # detectó dos gastos iguales en fechas cercanas

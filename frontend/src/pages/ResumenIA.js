@@ -1,3 +1,10 @@
+/**
+ * Pantalla Resumen IA — resumen financiero mensual.
+ *
+ * Pide al backend (endpoint /resumen/financiero) un resumen del mes redactado
+ * en lenguaje natural por la IA y lo muestra. Permite elegir el período e indica
+ * si el texto se generó con IA o si no había datos suficientes.
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

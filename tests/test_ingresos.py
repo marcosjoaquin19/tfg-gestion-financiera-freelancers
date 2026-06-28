@@ -1,3 +1,10 @@
+"""
+Tests del módulo de Ingresos (/ingresos).
+
+Verifican el alta, listado, edición y borrado de ingresos, las validaciones
+(ej: monto positivo) y que cada usuario solo acceda a sus propios ingresos.
+"""
+
 import pytest
 
 INGRESO_BASE = {

@@ -1,3 +1,11 @@
+"""
+Modelo de datos: CacheClasificacion.
+
+Representa la tabla `cache_clasificacion`. Guarda las correcciones manuales que
+el usuario hace sobre la categoría de un gasto en el playground del clasificador.
+Esas correcciones se usan como ejemplos extra al reentrenar el modelo personal.
+"""
+
 from sqlalchemy import (
     Column, Integer, String, DateTime, ForeignKey, UniqueConstraint,
 )

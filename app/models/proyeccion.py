@@ -1,3 +1,11 @@
+"""
+Modelo de datos: Proyeccion.
+
+Representa la tabla `proyecciones`. Cada fila es un punto de la predicción de
+ingresos generada por el modelo Prophet: una fecha futura con su monto estimado
+y el rango (inferior/superior) del intervalo de confianza.
+"""
+
 from sqlalchemy import Column, Integer, Numeric, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship

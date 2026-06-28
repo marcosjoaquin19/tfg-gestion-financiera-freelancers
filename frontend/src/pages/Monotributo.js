@@ -1,3 +1,11 @@
+/**
+ * Pantalla Monotributo — control fiscal.
+ *
+ * Muestra la situación del usuario frente al monotributo argentino: su
+ * facturación de los últimos 12 meses, el porcentaje del límite anual consumido,
+ * el riesgo de recategorización y el estado del pago mensual. Permite también
+ * elegir/actualizar la categoría (endpoints de /monotributo).
+ */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';

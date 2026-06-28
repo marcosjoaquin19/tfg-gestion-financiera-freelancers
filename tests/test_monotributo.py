@@ -1,3 +1,10 @@
+"""
+Tests del módulo de Monotributo (/monotributo).
+
+Verifican el cálculo de la facturación de 12 meses, el porcentaje del límite
+consumido, el estado de recategorización y la actualización de categoría.
+"""
+
 import pytest
 
 

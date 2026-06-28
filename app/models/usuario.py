@@ -1,3 +1,11 @@
+"""
+Modelo de datos: Usuario.
+
+Representa la tabla `usuarios`. Guarda los datos de cuenta (email, contraseña
+hasheada) y la configuración fiscal de monotributo de cada freelancer. Es la
+entidad central: ingresos, gastos, facturas, etc. cuelgan de un usuario.
+"""
+
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.sql import func
 from app.database import Base
@@ -8,10 +16,9 @@ class Usuario(Base):
     __tablename__ = "usuarios"
 
     # Columnas de la tabla
-    # Analogía: cada Column es una columna de una planilla Excel
     id = Column(Integer, primary_key=True, index=True)
     # primary_key=True → es el identificador único de cada fila
-    
+
     nombre = Column(String(100), nullable=False)
     # nullable=False → este campo es obligatorio, no puede estar vacío
     
@@ -24,12 +31,14 @@ class Usuario(Base):
     es_activo = Column(Boolean, default=True)
 
     categoria_monotributo = Column(String(2), nullable=True)
+    # letra de categoría de monotributo del usuario (ej: "A", "B"), opcional
     actividad_monotributo = Column(String(20), default="servicios")
-    # si el usuario está activo o fue desactivado
-    
+    # tipo de actividad: "servicios" o "venta" (cambia los límites de la escala)
+
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
     # se llena automáticamente con la fecha y hora actual
 
+    # Relaciones uno-a-muchos: dan acceso a todos los registros del usuario.
     ingresos = relationship("Ingreso", back_populates="usuario")
     gastos = relationship("Gasto", back_populates="usuario")
     facturas = relationship("Factura", back_populates="usuario")

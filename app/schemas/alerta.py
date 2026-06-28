@@ -1,9 +1,18 @@
+"""
+Schemas (Pydantic) de Alerta de auditoría.
+
+  - AlertaResponse:        JSON de salida de cada alerta detectada por el módulo
+    de auditoría (duplicados, montos atípicos, etc.).
+  - AlertaResolverUpdate:  cuerpo para marcar una alerta como resuelta o reabrirla.
+"""
+
 from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 from app.models.alerta_auditoria import TipoAlerta
 
 
+# Estructura de una alerta tal como la API la devuelve.
 class AlertaResponse(BaseModel):
     id: int
     usuario_id: int

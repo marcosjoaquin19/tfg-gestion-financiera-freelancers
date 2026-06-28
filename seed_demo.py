@@ -5,6 +5,7 @@ monotributista, para que la aplicación se vea realista en capturas y defensa.
 Ejecutar:
     docker compose exec api python seed_demo.py
 """
+import calendar
 from datetime import datetime, timedelta
 
 from app.database import SessionLocal
@@ -21,6 +22,29 @@ from app.models.categoria_monotributo import CategoriaMonotributo
 
 EMAIL = "demo@freelancecontrol.com"
 PASSWORD = "demo1234"
+
+# Las fechas de movimientos y facturas se diseñaron con mayo 2026 como "mes en
+# curso" (de eso dependen los 4 detectores de auditoría y la factura vencida).
+# Para que el demo siempre se vea vivo —el Dashboard muestra "del mes" y un mes
+# vacío sale en $0— desplazamos TODO el dataset en bloque para que el último mes
+# coincida con el mes actual, conservando intactas las relaciones relativas.
+ANCLA_ORIGINAL = (2026, 5)  # (año, mes) con el que se escribieron las fechas
+
+
+def offset_meses_hasta_hoy():
+    """Cantidad de meses a desplazar para que el ancla caiga en el mes actual."""
+    hoy = datetime.now()
+    return (hoy.year * 12 + hoy.month) - (ANCLA_ORIGINAL[0] * 12 + ANCLA_ORIGINAL[1])
+
+
+def desplazar(fecha, offset):
+    """Mueve `fecha` `offset` meses hacia adelante, ajustando el día al mes."""
+    if fecha is None:
+        return None
+    total = fecha.year * 12 + (fecha.month - 1) + offset
+    anio, mes = total // 12, total % 12 + 1
+    dia = min(fecha.day, calendar.monthrange(anio, mes)[1])
+    return fecha.replace(year=anio, month=mes, day=dia)
 
 
 def limpiar_usuario_previo(db):
@@ -133,21 +157,26 @@ GASTOS_POR_MES = [
 
 
 def crear_movimientos(db, usuario):
+    offset = offset_meses_hasta_hoy()
     anio = 2026
     for i in range(5):
         mes = i + 1
         for dia, (desc, monto) in zip((5, 15, 25), INGRESOS_POR_MES[i]):
             db.add(Ingreso(
                 usuario_id=usuario.id, descripcion=desc, monto=monto,
-                categoria="Servicios", fecha=datetime(anio, mes, dia, 10, 0),
+                categoria="Servicios",
+                fecha=desplazar(datetime(anio, mes, dia, 10, 0), offset),
             ))
         for desc, monto, cat, dia in GASTOS_POR_MES[i]:
             db.add(Gasto(
                 usuario_id=usuario.id, descripcion=desc, monto=monto,
-                categoria=cat, fecha=datetime(anio, mes, dia, 12, 0),
+                categoria=cat,
+                fecha=desplazar(datetime(anio, mes, dia, 12, 0), offset),
             ))
     db.commit()
-    print("Ingresos y gastos creados (enero a mayo 2026).")
+    primer_mes = desplazar(datetime(2026, 1, 1), offset)
+    ultimo_mes = desplazar(datetime(2026, 5, 1), offset)
+    print(f"Ingresos y gastos creados ({primer_mes:%b %Y} a {ultimo_mes:%b %Y}).")
 
 
 def crear_facturas(db, usuario):
@@ -166,11 +195,14 @@ def crear_facturas(db, usuario):
         ("Consultora Aurora", "Auditoría técnica de plataforma", 430000,
          datetime(2026, 3, 20), datetime(2026, 4, 20), EstadoFactura.PENDIENTE, None),
     ]
+    offset = offset_meses_hasta_hoy()
     for cliente, desc, monto, emision, venc, estado, pago in facturas:
         db.add(Factura(
             usuario_id=usuario.id, cliente_nombre=cliente, descripcion=desc,
-            monto=monto, estado=estado, fecha_emision=emision,
-            fecha_vencimiento=venc, fecha_pago=pago,
+            monto=monto, estado=estado,
+            fecha_emision=desplazar(emision, offset),
+            fecha_vencimiento=desplazar(venc, offset),
+            fecha_pago=desplazar(pago, offset),
         ))
     db.commit()
     print(f"Facturas creadas ({len(facturas)}).")

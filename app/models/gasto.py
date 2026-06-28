@@ -1,3 +1,11 @@
+"""
+Modelo de datos: Gasto.
+
+Representa la tabla `gastos`. Cada fila es un gasto del freelancer, con su
+categoría (que puede asignarse automáticamente con el clasificador de ML) y un
+flag que el módulo de auditoría usa para marcar posibles duplicados.
+"""
+
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship

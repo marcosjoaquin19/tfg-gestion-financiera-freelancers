@@ -1,3 +1,10 @@
+/**
+ * Pantalla Gastos — gestión de gastos.
+ *
+ * Permite listar, crear, editar y eliminar gastos (endpoint /gastos). Al cargar
+ * un gasto, el backend puede sugerir su categoría con el clasificador de ML.
+ * Ofrece filtros, incluido el de "solo duplicados" detectados por la auditoría.
+ */
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';

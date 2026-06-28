@@ -1,7 +1,15 @@
+/**
+ * Pantalla de Login.
+ *
+ * Permite al usuario iniciar sesión. Envía email y contraseña al endpoint
+ * /auth/login del backend; si las credenciales son válidas, guarda el token
+ * JWT en localStorage y redirige al Dashboard. Si fallan, muestra el error.
+ */
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 
+// Estilos en línea de la pantalla (tema oscuro). Solo presentación.
 const styles = {
   page: {
     minHeight: '100vh',
@@ -92,27 +100,33 @@ const inputStyle = {
 };
 
 export default function Login() {
+  // Estado del formulario: credenciales, mensaje de error y flag de carga.
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Envía las credenciales al backend y maneja el resultado del login.
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
+      // El endpoint de login espera los datos como form-urlencoded (estándar
+      // de OAuth2), por eso se usa URLSearchParams y no un JSON.
       const params = new URLSearchParams();
       params.append('username', email);
       params.append('password', password);
       const res = await api.post('/auth/login', params, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
+      // Login exitoso: se guarda el token para autenticar los próximos pedidos.
       localStorage.setItem('token', res.data.access_token);
       localStorage.setItem('userEmail', email);
       navigate('/');
     } catch (err) {
+      // Muestra el mensaje de error que devuelve la API (ej: credenciales inválidas).
       setError(err.response?.data?.detail || 'Error al iniciar sesión');
     } finally {
       setLoading(false);

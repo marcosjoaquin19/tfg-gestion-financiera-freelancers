@@ -1,3 +1,10 @@
+"""
+Tests del módulo de Importación (/importar).
+
+Verifican la detección de columnas del extracto, la clasificación de movimientos
+en ingresos/gastos, la detección de duplicados y el guardado final.
+"""
+
 import io
 from unittest.mock import patch
 
@@ -286,6 +293,44 @@ def test_importar_preview_xlsx_valido(client, auth_headers):
     # Una fila negativa (gasto) y una positiva (ingreso).
     tipos = {fila["tipo"] for fila in data["preview"]}
     assert tipos == {"gasto", "ingreso"}
+
+
+def test_importar_preview_csv_con_preambulo_de_metadata(client, auth_headers):
+    # Los exports reales de Galicia, Santander Río, BBVA, Macro y Nación
+    # anteponen filas de metadata (titular, CBU, período) antes de la tabla.
+    # leer_dataframe debe detectar la fila-encabezado real y descartar lo de
+    # arriba. Además este archivo usa columnas Débito/Crédito y números en
+    # formato argentino (92.300,50) para cubrir todo el camino de una vez.
+    csv = (
+        "Banco Galicia - Consulta de Movimientos\n"
+        "Cuenta: Caja de Ahorro en Pesos 4000123-4\n"
+        "Titular: PEREZ JUAN - CUIT 20-30123456-7\n"
+        "Período: 01/04/2026 al 30/04/2026\n"
+        "\n"
+        "Fecha;Descripción;Origen;Débito;Crédito;Saldo\n"
+        "03/04/2026;ACREDITACION HABERES;Transferencia;;485.000,00;485.000,00\n"
+        "07/04/2026;PAGO TARJETA VISA;Débito automático;92.300,50;;392.699,50\n"
+    )
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("galicia.csv", io.BytesIO(csv.encode("utf-8")), "text/csv")},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_filas"] == 2
+
+    mapeo = data["mapeo_detectado"]
+    assert mapeo["columna_fecha"] == "Fecha"
+    assert mapeo["columna_debito"] == "Débito"
+    assert mapeo["columna_credito"] == "Crédito"
+
+    movimientos = {m["descripcion"]: m for m in data["preview"]}
+    # Crédito → ingreso, Débito → gasto, con el número argentino bien parseado.
+    assert movimientos["ACREDITACION HABERES"]["tipo"] == "ingreso"
+    assert movimientos["ACREDITACION HABERES"]["monto"] == 485000.0
+    assert movimientos["PAGO TARJETA VISA"]["tipo"] == "gasto"
+    assert movimientos["PAGO TARJETA VISA"]["monto"] == 92300.5
 
 
 def test_descripcion_normalizada_iguala_mayusculas_y_tildes(client, auth_headers):

@@ -1,3 +1,10 @@
+"""
+Tests del módulo de Gastos (/gastos).
+
+Verifican el CRUD de gastos, las validaciones, la clasificación automática y la
+detección de duplicados al crear un gasto, y el aislamiento por usuario.
+"""
+
 GASTO_BASE = {
     "descripcion": "Suscripción Adobe",
     "monto": 5000,

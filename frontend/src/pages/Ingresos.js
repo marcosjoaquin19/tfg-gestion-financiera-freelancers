@@ -1,3 +1,9 @@
+/**
+ * Pantalla Ingresos — gestión de ingresos.
+ *
+ * Permite listar, crear, editar y eliminar los ingresos del freelancer
+ * consumiendo el endpoint /ingresos. Incluye filtros y el formulario de carga.
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

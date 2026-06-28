@@ -1,3 +1,12 @@
+/**
+ * Componente raíz de la aplicación (frontend React).
+ *
+ * Define el enrutamiento (qué componente se muestra en cada URL) usando
+ * react-router. Separa las rutas públicas (login, registro) de las privadas,
+ * que solo son accesibles con sesión iniciada gracias al wrapper PrivateRoute.
+ * Cada ruta privada corresponde a un módulo de la app (Dashboard, Ingresos,
+ * Gastos, Facturas, Auditoría, Proyecciones, Clasificador, etc.).
+ */
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -14,6 +23,8 @@ import ImportarCSV from './pages/ImportarCSV';
 import Monotributo from './pages/Monotributo';
 import Layout from './components/Layout';
 
+// Guarda de rutas privadas: si hay token (sesión activa) muestra el contenido;
+// si no, redirige al login. Envuelve a todas las pantallas que requieren login.
 function PrivateRoute({ children }) {
   const token = localStorage.getItem('token');
   return token ? children : <Navigate to="/login" replace />;
@@ -38,6 +49,8 @@ const placeholders = [
 function App() {
   return (
     <BrowserRouter>
+      {/* Tabla de rutas: asocia cada URL con su pantalla. Las privadas van
+          envueltas en PrivateRoute para exigir sesión iniciada. */}
       <Routes>
         <Route path="/login"    element={<Login />} />
         <Route path="/register" element={<Register />} />

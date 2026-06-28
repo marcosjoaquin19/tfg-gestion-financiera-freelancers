@@ -1,3 +1,12 @@
+"""
+Dependencias compartidas de la API — autenticación de usuarios.
+
+Define get_current_user, la dependencia que se inyecta en los endpoints que
+requieren un usuario logueado. Lee el token JWT del header Authorization, lo
+valida y devuelve el usuario correspondiente, o corta con 401/403 si el token
+es inválido o la cuenta está desactivada. Es el "guardia" de las rutas privadas.
+"""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 # OAuth2PasswordBearer → le dice a FastAPI cómo extraer el token del header

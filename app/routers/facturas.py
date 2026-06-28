@@ -1,3 +1,20 @@
+"""
+Router de Facturas — emisión y seguimiento de facturas.
+
+Expone el CRUD de facturas bajo /facturas. Cada factura tiene un estado
+(pendiente / pagada / vencida) y reglas de negocio: una factura ya pagada no
+se puede editar ni eliminar, y al marcarla como pagada hay que indicar la fecha
+de cobro. Todas las operaciones quedan acotadas al usuario autenticado.
+
+Endpoints:
+  POST   /facturas/                 → crea una factura (arranca PENDIENTE).
+  GET    /facturas/                 → lista con filtros por estado y cliente.
+  GET    /facturas/{id}             → devuelve una factura.
+  PUT    /facturas/{id}             → edita una factura no pagada.
+  PATCH  /facturas/{id}/estado      → cambia solo el estado (ej: a pagada).
+  DELETE /facturas/{id}             → elimina una factura no pagada.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -10,6 +27,8 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
 
 
+# Helper interno: busca una factura del usuario o corta con un error 404.
+# Evita repetir esta misma validación en cada endpoint.
 def _get_factura_or_404(factura_id: int, db: Session, usuario_id: int) -> Factura:
     factura = db.query(Factura).filter(
         Factura.id == factura_id,

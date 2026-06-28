@@ -1,3 +1,18 @@
+"""
+Router de Ingresos — registro y consulta de ingresos.
+
+Expone el CRUD de ingresos bajo /ingresos. Cada ingreso queda asociado al
+usuario autenticado; los ingresos alimentan el cálculo de monotributo, las
+proyecciones y el resumen financiero.
+
+Endpoints:
+  POST   /ingresos/      → registra un ingreso nuevo.
+  GET    /ingresos/      → lista con filtros (categoría, paginación).
+  GET    /ingresos/{id}  → devuelve un ingreso.
+  PUT    /ingresos/{id}  → edita un ingreso.
+  DELETE /ingresos/{id}  → elimina un ingreso.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 # Query → para parámetros opcionales de query string, ej: ?categoria=Desarrollo&limite=20
 

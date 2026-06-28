@@ -1,3 +1,15 @@
+"""
+Router de Autenticación — registro y login de usuarios.
+
+Expone bajo /auth el registro de cuentas y el login. Al iniciar sesión genera
+un token JWT que el frontend guarda y envía en cada request para identificarse.
+Las contraseñas se guardan siempre hasheadas (bcrypt), nunca en texto plano.
+
+Endpoints:
+  POST /auth/register → crea una cuenta nueva.
+  POST /auth/login    → valida credenciales y devuelve el token JWT.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 # APIRouter → agrupa endpoints relacionados, se registra en main.py con include_router
 # Depends → inyección de dependencias de FastAPI (para obtener la sesión de BD)

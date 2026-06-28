@@ -13,7 +13,7 @@ __pycache__/
 # VS Code
 .vscode/
 
-# Estado interno del CLI de Claude (sesiones, worktrees, etc.)
+# Estado interno de herramientas de desarrollo (sesiones, worktrees, etc.)
 .claude/
 
 # Mac
@@ -27,3 +27,6 @@ frontend/build/
 docs/
 *.pdf
 *.html
+
+# Capturas para el video demo (generadas, no son código)
+demo_capturas/

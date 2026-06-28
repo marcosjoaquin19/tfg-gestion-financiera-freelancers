@@ -1,3 +1,16 @@
+"""
+Router de Alertas de Auditoría — control y monitoreo de inconsistencias.
+
+Expone bajo /alertas la ejecución de la auditoría (que recorre los datos del
+usuario en busca de anomalías) y la consulta/gestión de las alertas generadas.
+La lógica de detección vive en el servicio de auditoría; este router orquesta.
+
+Endpoints:
+  POST  /alertas/ejecutar-auditoria → corre la auditoría y genera alertas.
+  GET   /alertas/                   → lista las alertas (con filtros).
+  PATCH /alertas/{id}               → marca una alerta como resuelta o la reabre.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db

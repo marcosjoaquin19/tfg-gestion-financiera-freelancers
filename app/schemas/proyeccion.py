@@ -1,7 +1,15 @@
+"""
+Schemas (Pydantic) de Proyeccion.
+
+  - ProyeccionResponse:        JSON de salida de cada punto proyectado por Prophet.
+  - ProyeccionGenerarRequest:  cuerpo del POST que indica cuántos períodos predecir.
+"""
+
 from pydantic import BaseModel
 from datetime import datetime
 
 
+# Estructura de un punto de proyección tal como la API lo devuelve.
 class ProyeccionResponse(BaseModel):
     id: int
     usuario_id: int

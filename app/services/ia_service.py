@@ -1,3 +1,15 @@
+"""
+Servicio de IA — resumen financiero y recomendaciones.
+
+Reúne dos funcionalidades:
+  - generar_resumen_financiero(): arma un resumen mensual en lenguaje natural
+    usando el modelo de Groq. Por privacidad, a la IA solo se le envían datos
+    numéricos agregados, nunca descripciones libres del usuario.
+  - generar_recomendaciones(): consejos determinísticos calculados con reglas
+    sobre los datos reales (sin IA), para que sean siempre explicables.
+También expone clasificar_gasto(), usado al crear gastos.
+"""
+
 import os
 import logging
 from decimal import Decimal

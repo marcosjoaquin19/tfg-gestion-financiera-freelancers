@@ -1,3 +1,12 @@
+"""
+Schemas (Pydantic) de Usuario.
+
+Validan y dan forma a los datos de cuenta en la API: registro (UsuarioCreate),
+respuesta sin datos sensibles (UsuarioResponse), el token JWT (Token) y la
+actualización de la categoría de monotributo (UsuarioUpdateMonotributo).
+La contraseña nunca se incluye en las respuestas.
+"""
+
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
 # BaseModel → clase base de Pydantic, valida los datos automáticamente
 # EmailStr → tipo especial que verifica que el string sea un email válido
@@ -71,9 +80,8 @@ class UsuarioResponse(BaseModel):
     actividad_monotributo: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
-    # le dice a Pydantic que puede leer los datos desde un objeto SQLAlchemy
-    # sin esto, solo podría leer desde diccionarios
-    # Analogía: es el "traductor" entre el objeto de la BD y el JSON de respuesta
+    # Permite que Pydantic construya la respuesta leyendo directamente un objeto
+    # SQLAlchemy (no solo diccionarios), convirtiendo la fila de la BD en JSON.
 
 
 class UsuarioUpdateMonotributo(BaseModel):

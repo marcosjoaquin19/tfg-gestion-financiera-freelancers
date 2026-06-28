@@ -1,3 +1,10 @@
+/**
+ * Pantalla Facturas — emisión y seguimiento de facturas.
+ *
+ * Permite emitir facturas, listarlas con filtros (por estado y cliente) y
+ * cambiar su estado (marcar como pagada o vencida) contra el endpoint /facturas.
+ * Refleja las reglas de negocio: una factura pagada no se edita ni elimina.
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

@@ -1,3 +1,12 @@
+"""
+Servicio de Monotributo — cálculos fiscales del monotributo argentino.
+
+Contiene la lógica fiscal: calcular la facturación de los últimos 12 meses,
+compararla contra el límite de la categoría del usuario, estimar el riesgo de
+recategorización y verificar si pagó la cuota del mes. Lo usa el router de
+monotributo y también el de auditoría (para la alerta de monotributo impago).
+"""
+
 from datetime import datetime
 from sqlalchemy import extract
 from sqlalchemy.orm import Session

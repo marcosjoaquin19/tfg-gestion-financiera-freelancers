@@ -1,9 +1,20 @@
+"""
+Schemas (Pydantic) de Factura.
+
+Definen y validan los datos de las facturas en la API:
+  - FacturaCreate / FacturaUpdate: validan monto positivo y que el vencimiento
+    sea posterior a la emisión.
+  - FacturaEstadoUpdate: cambia solo el estado (y la fecha de pago).
+  - FacturaResponse: JSON de salida hacia el cliente.
+"""
+
 from pydantic import BaseModel, field_validator, model_validator
 from datetime import datetime
 from typing import Optional
 from app.models.factura import EstadoFactura
 
 
+# Datos para emitir una factura nueva.
 class FacturaCreate(BaseModel):
     cliente_nombre: str
     descripcion: str
@@ -25,6 +36,7 @@ class FacturaCreate(BaseModel):
         return self
 
 
+# Datos para editar una factura existente (mismas validaciones que al crear).
 class FacturaUpdate(BaseModel):
     cliente_nombre: str
     descripcion: str
@@ -53,6 +65,7 @@ class FacturaEstadoUpdate(BaseModel):
     # la validación se hace en el router
 
 
+# Estructura de la factura tal como la API la devuelve.
 class FacturaResponse(BaseModel):
     id: int
     usuario_id: int

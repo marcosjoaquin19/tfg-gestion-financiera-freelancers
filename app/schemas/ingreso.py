@@ -1,3 +1,11 @@
+"""
+Schemas (Pydantic) de Ingreso.
+
+Validan y dan forma a los datos de ingresos en la API:
+  - IngresoCreate:   valida el cuerpo del POST /ingresos.
+  - IngresoResponse: JSON de salida hacia el cliente.
+"""
+
 from pydantic import BaseModel, field_validator
 from datetime import datetime
 

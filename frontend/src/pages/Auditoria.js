@@ -1,3 +1,10 @@
+/**
+ * Pantalla Auditoría — alertas de inconsistencias.
+ *
+ * Permite ejecutar la auditoría sobre los datos del usuario y ver las alertas
+ * generadas (gastos duplicados, montos atípicos, monotributo impago, etc.),
+ * marcándolas como resueltas. Consume los endpoints de /alertas.
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

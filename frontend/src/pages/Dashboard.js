@@ -1,3 +1,10 @@
+/**
+ * Pantalla Dashboard — panel de inicio.
+ *
+ * Es la primera vista tras iniciar sesión. Muestra un resumen general de la
+ * situación financiera del freelancer: totales de ingresos y gastos, balance,
+ * facturas pendientes y métricas clave consultadas a la API del backend.
+ */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api from '../api';

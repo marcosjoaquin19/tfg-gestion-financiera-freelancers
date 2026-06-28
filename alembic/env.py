@@ -1,3 +1,11 @@
+"""
+Entorno de migraciones de Alembic.
+
+Configura cómo Alembic se conecta a la base de datos y aplica las migraciones
+(los archivos de alembic/versions/ que versionan los cambios de esquema). Lee la
+URL de conexión desde el .env y expone los metadatos de los modelos como destino.
+"""
+
 from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context

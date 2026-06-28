@@ -1,3 +1,18 @@
+"""
+Router de Gastos — registro y consulta de gastos.
+
+Expone el CRUD de gastos bajo /gastos. Al crear un gasto, si no se indica
+categoría se la asigna automáticamente el clasificador de ML, y se detectan
+duplicados al instante (mismo monto/categoría dentro de una ventana de días).
+
+Endpoints:
+  POST   /gastos/      → crea un gasto (clasificación automática + chequeo de duplicados).
+  GET    /gastos/      → lista con filtros (categoría, solo duplicados, etc.).
+  GET    /gastos/{id}  → devuelve un gasto.
+  PUT    /gastos/{id}  → edita un gasto.
+  DELETE /gastos/{id}  → elimina un gasto.
+"""
+
 import logging
 from datetime import timedelta
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query

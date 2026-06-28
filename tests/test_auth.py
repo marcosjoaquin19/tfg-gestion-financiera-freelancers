@@ -1,3 +1,11 @@
+"""
+Tests del módulo de Autenticación (/auth).
+
+Verifican el registro y el login: alta exitosa, rechazo de emails duplicados,
+validaciones y obtención del token JWT con credenciales correctas/incorrectas.
+"""
+
+
 def test_register_exitoso(client):
     response = client.post("/auth/register", json={
         "nombre": "Marcos",

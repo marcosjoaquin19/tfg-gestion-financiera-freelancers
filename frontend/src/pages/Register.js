@@ -1,7 +1,15 @@
+/**
+ * Pantalla de Registro.
+ *
+ * Permite crear una cuenta nueva. Envía nombre, email y contraseña al endpoint
+ * /auth/register; si el registro es exitoso, redirige al login. Muestra los
+ * errores de validación que devuelve el backend (ej: email ya registrado).
+ */
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api';
 
+// Estilos en línea de la pantalla (tema oscuro). Solo presentación.
 const styles = {
   page: {
     minHeight: '100vh',
@@ -97,6 +105,7 @@ const inputStyle = {
 };
 
 export default function Register() {
+  // Estado del formulario: datos de la cuenta, mensaje de error y flag de carga.
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -104,6 +113,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Crea la cuenta en el backend y, si sale bien, lleva al usuario al login.
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
@@ -112,6 +122,8 @@ export default function Register() {
       await api.post('/auth/register', { nombre, email, password });
       navigate('/login');
     } catch (err) {
+      // El backend puede devolver el error como texto o como lista de errores
+      // de validación de Pydantic; se contemplan ambos formatos.
       const detail = err.response?.data?.detail;
       if (Array.isArray(detail)) {
         setError(detail.map((d) => d.msg).join(', '));

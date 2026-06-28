@@ -1,12 +1,17 @@
+"""
+Modelo de datos: Factura.
+
+Representa la tabla `facturas` de la base de datos. Cada fila es una factura
+emitida por el freelancer a un cliente, con su monto, fechas y estado de cobro.
+"""
+
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
 
-# Definimos los estados posibles de una factura
-# Analogía: es como los estados de un pedido de delivery
-# "preparando" → "en camino" → "entregado"
+# Estados posibles del ciclo de vida de una factura.
 class EstadoFactura(enum.Enum):
     PENDIENTE = "pendiente"     # emitida pero no cobrada
     PAGADA = "pagada"           # cobrada exitosamente

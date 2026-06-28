@@ -1,3 +1,19 @@
+"""
+Router de Monotributo — control fiscal del monotributo argentino.
+
+Expone bajo /monotributo los endpoints para consultar la escala de categorías
+vigente, el estado del usuario frente a su límite anual, el aviso de pago y la
+actualización de su categoría. La lógica de cálculo fiscal está en
+monotributo_service; este router solo orquesta y valida.
+
+Endpoints:
+  GET   /monotributo/categorias            → escala vigente (límites y cuotas).
+  GET   /monotributo/estado                → riesgo de recategorización.
+  GET   /monotributo/pago                  → estado del pago mensual.
+  PATCH /monotributo/categoria             → cambia la categoría del usuario.
+  GET   /monotributo/facturacion-12-meses  → facturación móvil de 12 meses.
+"""
+
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -46,6 +62,9 @@ def listar_categorias(
     ]
 
 
+# GET /monotributo/estado
+# Indica cuánto del límite anual consumió el usuario y su riesgo de pasar de
+# categoría. Devuelve {"sin_categoria": True} si todavía no cargó una.
 @router.get("/estado")
 def estado_monotributo(
     db: Session = Depends(get_db),
@@ -57,6 +76,8 @@ def estado_monotributo(
     return estado
 
 
+# GET /monotributo/pago
+# Informa si el usuario ya registró el pago de la cuota del mes en curso.
 @router.get("/pago")
 def pago_monotributo(
     db: Session = Depends(get_db),
@@ -65,6 +86,8 @@ def pago_monotributo(
     return verificar_pago_monotributo(db, current_user.id)
 
 
+# PATCH /monotributo/categoria
+# Actualiza la categoría del usuario, validando que exista y esté activa.
 @router.patch("/categoria", response_model=UsuarioResponse)
 def actualizar_categoria(
     datos: UsuarioUpdateMonotributo,
