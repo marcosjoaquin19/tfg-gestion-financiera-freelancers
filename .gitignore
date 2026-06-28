@@ -13,9 +13,6 @@ __pycache__/
 # VS Code
 .vscode/
 
-# Estado interno de herramientas de desarrollo (sesiones, worktrees, etc.)
-.claude/
-
 # Mac
 .DS_Store
 
