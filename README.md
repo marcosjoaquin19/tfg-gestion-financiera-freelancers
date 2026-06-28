@@ -27,6 +27,12 @@ Trabajo Final de Grado.
 
 ## Cómo ejecutar la aplicación
 
+> **⚡ Inicio rápido (doble clic):** con Docker Desktop abierto, hacé doble clic en
+> **`start.command`** (macOS) o **`start.bat`** (Windows). El script crea el `.env`,
+> levanta todo, carga los datos de demostración y abre la app en el navegador.
+> *(En macOS, la primera vez puede que tengas que hacer clic derecho → **Abrir**.)*
+> Más abajo están los pasos manuales por si preferís hacerlo a mano.
+
 Hay **dos formas**. La **Opción A (Docker)** es la recomendada: levanta la base de
 datos, el backend y el frontend con un solo comando y no requiere instalar Python,
 Node ni PostgreSQL en la computadora.
