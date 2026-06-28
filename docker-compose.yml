@@ -3,6 +3,7 @@ services:
   db:                          # contenedor de PostgreSQL
     image: postgres:15
     container_name: tfg_db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: marcos
       POSTGRES_PASSWORD: marcos123
@@ -11,14 +12,21 @@ services:
       - "5432:5432"            # puerto local:puerto contenedor
     volumes:
       - postgres_data:/var/lib/postgresql/data  # guarda los datos aunque apagues Docker
+    healthcheck:               # se marca "healthy" recién cuando Postgres acepta conexiones
+      test: ["CMD-SHELL", "pg_isready -U marcos -d tfg_freelancers"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   api:                         # contenedor de tu API FastAPI
     build: .                   # construye la imagen desde este proyecto
     container_name: tfg_api
     ports:
       - "8000:8000"            # tu API va a estar en localhost:8000
+    restart: on-failure        # si la DB aún no estaba lista, reintenta solo
     depends_on:
-      - db                     # espera que la DB esté lista antes de arrancar
+      db:
+        condition: service_healthy  # arranca recién cuando Postgres está sano (evita la race del 1er arranque)
     env_file:
       - .env                   # usa las variables de tu archivo .env
 
