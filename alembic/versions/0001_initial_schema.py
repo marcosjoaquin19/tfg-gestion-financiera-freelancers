@@ -29,21 +29,9 @@ def upgrade() -> None:
         return
 
     # ── Enums de PostgreSQL ───────────────────────────────────────────────────
-    estadofactura = sa.Enum(
-        "pendiente", "pagada", "vencida",
-        name="estadofactura",
-    )
-    tipoalerta = sa.Enum(
-        "gasto_duplicado",
-        "anomalia_estadistica",
-        "discrepancia_facturacion",
-        "riesgo_recategorizacion",
-        "factura_impaga",
-        "comision_excesiva",
-        name="tipoalerta",
-    )
-    estadofactura.create(conn, checkfirst=True)
-    tipoalerta.create(conn, checkfirst=True)
+    # Cada enum se crea una sola vez, junto con su tabla (estadofactura → facturas,
+    # tipoalerta → alertas_auditoria). No se pre-crean acá para evitar un segundo
+    # CREATE TYPE sobre una base de datos vacía (que rompía `alembic upgrade head`).
 
     # ── Tabla: usuarios ───────────────────────────────────────────────────────
     op.create_table(
@@ -121,11 +109,10 @@ def upgrade() -> None:
         sa.Column(
             "estado",
             sa.Enum(
-                "pendiente", "pagada", "vencida",
+                "PENDIENTE", "PAGADA", "VENCIDA",
                 name="estadofactura",
-                create_type=False,  # ya creado arriba
             ),
-            server_default="pendiente",
+            server_default="PENDIENTE",
         ),
         sa.Column("fecha_emision", sa.DateTime(timezone=True), nullable=False),
         sa.Column("fecha_vencimiento", sa.DateTime(timezone=True), nullable=False),
@@ -178,14 +165,13 @@ def upgrade() -> None:
         sa.Column(
             "tipo",
             sa.Enum(
-                "gasto_duplicado",
-                "anomalia_estadistica",
-                "discrepancia_facturacion",
-                "riesgo_recategorizacion",
-                "factura_impaga",
-                "comision_excesiva",
+                "GASTO_DUPLICADO",
+                "ANOMALIA_ESTADISTICA",
+                "DISCREPANCIA_FACTURACION",
+                "RIESGO_RECATEGORIZACION",
+                "FACTURA_IMPAGA",
+                "COMISION_EXCESIVA",
                 name="tipoalerta",
-                create_type=False,  # ya creado arriba
             ),
             nullable=False,
         ),
