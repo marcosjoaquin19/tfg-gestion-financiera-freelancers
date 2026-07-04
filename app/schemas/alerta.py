@@ -19,6 +19,8 @@ class AlertaResponse(BaseModel):
     tipo: TipoAlerta
     descripcion: str
     monto_involucrado: Optional[float]
+    gasto_id_duplicado: Optional[int] = None
+    # solo en alertas de gasto duplicado: id del gasto repetido referenciado
     resuelta: bool
     fecha_deteccion: datetime
 

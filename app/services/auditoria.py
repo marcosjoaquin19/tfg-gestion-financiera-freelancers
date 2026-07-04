@@ -44,12 +44,14 @@ def _crear_alerta(
     tipo: TipoAlerta,
     descripcion: str,
     monto: float | None = None,
+    gasto_id_duplicado: int | None = None,
 ) -> AlertaAuditoria:
     return AlertaAuditoria(
         usuario_id=usuario_id,
         tipo=tipo,
         descripcion=descripcion,
         monto_involucrado=monto,
+        gasto_id_duplicado=gasto_id_duplicado,
     )
 
 
@@ -197,6 +199,10 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             f"Posible gasto duplicado: {formato_pesos_ar(gasto_a.monto)} en '{gasto_a.categoria}' "
             f"registrado el {gasto_a.fecha.date()} y el {gasto_b.fecha.date()}",
             monto=gasto_a.monto,
+            # referencia directa al gasto repetido (el más reciente del par):
+            # permite que "eliminar duplicado" borre exactamente este gasto,
+            # sin ambigüedad si otro par comparte el mismo monto.
+            gasto_id_duplicado=gasto_b.id,
         ))
         conteo["gastos_duplicados"] += 1
 
@@ -244,11 +250,21 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
 def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
     estado = verificar_pago_monotributo(db, usuario_id)
     if not estado["pagado"] and estado["monto_esperado"] is not None:
+        detalle = (
+            f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
+            f"Cuota esperada: {formato_pesos_ar(estado['monto_esperado'], decimales=0)}"
+        )
+        # Si hubo un registro que no llega a cubrir la cuota, lo aclaramos:
+        # ayuda a distinguir "me olvidé de pagar" de "pagué de menos".
+        if estado.get("pago_parcial") and estado.get("gasto_encontrado"):
+            detalle += (
+                f". Se encontró un registro de {formato_pesos_ar(estado['gasto_encontrado']['monto'], decimales=0)} "
+                f"que no cubre la cuota"
+            )
         alerta = _crear_alerta(
             usuario_id,
             TipoAlerta.MONOTRIBUTO_IMPAGO,
-            f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
-            f"Cuota esperada: {formato_pesos_ar(estado['monto_esperado'], decimales=0)}",
+            detalle,
             monto=estado["monto_esperado"],
         )
         return 1, alerta

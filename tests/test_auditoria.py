@@ -151,3 +151,40 @@ def test_eliminar_gasto_duplicado_resuelve_de_raiz(client, auth_headers):
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     pendientes = client.get("/alertas/?solo_pendientes=true", headers=auth_headers).json()
     assert len([a for a in pendientes if a["tipo"] == "gasto_duplicado"]) == 0
+
+
+def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_headers):
+    # Regresión: dos pares de duplicados DISTINTOS que comparten el mismo
+    # monto y categoría. Antes el gasto a eliminar se localizaba solo por
+    # monto y podía borrarse el del par equivocado; ahora la alerta guarda
+    # la referencia directa (gasto_id_duplicado) al gasto repetido.
+    par = {"descripcion": "Hosting mensual", "monto": 5000, "categoria": "Infraestructura"}
+    client.post("/gastos/", json={**par, "fecha": "2026-04-01T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**par, "fecha": "2026-04-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**par, "fecha": "2026-05-01T10:00:00"}, headers=auth_headers)
+    r_dup_mayo = client.post("/gastos/", json={**par, "fecha": "2026-05-02T10:00:00"}, headers=auth_headers)
+    id_dup_mayo = r_dup_mayo.json()["id"]
+
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    alertas = client.get("/alertas/", headers=auth_headers).json()
+    alerta_mayo = next(
+        a for a in alertas
+        if a["tipo"] == "gasto_duplicado" and a["gasto_id_duplicado"] == id_dup_mayo
+    )
+
+    resp = client.delete(f"/alertas/{alerta_mayo['id']}/gasto-duplicado", headers=auth_headers)
+    assert resp.status_code == 200
+
+    gastos = client.get("/gastos/", headers=auth_headers).json()
+    ids = {g["id"] for g in gastos}
+    assert id_dup_mayo not in ids  # se borró exactamente el repetido de mayo
+
+    # El par de abril quedó intacto y sigue marcado como duplicado.
+    abril = [g for g in gastos if g["fecha"].startswith("2026-04")]
+    assert len(abril) == 2
+    assert all(g["es_duplicado"] for g in abril)
+
+    # El sobreviviente de mayo ya no integra ningún par → se desmarcó.
+    mayo = [g for g in gastos if g["fecha"].startswith("2026-05")]
+    assert len(mayo) == 1
+    assert mayo[0]["es_duplicado"] is False

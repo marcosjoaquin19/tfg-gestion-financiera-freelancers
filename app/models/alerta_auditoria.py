@@ -45,7 +45,16 @@ class AlertaAuditoria(Base):
     
     monto_involucrado = Column(Numeric(12, 2), nullable=True)
     # el monto relacionado a la alerta (puede ser null)
-    
+
+    gasto_id_duplicado = Column(
+        Integer, ForeignKey("gastos.id", ondelete="SET NULL"), nullable=True,
+    )
+    # Solo para alertas de tipo GASTO_DUPLICADO: referencia directa al gasto
+    # repetido (el más reciente del par), para poder eliminarlo sin ambigüedad.
+    # Antes se lo localizaba por monto, lo que podía confundir dos pares
+    # distintos que casualmente compartieran el mismo importe. SET NULL: si el
+    # usuario borra ese gasto por su cuenta, la referencia se limpia sola.
+
     resuelta = Column(Boolean, default=False)
     # False → alerta activa, el usuario no la revisó
     # True → el usuario la marcó como revisada

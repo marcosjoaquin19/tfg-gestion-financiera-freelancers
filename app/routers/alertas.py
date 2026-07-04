@@ -141,25 +141,38 @@ def eliminar_gasto_duplicado(
             detail="Esta acción solo aplica a alertas de gasto duplicado",
         )
 
-    # Re-detectamos el par usando la misma lógica del módulo de auditoría y
-    # ubicamos el que coincide con el monto de la alerta.
-    pares = detectar_gastos_duplicados(db, current_user.id)
+    # Localizamos el gasto repetido a eliminar. Las alertas nuevas guardan la
+    # referencia directa (gasto_id_duplicado, migración 0006), lo que evita
+    # borrar el par equivocado cuando dos pares comparten el mismo monto.
     objetivo = None      # el gasto repetido a eliminar (el más reciente del par)
-    sobreviviente = None
-    for gasto_a, gasto_b in pares:
-        if alerta.monto_involucrado is not None and float(gasto_a.monto) == float(alerta.monto_involucrado):
-            objetivo, sobreviviente = gasto_b, gasto_a
-            break
+    if alerta.gasto_id_duplicado is not None:
+        objetivo = db.query(Gasto).filter(
+            Gasto.id == alerta.gasto_id_duplicado,
+            Gasto.usuario_id == current_user.id,
+        ).first()
+
+    if objetivo is None:
+        # Compatibilidad: alertas previas a la migración (sin referencia) o
+        # cuyo gasto referenciado ya fue borrado a mano → match por monto.
+        pares = detectar_gastos_duplicados(db, current_user.id)
+        for gasto_a, gasto_b in pares:
+            if alerta.monto_involucrado is not None and float(gasto_a.monto) == float(alerta.monto_involucrado):
+                objetivo = gasto_b
+                break
 
     if objetivo is not None:
         db.delete(objetivo)
         db.flush()
-        # Si el que queda ya no forma parte de ningún par, dejá de marcarlo duplicado.
+        # Recalculamos los pares y desmarcamos todos los gastos del usuario
+        # que ya no integren ninguno (no solo el sobreviviente de este par).
         ids_dup = {g.id for par in detectar_gastos_duplicados(db, current_user.id) for g in par}
-        if sobreviviente is not None and sobreviviente.id not in ids_dup:
-            superv = db.query(Gasto).filter(Gasto.id == sobreviviente.id).first()
-            if superv:
-                superv.es_duplicado = False
+        marcados = db.query(Gasto).filter(
+            Gasto.usuario_id == current_user.id,
+            Gasto.es_duplicado == True,
+        ).all()
+        for g in marcados:
+            if g.id not in ids_dup:
+                g.es_duplicado = False
 
     alerta.resuelta = True
     db.commit()
