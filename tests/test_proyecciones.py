@@ -84,3 +84,21 @@ def test_listar_proyecciones_vacio(client, auth_headers):
 def test_proyecciones_sin_auth(client):
     response = client.get("/proyecciones/")
     assert response.status_code == 401
+
+
+def test_generar_proyecciones_historial_en_un_solo_mes(client, auth_headers):
+    # Regresión: con 10+ ingresos concentrados en un único mes, el DataFrame
+    # mensual queda con una sola fila y el fit de Prophet falla (500). El
+    # servicio debe detectarlo y caer a la estrategia de media móvil.
+    for i in range(12):
+        client.post(
+            "/ingresos/",
+            json={**INGRESO_BASE, "fecha": f"2026-01-{i + 1:02d}T10:00:00", "monto": 90000 + i * 500},
+            headers=auth_headers,
+        )
+
+    response = client.post("/proyecciones/generar", json={"periodos": 6}, headers=auth_headers)
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data) == 6
+    assert all(p["monto_proyectado"] > 0 for p in data)

@@ -93,7 +93,14 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = 6) -> lis
         .all()
     )
 
-    if len(ingresos) < MIN_INGRESOS_PROPHET:
+    # Prophet ajusta una tendencia sobre los totales MENSUALES, así que además
+    # del mínimo de registros necesita al menos dos meses distintos de
+    # historial: con todo concentrado en un solo mes el DataFrame agrupado
+    # queda con una única fila y el fit de Prophet falla. En ese caso (usuario
+    # nuevo que cargó muchos movimientos juntos) usamos la media móvil.
+    meses_distintos = {(i.fecha.year, i.fecha.month) for i in ingresos}
+
+    if len(ingresos) < MIN_INGRESOS_PROPHET or len(meses_distintos) < 2:
         nuevas = _proyecciones_media_movil(usuario_id, ingresos, periodos)
     else:
         nuevas = _proyecciones_prophet(usuario_id, ingresos, periodos)
