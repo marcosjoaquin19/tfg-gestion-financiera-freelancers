@@ -106,15 +106,15 @@ async def preview_csv(
             detail="No se encontraron movimientos válidos en el archivo.",
         )
 
-    # La detección de duplicados se aplica sobre el lote completo, no solo
-    # sobre las primeras 20 filas que mostramos en el preview visual. Así el
-    # resumen que vuelve al frontend ("X nuevos, Y posibles duplicados")
-    # representa la realidad del archivo entero.
+    # La detección de duplicados y la clasificación se aplican sobre el lote
+    # COMPLETO, no solo sobre las 20 filas que el frontend muestra: el paso
+    # /confirmar persiste exactamente la lista que devolvemos acá, así que si
+    # clasificáramos solo una parte, el resto del archivo se perdería en la
+    # importación. El recorte a 20 filas es solo visual y lo hace el cliente.
     todos_marcados = detectar_posibles_duplicados(db, current_user.id, todos)
     posibles_duplicados = sum(1 for m in todos_marcados if m.get("posible_duplicado"))
 
-    preview_raw = todos_marcados[:20]
-    preview = clasificar_movimientos(preview_raw, db, current_user.id)
+    preview = clasificar_movimientos(todos_marcados, db, current_user.id)
 
     return {
         "total_filas": len(todos),

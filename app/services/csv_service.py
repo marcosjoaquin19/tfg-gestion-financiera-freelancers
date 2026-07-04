@@ -26,7 +26,6 @@ from sqlalchemy.orm import Session
 
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
-from app.services.ia_service import clasificar_gasto
 
 logger = logging.getLogger(__name__)
 
@@ -320,23 +319,85 @@ def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) 
 
     La descripción del movimiento permanece dentro de la infraestructura del
     sistema y nunca se transmite a terceros.
+
+    Trabaja en LOTE: el pipeline de sklearn se deserializa una única vez y las
+    correcciones previas del usuario se traen en una sola consulta. Clasificar
+    fila por fila (como hace clasificar_gasto para un gasto individual)
+    implicaría decodificar el modelo desde la BD por cada movimiento, algo
+    prohibitivo para un extracto bancario de cientos de filas.
     """
-    resultado = []
-    for mov in movimientos:
-        # El clasificador está entrenado con categorías de GASTO (Software,
-        # Suscripciones, Transporte...). Aplicárselo a un ingreso le asignaría
-        # una categoría que no existe en el módulo de ingresos y rompería sus
-        # filtros, así que los ingresos entran como "Otros" y el usuario los
-        # recategoriza si quiere.
+    import numpy as np
+    from app.models.cache_clasificacion import CacheClasificacion
+    from app.services import ml_service
+    from app.services.ia_service import UMBRAL_CONFIANZA_ML
+
+    resultado: list[dict | None] = [None] * len(movimientos)
+
+    # El clasificador está entrenado con categorías de GASTO (Software,
+    # Suscripciones, Transporte...). Aplicárselo a un ingreso le asignaría
+    # una categoría que no existe en el módulo de ingresos y rompería sus
+    # filtros, así que los ingresos entran como "Otros" y el usuario los
+    # recategoriza si quiere.
+    indices_gasto = []
+    for idx, mov in enumerate(movimientos):
         if mov.get("tipo") != "gasto":
-            resultado.append({**mov, "categoria": "Otros"})
-            continue
+            resultado[idx] = {**mov, "categoria": "Otros"}
+        else:
+            indices_gasto.append(idx)
+
+    if not indices_gasto:
+        return resultado
+
+    # Paso 1: correcciones explícitas previas del usuario (ground truth).
+    # Misma prioridad que aplica ia_service.clasificar_gasto, pero resuelta
+    # con una única query en lugar de una por fila.
+    correcciones = {
+        c.descripcion_normalizada: c.categoria
+        for c in db.query(CacheClasificacion).filter(
+            CacheClasificacion.usuario_id == usuario_id,
+        ).all()
+    }
+
+    pendientes = []
+    for idx in indices_gasto:
+        desc_norm = ml_service.normalizar_descripcion(movimientos[idx].get("descripcion", ""))
+        if desc_norm in correcciones:
+            resultado[idx] = {**movimientos[idx], "categoria": correcciones[desc_norm]}
+        else:
+            pendientes.append(idx)
+
+    # Paso 2: predicción en lote con el modelo del usuario (o el base).
+    # Mismo umbral de confianza que la clasificación individual: por debajo
+    # se sugiere "Otros" para que el usuario revise.
+    if pendientes:
         try:
-            clasificacion = clasificar_gasto(mov["descripcion"], db, usuario_id)
-            categoria = clasificacion.get("categoria_sugerida", "Otros")
-        except Exception:
-            categoria = "Otros"
-        resultado.append({**mov, "categoria": categoria})
+            pipeline, algoritmo = ml_service.obtener_o_crear_modelo(db, usuario_id)
+            descripciones = [movimientos[i].get("descripcion", "") for i in pendientes]
+            clases = pipeline.classes_
+
+            categorias = []
+            if algoritmo == "svm":
+                scores = np.asarray(pipeline.decision_function(descripciones), dtype=float)
+                if scores.ndim == 1:
+                    scores = scores.reshape(-1, 1)  # caso binario: un margen por fila
+                for fila in scores:
+                    idx_clase, confianza = ml_service._confianza_svm(fila.ravel())
+                    categorias.append(clases[idx_clase] if confianza >= UMBRAL_CONFIANZA_ML else "Otros")
+            else:
+                probas = pipeline.predict_proba(descripciones)
+                for fila in probas:
+                    idx_clase = int(np.argmax(fila))
+                    confianza = float(fila[idx_clase])
+                    categorias.append(clases[idx_clase] if confianza >= UMBRAL_CONFIANZA_ML else "Otros")
+
+            for i, categoria in zip(pendientes, categorias):
+                resultado[i] = {**movimientos[i], "categoria": categoria}
+        except Exception as e:
+            logger.error(f"Error clasificando lote de importación (usuario {usuario_id}): {e}")
+            for i in pendientes:
+                if resultado[i] is None:
+                    resultado[i] = {**movimientos[i], "categoria": "Otros"}
+
     return resultado
 
 

@@ -106,7 +106,10 @@ export default function ImportarCSV() {
   }
 
   // ── Cálculos preview ───────────────────────────────────────────────────────
+  // `preview` contiene el archivo COMPLETO ya clasificado (es lo que se envía
+  // a /confirmar); la tabla solo muestra las primeras 20 filas como muestra.
 
+  const filasVisibles = preview.slice(0, 20);
   const ingresosPrev  = preview.filter((m) => m.tipo === 'ingreso');
   const gastosPrev    = preview.filter((m) => m.tipo === 'gasto');
   const totalIngresos = ingresosPrev.reduce((s, m) => s + m.monto, 0);
@@ -243,13 +246,13 @@ export default function ImportarCSV() {
                 <div key={h} style={thStyle}>{h}</div>
               ))}
             </div>
-            {preview.map((m, idx) => (
+            {filasVisibles.map((m, idx) => (
               <div
                 key={idx}
                 style={{
                   display: 'grid', gridTemplateColumns: '1.2fr 3fr 1fr 1.5fr 1.2fr',
                   alignItems: 'center',
-                  borderBottom: idx < preview.length - 1 ? '1px solid #1e293b' : 'none',
+                  borderBottom: idx < filasVisibles.length - 1 ? '1px solid #1e293b' : 'none',
                 }}
               >
                 <div style={{ padding: '10px 14px', fontSize: '12px', color: '#64748b' }}>

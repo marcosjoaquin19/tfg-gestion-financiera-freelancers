@@ -352,3 +352,57 @@ def test_descripcion_normalizada_iguala_mayusculas_y_tildes(client, auth_headers
     data = segunda.json()
     assert data["importados"] == 0
     assert data["omitidos_por_duplicado"] == 1
+
+
+def test_importar_preview_clasifica_lote_completo(client, auth_headers):
+    # Regresión: /confirmar persiste exactamente lo que devuelve /preview,
+    # así que el preview debe clasificar TODAS las filas del archivo, no solo
+    # las 20 que el frontend muestra como muestra visual. Con un archivo de
+    # 25 filas, importar tiene que crear 25 registros (antes se perdían 5).
+    filas = "\n".join(
+        f"2026-03-{(i % 28) + 1:02d},Movimiento bancario numero {i},-{100 + i}"
+        for i in range(25)
+    )
+    csv_bytes = f"fecha,descripcion,monto\n{filas}\n".encode()
+
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("extracto.csv", io.BytesIO(csv_bytes), "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_filas"] == 25
+    assert len(data["preview"]) == 25
+    # todas las filas vuelven con una categoría asignada por el ML local
+    assert all(m.get("categoria") for m in data["preview"])
+
+    confirmar = client.post(
+        "/importar/confirmar",
+        json={"movimientos": data["preview"], "mapeo": data["mapeo_detectado"]},
+        headers=auth_headers,
+    )
+    assert confirmar.status_code == 200
+    assert confirmar.json()["importados"] == 25
+
+
+def test_importar_preview_respeta_correcciones_usuario(client, auth_headers):
+    # La clasificación en lote debe respetar la misma prioridad que la
+    # individual: si el usuario ya corrigió esa descripción en el playground,
+    # la corrección (ground truth) manda sobre la predicción del modelo.
+    client.post(
+        "/ml/corregir",
+        json={"descripcion": "debito servicio xyzeta", "categoria_correcta": "Marketing"},
+        headers=auth_headers,
+    )
+
+    csv_bytes = b"fecha,descripcion,monto\n2026-03-01,debito servicio xyzeta,-500\n"
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("extracto.csv", io.BytesIO(csv_bytes), "text/csv")},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["preview"][0]["categoria"] == "Marketing"
