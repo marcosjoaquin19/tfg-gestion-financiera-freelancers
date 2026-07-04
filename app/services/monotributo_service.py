@@ -105,7 +105,21 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     }
 
 
+TOLERANCIA_CUOTA = 0.99
+# Margen del 1% al comparar el gasto registrado contra la cuota oficial:
+# absorbe diferencias de redondeo entre la escala publicada y lo que el
+# banco/billetera debita efectivamente (centavos, ajustes).
+
+
 def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
+    """Verifica si la cuota del mes en curso está cubierta.
+
+    Antes alcanzaba con que existiera CUALQUIER gasto de categoría
+    "Monotributo" en el mes; ahora, si el usuario tiene categoría cargada,
+    el gasto tiene que cubrir la cuota esperada (con tolerancia del 1%).
+    Un registro menor cuenta como pago PARCIAL: se informa aparte y la
+    auditoría sigue alertando que la cuota no está cubierta.
+    """
     now = datetime.now()
     mes = now.month
     anio = now.year
@@ -115,24 +129,42 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
     datos_cat = get_categoria(db, cat) if cat else None
     monto_esperado = float(datos_cat.cuota_mensual) if datos_cat else None
 
-    gasto = db.query(Gasto).filter(
+    gastos_mes = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.categoria == "Monotributo",
         extract("month", Gasto.fecha) == mes,
         extract("year", Gasto.fecha) == anio,
-    ).first()
+    ).all()
+
+    pago_parcial = False
+    if monto_esperado is None:
+        # Sin categoría cargada no hay cuota contra la cual validar:
+        # cualquier registro de la categoría cuenta como pago.
+        gasto_pago = gastos_mes[0] if gastos_mes else None
+    else:
+        umbral = monto_esperado * TOLERANCIA_CUOTA
+        gasto_pago = next((g for g in gastos_mes if float(g.monto) >= umbral), None)
+        if gasto_pago is None and gastos_mes:
+            pago_parcial = True
+
+    # Si no hay un pago que cubra la cuota, mostramos el registro más alto
+    # del mes (si existe) para que el usuario entienda qué se detectó.
+    gasto_mostrado = gasto_pago or (
+        max(gastos_mes, key=lambda g: float(g.monto)) if gastos_mes else None
+    )
 
     gasto_encontrado = None
-    if gasto:
+    if gasto_mostrado:
         gasto_encontrado = {
-            "id": gasto.id,
-            "descripcion": gasto.descripcion,
-            "monto": float(gasto.monto),
-            "fecha": str(gasto.fecha),
+            "id": gasto_mostrado.id,
+            "descripcion": gasto_mostrado.descripcion,
+            "monto": float(gasto_mostrado.monto),
+            "fecha": str(gasto_mostrado.fecha),
         }
 
     return {
-        "pagado": gasto is not None,
+        "pagado": gasto_pago is not None,
+        "pago_parcial": pago_parcial,
         "mes": MESES_ES[mes],
         "anio": anio,
         "monto_esperado": monto_esperado,

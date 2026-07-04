@@ -126,3 +126,41 @@ def test_facturacion_12_meses_incluye_categoria_y_porcentaje(client, auth_header
     assert data["categoria"]["categoria"] == "A"
     assert data["categoria"]["limite_anual"] == 1_000_000.0
     assert data["categoria"]["porcentaje_usado"] == 10.0
+
+
+def test_pago_monotributo_valida_monto_cuota(client, auth_headers):
+    # Regresión: cualquier gasto de categoría "Monotributo" contaba como
+    # cuota pagada sin importar el monto. Ahora el registro tiene que cubrir
+    # la cuota de la categoría (tolerancia 1%); un registro menor se informa
+    # como pago parcial y el estado sigue siendo impago.
+    from datetime import datetime
+
+    client.patch(
+        "/monotributo/categoria",
+        json={"categoria_monotributo": "A"},  # cuota fixture: 5000
+        headers=auth_headers,
+    )
+    hoy = datetime.now()
+    fecha = f"{hoy.year}-{hoy.month:02d}-03T10:00:00"
+
+    # Pago parcial: no cubre la cuota.
+    client.post(
+        "/gastos/",
+        json={"descripcion": "Pago monotributo parcial", "monto": 1200, "categoria": "Monotributo", "fecha": fecha},
+        headers=auth_headers,
+    )
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert data["pagado"] is False
+    assert data["pago_parcial"] is True
+    assert data["monto_esperado"] == 5000.0
+    assert data["gasto_encontrado"]["monto"] == 1200.0
+
+    # Pago completo: cubre la cuota → pagado.
+    client.post(
+        "/gastos/",
+        json={"descripcion": "Pago monotributo cuota", "monto": 5000, "categoria": "Monotributo", "fecha": fecha},
+        headers=auth_headers,
+    )
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert data["pagado"] is True
+    assert data["pago_parcial"] is False

@@ -117,7 +117,7 @@ GASTOS_POR_MES = [
      ("Notebook Lenovo ThinkPad", 1450000, "Hardware", 8),
      ("AWS EC2 hosting mensual", 92000, "Infraestructura", 10),
      ("Honorarios contadora enero", 85000, "Servicios", 12),
-     ("Pago monotributo enero", 48000, "Monotributo", 15),
+     ("Pago monotributo enero", 72414.10, "Monotributo", 15),
      ("Almuerzo reunión cliente", 32000, "Alimentación", 18),
      ("Uber a reunión Brand Studio", 14500, "Transporte", 22)],
     # Febrero
@@ -125,7 +125,7 @@ GASTOS_POR_MES = [
      ("Licencia JetBrains anual", 165000, "Software", 6),
      ("AWS EC2 hosting mensual", 95000, "Infraestructura", 10),
      ("Honorarios contadora febrero", 85000, "Servicios", 12),
-     ("Pago monotributo febrero", 48000, "Monotributo", 15),
+     ("Pago monotributo febrero", 72414.10, "Monotributo", 15),
      ("Curso Platzi escuela de datos", 54000, "Capacitación", 18),
      ("Nafta YPF estación de servicio", 41000, "Transporte", 22)],
     # Marzo — incluye el outlier de Infraestructura (anomalía estadística).
@@ -134,7 +134,7 @@ GASTOS_POR_MES = [
      ("AWS EC2 hosting mensual", 98000, "Infraestructura", 10),
      ("Servidor dedicado AWS Reserved", 900000, "Infraestructura", 11),
      ("Honorarios contadora marzo", 90000, "Servicios", 12),
-     ("Pago monotributo marzo", 51000, "Monotributo", 15),
+     ("Pago monotributo marzo", 72414.10, "Monotributo", 15),
      ("Publicidad Google Ads campaña", 120000, "Marketing", 18),
      ("Cena cliente restaurante", 46000, "Alimentación", 22)],
     # Abril
@@ -142,7 +142,7 @@ GASTOS_POR_MES = [
      ("Ingresos brutos CABA declaración", 138000, "Impuestos", 6),
      ("AWS EC2 hosting mensual", 101000, "Infraestructura", 10),
      ("Honorarios contadora abril", 90000, "Servicios", 12),
-     ("Pago monotributo abril", 51000, "Monotributo", 15),
+     ("Pago monotributo abril", 72414.10, "Monotributo", 15),
      ("Teclado y mouse Logitech", 96000, "Hardware", 18),
      ("Uber viajes a reuniones", 28000, "Transporte", 22)],
     # Mayo (mes en curso) — SIN pago de Monotributo, a propósito, para que la

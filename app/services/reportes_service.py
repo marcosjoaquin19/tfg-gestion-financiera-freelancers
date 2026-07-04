@@ -136,19 +136,25 @@ def _pago_monotributo(db: Session, usuario_id: int, mes: int, anio: int) -> dict
     if datos_cat is None:
         return {"tiene_categoria": False}
 
-    gasto_pago = db.query(Gasto).filter(
+    gastos_mes = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.categoria == "Monotributo",
         extract("month", Gasto.fecha) == mes,
         extract("year", Gasto.fecha) == anio,
-    ).first()
+    ).all()
+
+    # Misma regla que monotributo_service.verificar_pago_monotributo: la cuota
+    # cuenta como pagada solo si algún gasto del mes la cubre (tolerancia 1%).
+    from app.services.monotributo_service import TOLERANCIA_CUOTA
+    umbral = float(datos_cat.cuota_mensual) * TOLERANCIA_CUOTA
+    pagado = any(float(g.monto) >= umbral for g in gastos_mes)
 
     return {
         "tiene_categoria": True,
         "categoria": cat_letra,
         "limite_anual": float(datos_cat.limite_anual),
         "cuota_mensual": float(datos_cat.cuota_mensual),
-        "pagado": gasto_pago is not None,
+        "pagado": pagado,
     }
 
 
