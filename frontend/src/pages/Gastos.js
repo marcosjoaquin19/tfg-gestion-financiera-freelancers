@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const CATEGORIAS = [
   'Software', 'Hardware', 'Infraestructura', 'Marketing', 'Servicios',
@@ -72,6 +72,9 @@ export default function Gastos() {
   // Resultado de la última clasificación con IA: categoría sugerida, confianza
   // y si quedó marcada como sujeta a revisión (confianza por debajo del umbral).
   const [clasificacion, setClasificacion] = useState(null);
+  // Error del formulario (validación del backend o problema de red): se
+  // muestra en rojo en lugar de fallar en silencio.
+  const [formError, setFormError] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [soloDuplicados, setSoloDuplicados] = useState(false);
   const [busqueda, setBusqueda] = useState('');
@@ -115,6 +118,7 @@ export default function Gastos() {
 
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormError('');
     // Si cambia la descripción, la clasificación previa deja de corresponder.
     if (e.target.name === 'descripcion') setClasificacion(null);
   }
@@ -122,6 +126,7 @@ export default function Gastos() {
   async function handleClasificar() {
     if (!form.descripcion.trim()) return;
     setClasificando(true);
+    setFormError('');
     try {
       const res = await api.post('/gastos/clasificar', { descripcion: form.descripcion });
       setForm((prev) => ({ ...prev, categoria: res.data.categoria_sugerida }));
@@ -129,7 +134,8 @@ export default function Gastos() {
         confianza: res.data.confianza,
         requiereRevision: res.data.requiere_revision,
       });
-    } catch (_) {
+    } catch (err) {
+      setFormError(extraerMensajeError(err, 'No se pudo clasificar la descripción'));
     } finally {
       setClasificando(false);
     }
@@ -138,6 +144,7 @@ export default function Gastos() {
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
+    setFormError('');
     try {
       await api.post('/gastos/', {
         descripcion: form.descripcion,
@@ -149,7 +156,8 @@ export default function Gastos() {
       setForm({ descripcion: '', monto: '', categoria: 'Software', fecha: todayISO() });
       setClasificacion(null);
       await fetchGastos();
-    } catch (_) {
+    } catch (err) {
+      setFormError(extraerMensajeError(err, 'No se pudo guardar el gasto'));
     } finally {
       setSaving(false);
     }
@@ -160,7 +168,9 @@ export default function Gastos() {
     try {
       await api.delete(`/gastos/${id}`);
       setGastos((prev) => prev.filter((g) => g.id !== id));
-    } catch (_) {}
+    } catch (err) {
+      window.alert(extraerMensajeError(err, 'No se pudo eliminar el gasto'));
+    }
   }
 
   function toggleOrden(campo) {
@@ -327,6 +337,10 @@ export default function Gastos() {
                 />
               </div>
             </div>
+
+            {formError && (
+              <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 12px 0' }}>{formError}</p>
+            )}
 
             <div style={{ display: 'flex', gap: '10px' }}>
               <button

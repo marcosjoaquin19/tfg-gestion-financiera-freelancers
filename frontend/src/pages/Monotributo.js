@@ -9,7 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 // La escala de categorías se trae del backend (GET /monotributo/categorias, que
 // lee la tabla `categorias_monotributo`). Única fuente de verdad: se actualiza en
@@ -45,6 +45,8 @@ export default function Monotributo() {
   const [loading, setLoading] = useState(true);
   const [catSeleccionada, setCatSeleccionada] = useState('A');
   const [guardando, setGuardando] = useState(false);
+  // Error al guardar la categoría (backend o red): visible, no silencioso.
+  const [catError, setCatError] = useState('');
   const [showCambiarCat, setShowCambiarCat] = useState(false);
   const navigate = useNavigate();
 
@@ -69,11 +71,13 @@ export default function Monotributo() {
 
   async function handleGuardarCategoria(cat) {
     setGuardando(true);
+    setCatError('');
     try {
       await api.patch('/monotributo/categoria', { categoria_monotributo: cat });
       await fetchData();
       setShowCambiarCat(false);
-    } catch (_) {
+    } catch (err) {
+      setCatError(extraerMensajeError(err, 'No se pudo actualizar la categoría'));
     } finally {
       setGuardando(false);
     }
@@ -131,6 +135,10 @@ export default function Monotributo() {
               </p>
             )}
 
+            {catError && (
+              <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 12px 0' }}>{catError}</p>
+            )}
+
             <button
               onClick={() => handleGuardarCategoria(catSeleccionada)}
               disabled={guardando}
@@ -174,11 +182,16 @@ export default function Monotributo() {
             <p style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#e2e8f0', fontWeight: 500 }}>
               {pago.pagado
                 ? `✓ Monotributo de ${pago.mes} ${pago.anio} registrado como pagado`
+                : pago.pago_parcial
+                ? `⚠️ El pago registrado de ${pago.mes} ${pago.anio} no cubre la cuota`
                 : `⚠️ No registramos el pago del monotributo de ${pago.mes} ${pago.anio}`}
             </p>
             {!pago.pagado && pago.monto_esperado && (
               <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
                 Cuota esperada: <strong style={{ color: '#fbbf24' }}>${fmt(pago.monto_esperado)}</strong>
+                {pago.pago_parcial && pago.gasto_encontrado && (
+                  <> · Registrado: <strong style={{ color: '#fbbf24' }}>${fmt(pago.gasto_encontrado.monto)}</strong></>
+                )}
               </p>
             )}
           </div>
@@ -223,7 +236,10 @@ export default function Monotributo() {
               ✏️ Cambiar categoría
             </button>
           ) : (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {catError && (
+                <span style={{ color: '#f87171', fontSize: '12px' }}>{catError}</span>
+              )}
               <select
                 value={catSeleccionada}
                 onChange={(e) => setCatSeleccionada(e.target.value)}

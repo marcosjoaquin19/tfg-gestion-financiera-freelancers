@@ -40,4 +40,16 @@ api.interceptors.response.use(
   }
 );
 
+// Traduce un error de axios a un mensaje legible para mostrar en pantalla.
+// Cubre los dos formatos de error de FastAPI: `detail` como string
+// (HTTPException) y `detail` como array (validaciones 422 de Pydantic).
+// Las pantallas lo usan para no "tragarse" los errores en silencio.
+export function extraerMensajeError(err, fallback = 'Ocurrió un error inesperado') {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((d) => d.msg || String(d)).join(' · ');
+  if (err?.message === 'Network Error') return 'No se pudo conectar con el servidor';
+  return fallback;
+}
+
 export default api;

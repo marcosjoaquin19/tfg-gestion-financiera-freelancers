@@ -6,7 +6,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const CATEGORIAS = [
   'Desarrollo', 'Desarrollo Web', 'Desarrollo Mobile', 'Diseño',
@@ -160,7 +160,9 @@ export default function Ingresos() {
     try {
       await api.delete(`/ingresos/${id}`);
       setIngresos((prev) => prev.filter((i) => i.id !== id));
-    } catch (_) {}
+    } catch (err) {
+      window.alert(extraerMensajeError(err, 'No se pudo eliminar el ingreso'));
+    }
   }
 
   // El filtro ofrece TODAS las categorías canónicas (las mismas que el alta)

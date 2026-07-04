@@ -7,7 +7,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -84,6 +84,9 @@ export default function Facturas() {
   const [editando, setEditando] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
+  // Errores de backend/red visibles en cada formulario (no silenciosos).
+  const [formError, setFormError] = useState('');
+  const [editError, setEditError] = useState('');
   const [form, setForm] = useState({
     cliente_nombre: '', monto: '', descripcion: '',
     fecha_emision: todayISO(), fecha_vencimiento: '',
@@ -117,11 +120,13 @@ export default function Facturas() {
 
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setFormError('');
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
+    setFormError('');
     try {
       await api.post('/facturas/', {
         cliente_nombre: form.cliente_nombre,
@@ -133,7 +138,8 @@ export default function Facturas() {
       setShowForm(false);
       setForm({ cliente_nombre: '', monto: '', descripcion: '', fecha_emision: todayISO(), fecha_vencimiento: '' });
       await fetchFacturas();
-    } catch (_) {
+    } catch (err) {
+      setFormError(extraerMensajeError(err, 'No se pudo emitir la factura'));
     } finally {
       setSaving(false);
     }
@@ -147,11 +153,14 @@ export default function Facturas() {
       });
       setPagandoId(null);
       await fetchFacturas();
-    } catch (_) {}
+    } catch (err) {
+      window.alert(extraerMensajeError(err, 'No se pudo marcar la factura como pagada'));
+    }
   }
 
   function handleAbrirEditar(factura) {
     setEditando(factura);
+    setEditError('');
     setEditForm({
       cliente_nombre: factura.cliente_nombre,
       monto: factura.monto,
@@ -163,6 +172,7 @@ export default function Facturas() {
 
   function handleEditChange(e) {
     setEditForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    setEditError('');
   }
 
   async function handleSaveEdit(e) {
@@ -178,7 +188,8 @@ export default function Facturas() {
       });
       setEditando(null);
       await fetchFacturas();
-    } catch (_) {
+    } catch (err) {
+      setEditError(extraerMensajeError(err, 'No se pudo guardar la factura'));
     } finally {
       setEditSaving(false);
     }
@@ -189,7 +200,9 @@ export default function Facturas() {
     try {
       await api.delete(`/facturas/${id}`);
       setFacturas((prev) => prev.filter((f) => f.id !== id));
-    } catch (_) {}
+    } catch (err) {
+      window.alert(extraerMensajeError(err, 'No se pudo eliminar la factura'));
+    }
   }
 
   let facturasFiltradas = facturas;
@@ -286,6 +299,9 @@ export default function Facturas() {
                 />
               </div>
             </div>
+            {editError && (
+              <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 12px 0' }}>{editError}</p>
+            )}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="submit" disabled={editSaving}
@@ -387,6 +403,9 @@ export default function Facturas() {
                 />
               </div>
             </div>
+            {formError && (
+              <p style={{ color: '#f87171', fontSize: '13px', margin: '0 0 12px 0' }}>{formError}</p>
+            )}
             <div style={{ display: 'flex', gap: '10px' }}>
               <button
                 type="submit" disabled={saving}
