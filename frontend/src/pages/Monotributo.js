@@ -196,8 +196,16 @@ export default function Monotributo() {
             )}
           </div>
           {!pago.pagado && (
+            /* Manda el formulario de Gastos pre-cargado (misma mecánica que
+               usa el Clasificador): descripción, categoría y la cuota esperada. */
             <button
-              onClick={() => navigate('/gastos')}
+              onClick={() => navigate('/gastos', {
+                state: {
+                  descripcion: `Pago monotributo ${pago.mes} ${pago.anio}`,
+                  categoria: 'Monotributo',
+                  monto: pago.monto_esperado || '',
+                },
+              })}
               title="Cargá el gasto con categoría Monotributo"
               style={{
                 background: 'transparent', border: '1px solid #fbbf24',
