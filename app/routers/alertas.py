@@ -19,6 +19,7 @@ from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.schemas.alerta import AlertaResponse, AlertaResolverUpdate
 from app.dependencies import get_current_user
 from app.models.gasto import Gasto
+from app.models.ingreso import Ingreso
 from app.services.auditoria import ejecutar_auditoria, detectar_gastos_duplicados
 
 
@@ -173,6 +174,55 @@ def eliminar_gasto_duplicado(
         for g in marcados:
             if g.id not in ids_dup:
                 g.es_duplicado = False
+
+    alerta.resuelta = True
+    db.commit()
+    db.refresh(alerta)
+    return alerta
+
+
+@router.delete("/{alerta_id}/transferencia-propia", response_model=AlertaResponse)
+def descartar_transferencia_propia(
+    alerta_id: int,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Descarta una transferencia entre cuentas propias: elimina AMBAS patas
+    (el ingreso y el gasto referenciados por la alerta) y la marca resuelta.
+    Así el "ingreso" deja de inflar la facturación de 12 meses del monotributo
+    y el "gasto" deja de distorsionar las estadísticas de gastos."""
+    alerta = db.query(AlertaAuditoria).filter(
+        AlertaAuditoria.id == alerta_id,
+        AlertaAuditoria.usuario_id == current_user.id,
+    ).first()
+
+    if not alerta:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta no encontrada")
+
+    if alerta.tipo != TipoAlerta.TRANSFERENCIA_PROPIA:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Esta acción solo aplica a alertas de transferencia entre cuentas propias",
+        )
+
+    # Ambas consultas filtran por usuario: nunca se borra data de otro usuario
+    # aunque la referencia estuviera corrupta. Si alguna pata ya no existe
+    # (el usuario la borró a mano), se descarta la que quede.
+    if alerta.ingreso_id_relacionado is not None:
+        ingreso = db.query(Ingreso).filter(
+            Ingreso.id == alerta.ingreso_id_relacionado,
+            Ingreso.usuario_id == current_user.id,
+        ).first()
+        if ingreso:
+            db.delete(ingreso)
+
+    if alerta.gasto_id_duplicado is not None:
+        gasto = db.query(Gasto).filter(
+            Gasto.id == alerta.gasto_id_duplicado,
+            Gasto.usuario_id == current_user.id,
+        ).first()
+        if gasto:
+            db.delete(gasto)
 
     alerta.resuelta = True
     db.commit()

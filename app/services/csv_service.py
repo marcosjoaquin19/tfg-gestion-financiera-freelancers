@@ -533,13 +533,100 @@ def filtrar_no_duplicados(
     db: Session,
     usuario_id: int,
     movimientos: list[dict],
-) -> tuple[list[dict], int]:
-    """Devuelve (movimientos_a_importar, omitidos_por_duplicado).
+) -> tuple[list[dict], int, int]:
+    """Devuelve (movimientos_a_importar, omitidos_por_duplicado, omitidos_por_transferencia).
 
     Pensada para el endpoint /confirmar: aplica la misma detección que /preview
-    como red de seguridad y descarta los duplicados antes de persistir.
+    como red de seguridad y descarta duplicados y transferencias entre cuentas
+    propias antes de persistir.
     """
     marcados = detectar_posibles_duplicados(db, usuario_id, movimientos)
-    a_importar = [m for m in marcados if not m.get("posible_duplicado")]
-    omitidos = len(marcados) - len(a_importar)
-    return a_importar, omitidos
+    marcados = detectar_transferencias_propias_en_lote(marcados)
+    a_importar = [
+        m for m in marcados
+        if not m.get("posible_duplicado") and not m.get("posible_transferencia_propia")
+    ]
+    omitidos_dup = sum(1 for m in marcados if m.get("posible_duplicado"))
+    omitidos_transf = sum(
+        1 for m in marcados
+        if m.get("posible_transferencia_propia") and not m.get("posible_duplicado")
+    )
+    return a_importar, omitidos_dup, omitidos_transf
+
+
+# ── Transferencias entre cuentas propias ─────────────────────────────────────
+# Un freelancer opera con varias cuentas (banco + Mercado Pago + billeteras).
+# Una transferencia entre sus propias cuentas aparece como débito en un
+# extracto y como crédito en el otro: si ambas patas se importan como
+# gasto + ingreso, el "ingreso" infla la facturación de 12 meses que evalúa
+# la categoría de Monotributo. Detectamos el patrón: mismo monto, fechas a
+# ≤1 día y al menos una descripción con vocabulario de transferencia.
+#
+# Hay dos capas de defensa:
+#   1. Acá (import): si AMBAS patas vienen en el mismo lote, se marcan con
+#      posible_transferencia_propia y /confirmar las omite.
+#   2. Auditoría (detector 5): cubre el caso real de patas repartidas entre
+#      archivos de bancos distintos ya persistidos, con acción de descarte.
+
+PATRON_TRANSFERENCIA = re.compile(
+    r"transf|enviaste|recibiste|dinero retirado|retiro de dinero|retiraste"
+    r"|cuenta propia|cuentas propias|mismo titular|misma titularidad|entre cuentas"
+)
+
+
+def es_descripcion_transferencia(descripcion: str) -> bool:
+    """Indica si la descripción tiene vocabulario típico de transferencia.
+
+    Se evalúa sobre la forma normalizada (minúsculas, sin tildes), así
+    "TRANSFERENCIA", "Transf." y "transferís" matchean igual. Es un guardia
+    contra falsos positivos: un ingreso y un gasto que casualmente coinciden
+    en monto y fecha NO se marcan si ninguno menciona una transferencia.
+    """
+    return bool(PATRON_TRANSFERENCIA.search(_normalizar_descripcion(descripcion)))
+
+
+def _fechas_cercanas(fecha_a: str, fecha_b: str, max_dias: int = 1) -> bool:
+    try:
+        da = datetime.fromisoformat(fecha_a).date()
+        db_ = datetime.fromisoformat(fecha_b).date()
+    except (ValueError, TypeError):
+        return False
+    return abs((da - db_).days) <= max_dias
+
+
+def detectar_transferencias_propias_en_lote(movimientos: list[dict]) -> list[dict]:
+    """Marca pares (ingreso, gasto) del MISMO lote que parecen transferencia.
+
+    Emparejamiento voraz: cada ingreso se aparea con a lo sumo un gasto libre
+    de igual monto, fecha a ≤1 día y vocabulario de transferencia en alguna
+    de las dos descripciones. Ambas patas quedan con la flag
+    posible_transferencia_propia = True; el resto queda en False.
+    """
+    resultado = [{**m, "posible_transferencia_propia": False} for m in movimientos]
+
+    idx_ingresos = [i for i, m in enumerate(resultado) if m.get("tipo") == "ingreso"]
+    idx_gastos = [i for i, m in enumerate(resultado) if m.get("tipo") == "gasto"]
+
+    gastos_usados: set[int] = set()
+    for i in idx_ingresos:
+        ing = resultado[i]
+        monto_ing = round(float(ing.get("monto", 0)), 2)
+        for j in idx_gastos:
+            if j in gastos_usados:
+                continue
+            gasto = resultado[j]
+            if round(float(gasto.get("monto", 0)), 2) != monto_ing:
+                continue
+            if not _fechas_cercanas(ing.get("fecha", ""), gasto.get("fecha", "")):
+                continue
+            if not (
+                es_descripcion_transferencia(ing.get("descripcion", ""))
+                or es_descripcion_transferencia(gasto.get("descripcion", ""))
+            ):
+                continue
+            resultado[i]["posible_transferencia_propia"] = True
+            resultado[j]["posible_transferencia_propia"] = True
+            gastos_usados.add(j)
+            break
+
+    return resultado

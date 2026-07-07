@@ -20,7 +20,10 @@ class AlertaResponse(BaseModel):
     descripcion: str
     monto_involucrado: Optional[float]
     gasto_id_duplicado: Optional[int] = None
-    # solo en alertas de gasto duplicado: id del gasto repetido referenciado
+    # gasto referenciado: el repetido (gasto_duplicado) o la pata de salida
+    # de una transferencia entre cuentas propias (transferencia_propia)
+    ingreso_id_relacionado: Optional[int] = None
+    # solo en transferencia_propia: la pata de entrada (el crédito) del par
     resuelta: bool
     fecha_deteccion: datetime
 

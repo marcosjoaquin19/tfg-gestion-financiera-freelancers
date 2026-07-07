@@ -29,6 +29,11 @@ class TipoAlerta(enum.Enum):
     MONOTRIBUTO_IMPAGO = "monotributo_impago"
     # falta el registro del gasto de la cuota mensual de Monotributo
 
+    TRANSFERENCIA_PROPIA = "transferencia_propia"
+    # un ingreso y un gasto de igual monto en fechas cercanas con pinta de
+    # transferencia entre cuentas propias del usuario (ej: Galicia → Mercado
+    # Pago). No es facturación real: infla el cálculo de monotributo.
+
 class AlertaAuditoria(Base):
     __tablename__ = "alertas_auditoria"
 
@@ -49,11 +54,19 @@ class AlertaAuditoria(Base):
     gasto_id_duplicado = Column(
         Integer, ForeignKey("gastos.id", ondelete="SET NULL"), nullable=True,
     )
-    # Solo para alertas de tipo GASTO_DUPLICADO: referencia directa al gasto
-    # repetido (el más reciente del par), para poder eliminarlo sin ambigüedad.
-    # Antes se lo localizaba por monto, lo que podía confundir dos pares
-    # distintos que casualmente compartieran el mismo importe. SET NULL: si el
-    # usuario borra ese gasto por su cuenta, la referencia se limpia sola.
+    # Referencia directa al gasto involucrado en la alerta, para poder actuar
+    # sobre él sin ambigüedad (antes se lo localizaba por monto, lo que podía
+    # confundir dos pares que compartieran el importe):
+    #   - GASTO_DUPLICADO      → el gasto repetido (el más reciente del par).
+    #   - TRANSFERENCIA_PROPIA → la pata de salida (el débito) del par.
+    # SET NULL: si el usuario borra ese gasto por su cuenta, se limpia sola.
+
+    ingreso_id_relacionado = Column(
+        Integer, ForeignKey("ingresos.id", ondelete="SET NULL"), nullable=True,
+    )
+    # Solo para TRANSFERENCIA_PROPIA: la pata de entrada (el crédito) del par.
+    # Junto con gasto_id_duplicado permite descartar la transferencia completa
+    # (ambas patas) con una sola acción desde la alerta.
 
     resuelta = Column(Boolean, default=False)
     # False → alerta activa, el usuario no la revisó

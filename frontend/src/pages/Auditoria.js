@@ -27,6 +27,7 @@ const TIPO_CONFIG = {
   discrepancia_facturacion:  { color: '#f87171', label: 'Discrepancia facturación' },
   monotributo_impago:        { color: '#fbbf24', label: 'Monotributo impago' },
   factura_impaga:            { color: '#f87171', label: 'Factura impaga' },
+  transferencia_propia:      { color: '#60a5fa', label: 'Transferencia propia' },
 };
 
 function ResolverBtn({ onClick }) {
@@ -108,6 +109,16 @@ export default function Auditoria() {
     } catch (_) {}
   }
 
+  // Descarta una transferencia entre cuentas propias: elimina las dos patas
+  // (el ingreso y el gasto) para que no inflen la facturación del monotributo.
+  async function handleDescartarTransferencia(id) {
+    if (!window.confirm('Se eliminarán el ingreso y el gasto de esta transferencia (no es facturación real) y la alerta quedará resuelta. ¿Continuar?')) return;
+    try {
+      await api.delete(`/alertas/${id}/transferencia-propia`);
+      await fetchAlertas();
+    } catch (_) {}
+  }
+
   // Reabre una alerta resuelta (vuelve a quedar pendiente).
   async function handleReabrir(id) {
     try {
@@ -141,6 +152,8 @@ export default function Auditoria() {
   const anomalias     = activas.filter((a) => a.tipo === 'anomalia_estadistica').length;
   const discrepancias = activas.filter((a) => a.tipo === 'discrepancia_facturacion').length;
   const monImpago     = activas.filter((a) => a.tipo === 'monotributo_impago').length;
+  const transfPropias = activas.filter((a) => a.tipo === 'transferencia_propia').length;
+  const columnasResumen = 3 + (monImpago > 0 ? 1 : 0) + (transfPropias > 0 ? 1 : 0);
 
   return (
     <Layout activeSection="Auditoría">
@@ -170,12 +183,13 @@ export default function Auditoria() {
       </div>
 
       {/* Resumen */}
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${monImpago > 0 ? 4 : 3}, 1fr)`, gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columnasResumen}, 1fr)`, gap: '12px', marginBottom: '16px' }}>
         {[
           { label: 'Gastos duplicados',    value: duplicados,    color: '#fbbf24' },
           { label: 'Anomalías estadísticas', value: anomalias,   color: '#f87171' },
           { label: 'Discrepancias',         value: discrepancias, color: '#f87171' },
           ...(monImpago > 0 ? [{ label: 'Monotributo impago', value: monImpago, color: '#fbbf24' }] : []),
+          ...(transfPropias > 0 ? [{ label: 'Transferencias propias', value: transfPropias, color: '#60a5fa' }] : []),
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
             <p style={{ margin: '0 0 4px 0', fontSize: '28px', fontWeight: 600, color }}>{value}</p>
@@ -199,6 +213,7 @@ export default function Auditoria() {
           <option value="anomalia_estadistica">Anomalía estadística</option>
           <option value="discrepancia_facturacion">Discrepancia facturación</option>
           <option value="monotributo_impago">Monotributo impago</option>
+          <option value="transferencia_propia">Transferencia propia</option>
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#94a3b8', cursor: 'pointer', userSelect: 'none' }}>
           <input
@@ -304,6 +319,20 @@ export default function Auditoria() {
                           }}
                         >
                           Eliminar duplicado
+                        </button>
+                      )}
+                      {alerta.tipo === 'transferencia_propia' && (
+                        <button
+                          onClick={() => handleDescartarTransferencia(alerta.id)}
+                          title="Elimina el ingreso y el gasto del par: no es facturación real"
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid #60a5fa', color: '#60a5fa',
+                            borderRadius: '6px', padding: '4px 12px',
+                            fontSize: '12px', cursor: 'pointer',
+                          }}
+                        >
+                          Descartar transferencia
                         </button>
                       )}
                       <ResolverBtn onClick={() => handleResolver(alerta.id)} />

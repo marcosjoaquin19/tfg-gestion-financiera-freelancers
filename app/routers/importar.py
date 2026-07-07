@@ -21,6 +21,7 @@ from app.services.csv_service import (
     clasificar_movimientos,
     detectar_columnas_csv,
     detectar_posibles_duplicados,
+    detectar_transferencias_propias_en_lote,
     filtrar_no_duplicados,
     leer_dataframe,
     procesar_csv,
@@ -112,7 +113,14 @@ async def preview_csv(
     # clasificáramos solo una parte, el resto del archivo se perdería en la
     # importación. El recorte a 20 filas es solo visual y lo hace el cliente.
     todos_marcados = detectar_posibles_duplicados(db, current_user.id, todos)
+    # Pares ingreso/gasto del mismo archivo con pinta de transferencia entre
+    # cuentas propias: se marcan para omitirlos (no son facturación real).
+    todos_marcados = detectar_transferencias_propias_en_lote(todos_marcados)
     posibles_duplicados = sum(1 for m in todos_marcados if m.get("posible_duplicado"))
+    transferencias_propias = sum(
+        1 for m in todos_marcados
+        if m.get("posible_transferencia_propia") and not m.get("posible_duplicado")
+    )
 
     preview = clasificar_movimientos(todos_marcados, db, current_user.id)
 
@@ -122,8 +130,9 @@ async def preview_csv(
         "mapeo_detectado": mapeo,
         "resumen": {
             "total": len(todos),
-            "nuevos": len(todos) - posibles_duplicados,
+            "nuevos": len(todos) - posibles_duplicados - transferencias_propias,
             "posibles_duplicados": posibles_duplicados,
+            "transferencias_propias": transferencias_propias,
         },
     }
 
@@ -142,7 +151,7 @@ def confirmar_importacion(
     # antes de persistir. Si alguien llama directo al endpoint sin pasar por
     # el preview (por ejemplo desde un script), la idempotencia se mantiene.
     movimientos_dict = [m.model_dump() for m in datos.movimientos]
-    a_importar, omitidos_por_duplicado = filtrar_no_duplicados(
+    a_importar, omitidos_por_duplicado, omitidos_por_transferencia = filtrar_no_duplicados(
         db, current_user.id, movimientos_dict,
     )
 
@@ -188,4 +197,5 @@ def confirmar_importacion(
         "ingresos_creados": len(ingresos_nuevos),
         "gastos_creados": len(gastos_nuevos),
         "omitidos_por_duplicado": omitidos_por_duplicado,
+        "omitidos_por_transferencia": omitidos_por_transferencia,
     }

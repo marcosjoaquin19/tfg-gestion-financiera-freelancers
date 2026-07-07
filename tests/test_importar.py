@@ -250,6 +250,79 @@ def test_caso_D_solapamiento_de_extractos_solo_omite_repetidos(client, auth_head
     assert data["omitidos_por_duplicado"] == 2
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Transferencias entre cuentas propias dentro del MISMO lote
+#
+# Si el archivo trae las dos patas de una transferencia entre cuentas del
+# usuario (débito como gasto + crédito como ingreso, mismo monto, fechas a
+# ≤1 día, vocabulario de transferencia), /confirmar las omite: ese "ingreso"
+# no es facturación real e inflaría el cálculo del monotributo. Las patas
+# repartidas entre archivos distintos las cubre la auditoría (detector 5).
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_transferencia_propia_en_mismo_lote_se_omite(client, auth_headers):
+    payload = {
+        "movimientos": [
+            _gasto("2026-06-10T00:00:00", "Transferencia enviada a Mercado Pago", 80000, "Otros"),
+            _ingreso("2026-06-10T00:00:00", "Transferencia recibida CVU propio", 80000, "Otros"),
+            _ingreso("2026-06-12T00:00:00", "Honorarios cliente Acme", 95000),
+        ],
+        "mapeo": {},
+    }
+    response = client.post("/importar/confirmar", json=payload, headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    # Solo entra el honorario real; las dos patas de la transferencia se omiten.
+    assert data["importados"] == 1
+    assert data["omitidos_por_transferencia"] == 2
+    assert data["ingresos_creados"] == 1
+    assert data["gastos_creados"] == 0
+
+    ingresos = client.get("/ingresos/", headers=auth_headers).json()
+    assert [i["descripcion"] for i in ingresos] == ["Honorarios cliente Acme"]
+
+
+def test_coincidencia_de_monto_sin_vocabulario_no_se_omite(client, auth_headers):
+    # Guardia contra falsos positivos: un cobro y una compra que casualmente
+    # coinciden en monto y fecha NO son una transferencia y deben importarse.
+    payload = {
+        "movimientos": [
+            _gasto("2026-06-10T00:00:00", "Compra notebook Lenovo", 80000, "Equipamiento"),
+            _ingreso("2026-06-10T00:00:00", "Honorarios cliente Beta", 80000),
+        ],
+        "mapeo": {},
+    }
+    response = client.post("/importar/confirmar", json=payload, headers=auth_headers)
+    data = response.json()
+    assert data["importados"] == 2
+    assert data["omitidos_por_transferencia"] == 0
+
+
+def test_preview_resumen_cuenta_transferencias_propias(client, auth_headers):
+    # Camino completo del preview con un CSV real: el resumen informa las
+    # transferencias detectadas y las descuenta de los "nuevos".
+    csv = (
+        "fecha,descripcion,monto\n"
+        "2026-06-10,Transf a cuenta propia Mercado Pago,-80000\n"
+        "2026-06-10,Transferencia recibida Galicia,80000\n"
+        "2026-06-12,Pago cliente Acme,95000\n"
+    )
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("extracto.csv", io.BytesIO(csv.encode()), "text/csv")},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["resumen"]["transferencias_propias"] == 2
+    assert data["resumen"]["nuevos"] == 1
+    # Las filas del par vuelven marcadas para que el frontend las muestre
+    # atenuadas con la etiqueta "se omite".
+    marcadas = [m for m in data["preview"] if m.get("posible_transferencia_propia")]
+    assert len(marcadas) == 2
+
+
 def test_importar_preview_extension_no_soportada(client, auth_headers):
     # Subir .txt: el endpoint debe rechazarlo antes incluso de leer el contenido.
     response = client.post(

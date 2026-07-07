@@ -10,6 +10,7 @@ ejecutar_auditoria() corre todas las reglas y persiste las alertas encontradas.
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models.gasto import Gasto
+from app.models.ingreso import Ingreso
 from app.models.factura import Factura, EstadoFactura
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.services.monotributo_service import verificar_pago_monotributo
@@ -45,6 +46,7 @@ def _crear_alerta(
     descripcion: str,
     monto: float | None = None,
     gasto_id_duplicado: int | None = None,
+    ingreso_id_relacionado: int | None = None,
 ) -> AlertaAuditoria:
     return AlertaAuditoria(
         usuario_id=usuario_id,
@@ -52,6 +54,7 @@ def _crear_alerta(
         descripcion=descripcion,
         monto_involucrado=monto,
         gasto_id_duplicado=gasto_id_duplicado,
+        ingreso_id_relacionado=ingreso_id_relacionado,
     )
 
 
@@ -156,8 +159,58 @@ def detectar_discrepancias_facturacion(db: Session, usuario_id: int) -> list[Fac
 
 
 # -------------------------------------------------------------------
+# DETECTOR 5: TRANSFERENCIAS ENTRE CUENTAS PROPIAS
+# Un freelancer con varias cuentas (banco + Mercado Pago + billeteras) que
+# importa los extractos de todas ve cada transferencia entre sus cuentas como
+# un gasto en un extracto Y un ingreso en el otro. Ese "ingreso" no es
+# facturación real e infla el cálculo del límite anual de Monotributo.
+# -------------------------------------------------------------------
+def detectar_transferencias_propias(db: Session, usuario_id: int) -> list[tuple[Ingreso, Gasto]]:
+    """Empareja ingresos y gastos que parecen las dos patas de una transferencia.
+
+    Criterio: mismo monto exacto, fechas a ≤1 día y vocabulario de
+    transferencia en al menos una de las descripciones (mismo guardia que usa
+    la importación, ver csv_service.es_descripcion_transferencia). El
+    emparejamiento es voraz: cada gasto participa de un solo par.
+    """
+    from app.services.csv_service import es_descripcion_transferencia
+
+    fecha_limite = datetime.now(timezone.utc) - timedelta(days=MESES_VENTANA * 30)
+    ingresos = db.query(Ingreso).filter(
+        Ingreso.usuario_id == usuario_id, Ingreso.fecha >= fecha_limite,
+    ).order_by(Ingreso.fecha.asc()).all()
+    gastos = db.query(Gasto).filter(
+        Gasto.usuario_id == usuario_id, Gasto.fecha >= fecha_limite,
+    ).order_by(Gasto.fecha.asc()).all()
+
+    pares: list[tuple[Ingreso, Gasto]] = []
+    gastos_usados: set[int] = set()
+
+    for ingreso in ingresos:
+        fecha_ing = ingreso.fecha.replace(tzinfo=None) if ingreso.fecha.tzinfo else ingreso.fecha
+        for gasto in gastos:
+            if gasto.id in gastos_usados:
+                continue
+            if gasto.monto != ingreso.monto:
+                continue
+            fecha_gas = gasto.fecha.replace(tzinfo=None) if gasto.fecha.tzinfo else gasto.fecha
+            if abs((fecha_gas - fecha_ing).days) > 1:
+                continue
+            if not (
+                es_descripcion_transferencia(ingreso.descripcion)
+                or es_descripcion_transferencia(gasto.descripcion)
+            ):
+                continue
+            pares.append((ingreso, gasto))
+            gastos_usados.add(gasto.id)
+            break
+
+    return pares
+
+
+# -------------------------------------------------------------------
 # FUNCIÓN PRINCIPAL
-# Ejecuta los tres detectores y guarda las alertas en la BD
+# Ejecuta los detectores y guarda las alertas en la BD
 # -------------------------------------------------------------------
 def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
     # Borramos las alertas no resueltas antes de regenerarlas
@@ -176,7 +229,10 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
     ).all()
     huellas_resueltas = {_huella_alerta(a.tipo, a.monto_involucrado) for a in resueltas}
 
-    conteo = {"gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0, "monotributo_impago": 0}
+    conteo = {
+        "gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0,
+        "monotributo_impago": 0, "transferencias_propias": 0,
+    }
     alertas: list[AlertaAuditoria] = []
 
     # --- DETECTOR 1: duplicados ---
@@ -241,6 +297,25 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
     if alerta_mono and _huella_alerta(TipoAlerta.MONOTRIBUTO_IMPAGO, alerta_mono.monto_involucrado) not in huellas_resueltas:
         conteo["monotributo_impago"] = mono_count
         alertas.append(alerta_mono)
+
+    # --- DETECTOR 5: transferencias entre cuentas propias ---
+    transferencias = detectar_transferencias_propias(db, usuario_id)
+
+    for ingreso, gasto in transferencias:
+        if _huella_alerta(TipoAlerta.TRANSFERENCIA_PROPIA, ingreso.monto) in huellas_resueltas:
+            continue
+        alertas.append(_crear_alerta(
+            usuario_id,
+            TipoAlerta.TRANSFERENCIA_PROPIA,
+            f"Posible transferencia entre cuentas propias: {formato_pesos_ar(ingreso.monto)} "
+            f"ingresó el {ingreso.fecha.date()} ('{ingreso.descripcion[:60]}') y salió el "
+            f"{gasto.fecha.date()} ('{gasto.descripcion[:60]}'). Si es un movimiento entre tus "
+            f"cuentas, no representa facturación real: descartalo para no inflar tu monotributo.",
+            monto=ingreso.monto,
+            gasto_id_duplicado=gasto.id,
+            ingreso_id_relacionado=ingreso.id,
+        ))
+        conteo["transferencias_propias"] += 1
 
     db.add_all(alertas)
     db.commit()

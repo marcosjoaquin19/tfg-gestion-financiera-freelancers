@@ -33,6 +33,7 @@ export default function ImportarCSV() {
   const [errorMsg, setErrorMsg] = useState('');
   const [preview, setPreview] = useState([]);
   const [totalFilas, setTotalFilas] = useState(0);
+  const [resumen, setResumen] = useState(null);
   const [mapeo, setMapeo] = useState(null);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef();
@@ -69,6 +70,7 @@ export default function ImportarCSV() {
       });
       setPreview(res.data.preview);
       setTotalFilas(res.data.total_filas);
+      setResumen(res.data.resumen);
       setMapeo(res.data.mapeo_detectado);
       setPaso(PASO.PREVIEW);
     } catch (err) {
@@ -100,6 +102,7 @@ export default function ImportarCSV() {
     setPaso(PASO.SUBIR);
     setArchivo(null);
     setPreview([]);
+    setResumen(null);
     setMapeo(null);
     setResultado(null);
     setErrorMsg('');
@@ -239,6 +242,21 @@ export default function ImportarCSV() {
             )}
           </div>
 
+          {/* Aviso de movimientos que el backend va a omitir al confirmar */}
+          {resumen && (resumen.posibles_duplicados > 0 || resumen.transferencias_propias > 0) && (
+            <div style={{
+              background: '#1c1a10', border: '1px solid #78562a', borderRadius: '8px',
+              padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#fbbf24',
+            }}>
+              {resumen.posibles_duplicados > 0 && (
+                <div>⚠ {resumen.posibles_duplicados} {resumen.posibles_duplicados === 1 ? 'movimiento ya existe' : 'movimientos ya existen'} en el sistema y se omitirá{resumen.posibles_duplicados === 1 ? '' : 'n'} al confirmar.</div>
+              )}
+              {resumen.transferencias_propias > 0 && (
+                <div>⇄ {resumen.transferencias_propias} {resumen.transferencias_propias === 1 ? 'movimiento parece' : 'movimientos parecen'} parte de una transferencia entre tus propias cuentas (no es facturación real) y se omitirá{resumen.transferencias_propias === 1 ? '' : 'n'} al confirmar.</div>
+              )}
+            </div>
+          )}
+
           {/* Tabla */}
           <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 3fr 1fr 1.5fr 1.2fr', borderBottom: '1px solid #1e293b' }}>
@@ -253,12 +271,23 @@ export default function ImportarCSV() {
                   display: 'grid', gridTemplateColumns: '1.2fr 3fr 1fr 1.5fr 1.2fr',
                   alignItems: 'center',
                   borderBottom: idx < filasVisibles.length - 1 ? '1px solid #1e293b' : 'none',
+                  opacity: m.posible_duplicado || m.posible_transferencia_propia ? 0.45 : 1,
                 }}
               >
                 <div style={{ padding: '10px 14px', fontSize: '12px', color: '#64748b' }}>
                   {formatFecha(m.fecha)}
                 </div>
                 <div style={{ padding: '10px 14px', fontSize: '13px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.posible_duplicado && (
+                    <span style={{ marginRight: '8px', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#1c1a10', color: '#fbbf24' }}>
+                      SE OMITE · DUPLICADO
+                    </span>
+                  )}
+                  {!m.posible_duplicado && m.posible_transferencia_propia && (
+                    <span style={{ marginRight: '8px', fontSize: '10px', fontWeight: 600, padding: '2px 6px', borderRadius: '4px', background: '#0f1e35', color: '#60a5fa' }}>
+                      SE OMITE · TRANSFERENCIA PROPIA
+                    </span>
+                  )}
                   {m.descripcion}
                 </div>
                 <div style={{ padding: '10px 14px' }}>
@@ -347,6 +376,17 @@ export default function ImportarCSV() {
               <span style={{ color: '#4ade80' }}>{resultado.ingresos_creados} ingresos</span>
               {' · '}
               <span style={{ color: '#f87171' }}>{resultado.gastos_creados} gastos</span>
+              {(resultado.omitidos_por_duplicado > 0 || resultado.omitidos_por_transferencia > 0) && (
+                <>
+                  <br />
+                  <span style={{ fontSize: '13px', color: '#fbbf24' }}>
+                    {[
+                      resultado.omitidos_por_duplicado > 0 && `${resultado.omitidos_por_duplicado} omitido${resultado.omitidos_por_duplicado === 1 ? '' : 's'} por duplicado`,
+                      resultado.omitidos_por_transferencia > 0 && `${resultado.omitidos_por_transferencia} omitido${resultado.omitidos_por_transferencia === 1 ? '' : 's'} por transferencia entre cuentas propias`,
+                    ].filter(Boolean).join(' · ')}
+                  </span>
+                </>
+              )}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>

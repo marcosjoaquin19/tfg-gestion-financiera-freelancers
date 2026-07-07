@@ -153,6 +153,98 @@ def test_eliminar_gasto_duplicado_resuelve_de_raiz(client, auth_headers):
     assert len([a for a in pendientes if a["tipo"] == "gasto_duplicado"]) == 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Detector 5: transferencias entre cuentas propias
+#
+# Caso real: el usuario transfiere de Galicia a Mercado Pago e importa ambos
+# extractos. El débito entra como gasto y el crédito como ingreso; ese
+# "ingreso" infla la facturación de 12 meses del monotributo. El detector
+# cruza ingresos y gastos ya persistidos (mismo monto, fechas a ≤1 día,
+# vocabulario de transferencia) y la alerta permite descartar ambas patas.
+# ─────────────────────────────────────────────────────────────────────────────
+
+INGRESO_TRANSF = {
+    "descripcion": "Transferencia recibida de Marcos Joaquin",
+    "monto": 150000, "categoria": "Otros", "fecha": "2026-06-10T14:00:00",
+}
+GASTO_TRANSF = {
+    "descripcion": "Transf enviada a Mercado Pago",
+    "monto": 150000, "categoria": "Otros", "fecha": "2026-06-10T13:55:00",
+}
+
+
+def test_detecta_transferencia_entre_cuentas_propias(client, auth_headers):
+    client.post("/ingresos/", json=INGRESO_TRANSF, headers=auth_headers)
+    client.post("/gastos/", json=GASTO_TRANSF, headers=auth_headers)
+
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["detalle"]["transferencias_propias"] == 1
+
+    alertas = client.get("/alertas/", headers=auth_headers).json()
+    alerta = next(a for a in alertas if a["tipo"] == "transferencia_propia")
+    # La alerta referencia AMBAS patas para poder descartarlas sin ambigüedad
+    assert alerta["gasto_id_duplicado"] is not None
+    assert alerta["ingreso_id_relacionado"] is not None
+    assert alerta["monto_involucrado"] == 150000
+
+
+def test_no_marca_transferencia_sin_vocabulario(client, auth_headers):
+    # Mismo monto y mismo día, pero ninguna descripción menciona una
+    # transferencia: es una coincidencia legítima (cobro + compra), no un par.
+    client.post("/ingresos/", json={**INGRESO_TRANSF, "descripcion": "Honorarios cliente Acme"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_TRANSF, "descripcion": "Compra notebook"}, headers=auth_headers)
+
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.json()["detalle"]["transferencias_propias"] == 0
+
+
+def test_no_marca_transferencia_con_fechas_lejanas(client, auth_headers):
+    # Vocabulario y monto coinciden pero las patas están a 10 días: no es
+    # el mismo movimiento.
+    client.post("/ingresos/", json={**INGRESO_TRANSF, "fecha": "2026-06-01T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_TRANSF, "fecha": "2026-06-11T10:00:00"}, headers=auth_headers)
+
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.json()["detalle"]["transferencias_propias"] == 0
+
+
+def test_descartar_transferencia_elimina_ambas_patas(client, auth_headers):
+    client.post("/ingresos/", json=INGRESO_TRANSF, headers=auth_headers)
+    client.post("/gastos/", json=GASTO_TRANSF, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+
+    alertas = client.get("/alertas/", headers=auth_headers).json()
+    alerta = next(a for a in alertas if a["tipo"] == "transferencia_propia")
+
+    resp = client.delete(f"/alertas/{alerta['id']}/transferencia-propia", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json()["resuelta"] is True
+
+    # Ambas patas desaparecieron: el ingreso ya no infla el monotributo
+    # y el gasto ya no distorsiona las estadísticas.
+    assert client.get("/ingresos/", headers=auth_headers).json() == []
+    assert client.get("/gastos/", headers=auth_headers).json() == []
+
+    # Re-ejecutar la auditoría no regenera la alerta (el par ya no existe).
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    pendientes = client.get("/alertas/?solo_pendientes=true", headers=auth_headers).json()
+    assert len([a for a in pendientes if a["tipo"] == "transferencia_propia"]) == 0
+
+
+def test_descartar_transferencia_rechaza_otro_tipo_de_alerta(client, auth_headers):
+    # El endpoint de descarte solo aplica a alertas transferencia_propia:
+    # con una alerta de gasto duplicado debe responder 400 sin tocar nada.
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+
+    alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
+    resp = client.delete(f"/alertas/{alerta_id}/transferencia-propia", headers=auth_headers)
+    assert resp.status_code == 400
+    assert len(client.get("/gastos/", headers=auth_headers).json()) == 2
+
+
 def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_headers):
     # Regresión: dos pares de duplicados DISTINTOS que comparten el mismo
     # monto y categoría. Antes el gasto a eliminar se localizaba solo por
