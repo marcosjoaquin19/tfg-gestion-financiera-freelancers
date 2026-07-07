@@ -61,13 +61,15 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  // Las fechas llegan en UTC ("...T00:00:00Z"): se comparan con getters UTC
+  // para que un movimiento del día 1 a medianoche no caiga en el mes anterior.
   const ingresosMes = ingresos.filter((i) => {
     const d = new Date(i.fecha);
-    return d.getMonth() + 1 === mesActual && d.getFullYear() === anioActual;
+    return d.getUTCMonth() + 1 === mesActual && d.getUTCFullYear() === anioActual;
   });
   const gastosMes = gastos.filter((g) => {
     const d = new Date(g.fecha);
-    return d.getMonth() + 1 === mesActual && d.getFullYear() === anioActual;
+    return d.getUTCMonth() + 1 === mesActual && d.getUTCFullYear() === anioActual;
   });
 
   const totalIngresos = ingresosMes.reduce((s, i) => s + parseFloat(i.monto || 0), 0);

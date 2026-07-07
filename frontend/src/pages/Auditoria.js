@@ -11,10 +11,12 @@ import api from '../api';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
+// La API devuelve las fechas en UTC ("...T00:00:00Z"): hay que leerlas con los
+// getters UTC para que el día calendario no retroceda en husos negativos (ART).
 function formatFecha(str) {
   if (!str) return '—';
   const d = new Date(str);
-  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function fmtMonto(n) {

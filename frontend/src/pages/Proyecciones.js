@@ -11,18 +11,20 @@ import api from '../api';
 
 const MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
+// Las proyecciones llegan como el 1° de cada mes a medianoche UTC ("...T00:00:00Z"):
+// se leen con getters UTC para que la etiqueta no retroceda al mes anterior (ART).
 function mesLabel(str) {
   if (!str) return '';
   const d = new Date(str);
-  const m = MESES_ES[d.getMonth()];
-  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getFullYear();
+  const m = MESES_ES[d.getUTCMonth()];
+  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getUTCFullYear();
 }
 
 function formatFechaLarga(str) {
   if (!str) return '—';
   const d = new Date(str);
-  const m = MESES_ES[d.getMonth()];
-  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getFullYear();
+  const m = MESES_ES[d.getUTCMonth()];
+  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getUTCFullYear();
 }
 
 function fmtMonto(n) {
@@ -78,7 +80,7 @@ export default function Proyecciones() {
       const porMes = {};
       for (const ing of resI.data) {
         const d = new Date(ing.fecha);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
+        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01T00:00:00`;
         porMes[key] = (porMes[key] || 0) + parseFloat(ing.monto || 0);
       }
       const hist = Object.entries(porMes)

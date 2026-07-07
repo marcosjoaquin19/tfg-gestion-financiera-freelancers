@@ -18,9 +18,11 @@ const CATEGORIAS = [
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
+// La API devuelve las fechas en UTC ("...T00:00:00Z"): hay que leerlas con los
+// getters UTC para que el día calendario no retroceda en husos negativos (ART).
 function formatFecha(str) {
   const d = new Date(str);
-  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function fmtMonto(n) {
@@ -109,6 +111,7 @@ export default function Gastos() {
         ...prev,
         descripcion: st.descripcion || prev.descripcion,
         categoria: st.categoria || prev.categoria,
+        monto: st.monto != null && st.monto !== '' ? String(st.monto) : prev.monto,
       }));
       setShowForm(true);
       // Limpiamos el state para que un refresh no vuelva a pre-cargar.
@@ -194,7 +197,7 @@ export default function Gastos() {
 
   const periodoMes = (f) => {
     const d = new Date(f);
-    return d.getFullYear() * 12 + d.getMonth();
+    return d.getUTCFullYear() * 12 + d.getUTCMonth();
   };
 
   let gastosFiltrados = filtroCategoria

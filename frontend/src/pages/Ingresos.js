@@ -16,9 +16,11 @@ const CATEGORIAS = [
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
+// La API devuelve las fechas en UTC ("...T00:00:00Z"): hay que leerlas con los
+// getters UTC para que el día calendario no retroceda en husos negativos (ART).
 function formatFecha(str) {
   const d = new Date(str);
-  return `${d.getDate()} ${MESES_CORTOS[d.getMonth()]} ${d.getFullYear()}`;
+  return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
 function fmtMonto(n) {
@@ -181,7 +183,7 @@ export default function Ingresos() {
   // del mismo mes empaten y el monto pueda ordenarlos dentro del mes.
   const periodoMes = (f) => {
     const d = new Date(f);
-    return d.getFullYear() * 12 + d.getMonth();
+    return d.getUTCFullYear() * 12 + d.getUTCMonth();
   };
 
   const ingresosOrdenados = [...ingresosFiltrados].sort((a, b) => {
