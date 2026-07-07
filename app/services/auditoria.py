@@ -148,9 +148,11 @@ def detectar_discrepancias_facturacion(db: Session, usuario_id: int) -> list[Fac
         db.query(Factura)
         .filter(
             Factura.usuario_id == usuario_id,
-            Factura.estado == EstadoFactura.PENDIENTE,
+            # Cuentan tanto las PENDIENTES con vencimiento pasado como las ya
+            # marcadas VENCIDAS (el frontend pasa a VENCIDA automáticamente al
+            # abrir Facturas): en ambos casos la factura sigue sin cobrarse.
+            Factura.estado.in_([EstadoFactura.PENDIENTE, EstadoFactura.VENCIDA]),
             Factura.fecha_vencimiento < ahora,
-            # pendiente + fecha de vencimiento pasada = no se cobró a tiempo
         )
         .all()
     )

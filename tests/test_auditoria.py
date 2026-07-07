@@ -76,6 +76,20 @@ def test_detecta_factura_vencida(client, auth_headers):
     assert response.json()["detalle"]["discrepancias"] >= 1
 
 
+def test_detecta_factura_en_estado_vencida(client, auth_headers):
+    # el frontend marca automáticamente como VENCIDA la factura pendiente cuyo
+    # vencimiento pasó: la auditoría tiene que seguir alertándola igual,
+    # porque sigue sin cobrarse
+    creada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
+    client.patch(f"/facturas/{creada['id']}/estado", json={
+        "estado": "vencida",
+        "fecha_pago": None
+    }, headers=auth_headers)
+
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.json()["detalle"]["discrepancias"] >= 1
+
+
 def test_no_detecta_factura_pagada_como_discrepancia(client, auth_headers):
     creada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
     # la marcamos como pagada antes de auditar
