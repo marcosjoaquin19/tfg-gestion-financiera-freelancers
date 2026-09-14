@@ -27,3 +27,6 @@ docs/
 
 # Capturas para el video demo (generadas, no son código)
 demo_capturas/
+# La tesis aprobada se conserva localmente en defensa_final/tesis/ pero no
+# se publica en el repositorio.
+defensa_final/tesis/

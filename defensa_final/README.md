@@ -1,0 +1,92 @@
+# Defensa final — FreelanceControl
+
+Material de trabajo para la **defensa oral** del Trabajo Final de Grado.
+La tesis escrita ya está **aprobada**; acá vive todo lo que se usa para
+defenderla ante la comisión evaluadora.
+
+**Formato de la instancia:** 35 minutos de exposición + 10 minutos de preguntas.
+Modalidad presencial, demostración en vivo sobre equipo propio.
+
+---
+
+## Contenido
+
+| Archivo | Para qué sirve | Cuándo se usa |
+|---|---|---|
+| [01_GUION_DEFENSA_35MIN.md](01_GUION_DEFENSA_35MIN.md) | Guion completo, cronometrado bloque por bloque. Idea fuerza + qué decir + trampas. | Para ensayar y el día de la defensa |
+| [02_ARQUITECTURA_Y_PATRONES.md](02_ARQUITECTURA_Y_PATRONES.md) | Índice "pregunta del tribunal → `archivo:línea`". Cada patrón con su justificación y la alternativa descartada. | Ronda de preguntas |
+| `tesis/` | El PDF de la tesis **aprobada**, como fuente de verdad de datos y terminología | Consulta |
+| `slides/` | Presentación de apoyo | Bloques 1, 2, 5 y 6 |
+| `video/` | Video explicativo del sistema | Bloque 3 |
+
+---
+
+## Estructura de los 35 minutos
+
+| Bloque | Reloj | Soporte |
+|---|---|---|
+| 1 · Apertura: el problema | 0:00 – 3:00 | Slides |
+| 2 · Propuesta y **límites** | 3:00 – 6:00 | Slides |
+| 3 · Video explicativo | 6:00 – 10:00 | Video |
+| 4 · **Demo en vivo** | 10:00 – 24:00 | App |
+| 5 · Código y decisiones | 24:00 – 33:00 | Editor + slides |
+| 6 · Cierre | 33:00 – 35:00 | Slides |
+
+---
+
+## Los dos pedidos explícitos de la cátedra
+
+1. **Sostener que el sistema informa, proyecta y alerta, pero no reemplaza
+   asesoramiento contable, fiscal ni financiero.**
+   Implementado en el producto, no solo dicho: `frontend/src/components/AvisoAlcance.js`
+   aparece en Monotributo, Proyecciones, Recomendaciones, Resumen IA y Auditoría,
+   y el mismo enunciado va en el pie del reporte PDF
+   (`app/services/reportes_service.py`).
+
+2. **Mostrar el prototipo funcionando**, en particular: clasificador, auditoría,
+   importación, proyección, estado fiscal y reporte PDF.
+   Los seis están cubiertos en el bloque 4, en ese orden narrativo.
+
+---
+
+## Buscar decisiones de diseño en el código
+
+Todos los puntos con una decisión de diseño documentada llevan el marcador
+literal `PATRÓN:` (con tilde):
+
+```bash
+grep -rn "PATRÓN:" app frontend/src
+```
+
+Devuelve 32 anotaciones en 16 archivos. El desarrollo completo de cada una
+—qué resuelve, por qué se eligió, qué alternativa se descartó— está en
+[02_ARQUITECTURA_Y_PATRONES.md](02_ARQUITECTURA_Y_PATRONES.md).
+
+---
+
+## Preparar el entorno antes de la defensa
+
+```bash
+docker compose up -d
+```
+
+Esperar a que los tres contenedores queden en estado saludable y entrar a
+`http://localhost:3000` con `demo@freelancecontrol.com` / `demo1234`.
+
+> ⚠️ **Importante:** el contenedor `api` **no tiene volumen montado**. Si se
+> edita cualquier archivo del backend hay que reconstruirlo antes de que el
+> cambio tome efecto:
+>
+> ```bash
+> docker compose build api && docker compose up -d api
+> ```
+>
+> El frontend sí recarga en caliente.
+
+Verificación rápida de que todo está sano:
+
+```bash
+docker exec tfg_api python -m pytest -q
+```
+
+Debe dar **115 pruebas en verde**.
