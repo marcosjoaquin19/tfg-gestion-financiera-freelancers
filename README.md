@@ -69,7 +69,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=10080
 # Si se deja vacío, esos módulos usan un fallback local determinístico
 # y la aplicación funciona igual.
 GROQ_API_KEY=
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 Para generar la `SECRET_KEY` se puede usar:

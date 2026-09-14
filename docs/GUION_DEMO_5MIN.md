@@ -6,7 +6,8 @@
 >
 > **Antes de empezar** (ya hecho en la preparación, ver `DEMO.md` §0):
 > sistema levantado, modelo base entrenado, seed demo cargado, sesión iniciada
-> como `demo@freelancecontrol.com`. Tener el navegador ya en el Dashboard.
+> como `demo@freelancecontrol.com` / `demo1234`. Tener el navegador ya en el
+> Dashboard.
 
 ---
 
@@ -70,10 +71,11 @@ correcta → Corregir). Volver a clasificar la misma descripción.
 **En pantalla:** ir a **Alertas** → ejecutar auditoría.
 
 **Decir:**
-> "La auditoría corre cuatro detectores sobre los registros: gastos duplicados
+> "La auditoría corre cinco detectores sobre los registros: gastos duplicados
 > en una ventana de tres días, anomalías estadísticas por z-score mayor a dos
-> sigma, facturas vencidas sin cobrar, y la cuota de Monotributo del mes sin
-> pagar. Con estos datos se disparan alertas de cada tipo."
+> sigma, facturas vencidas sin cobrar, la cuota de Monotributo del mes sin
+> pagar, y transferencias entre cuentas propias del usuario —que si no se
+> detectan, inflan la facturación con ingresos que no son facturación real."
 
 **En pantalla:** señalar la anomalía (el servidor de $900.000 en Infraestructura)
 y la factura vencida.
@@ -92,10 +94,18 @@ y la factura vencida.
 
 **Decir:**
 > "Esta es la pantalla que cruza los dos modelos. El acumulado real va por el
-> **48% del límite** de la categoría D. Si miráramos solo el presente, todo
+> **44% del límite** de la categoría D. Si miráramos solo el presente, todo
 > tranquilo. Pero el sistema proyecta los ingresos con Prophet hasta el cierre
-> del año fiscal, y esa proyección supera el límite. Por eso el **semáforo está
-> en rojo** y sugiere recategorizar a la **E**, antes de que AFIP lo fuerce."
+> del año fiscal, y esa proyección se va por encima del **77%**. Por eso el
+> **semáforo pasa a amarillo** y sugiere recategorizar a la **E**, antes de que
+> ARCA lo fuerce."
+
+> ⚠️ *Leer el porcentaje que muestre la pantalla, no el de este guión.* El
+> semáforo se calcula sobre la **proyección anual**, y esa proyección depende de
+> cuántos meses quedan hasta el 31/12: cuanto más cerca del cierre del año se
+> corra la demo, menos meses se suman y más baja el porcentaje. Verde por debajo
+> del 70%, amarillo entre 70 y 90, rojo por encima de 90. El acumulado real
+> (~44%) y la sugerencia de categoría **E** se mantienen estables.
 
 **Decir (remate):**
 > "Este es el valor diferencial: el sistema anticipa el riesgo fiscal mirando el
@@ -112,8 +122,8 @@ y la factura vencida.
 > resumen, estado fiscal, gastos por categoría, facturación y auditoría, todo en
 > formato argentino. En resumen: clasificación con IA respetando la privacidad,
 > importación automática, auditoría y anticipación del riesgo fiscal. Está
-> contenedorizado, cubierto por 97 tests y con las 13 historias de usuario
-> implementadas. Gracias."
+> contenedorizado, cubierto por 115 tests y con las 17 historias de usuario
+> del backlog implementadas. Gracias."
 
 ---
 
@@ -131,9 +141,9 @@ y la factura vencida.
 
 ## Checklist de 1 minuto antes de entrar
 
-- [ ] Navegador en el Dashboard, sesión `demo@freelancecontrol.com` iniciada
+- [ ] Navegador en el Dashboard, sesión `demo@freelancecontrol.com` / `demo1234` iniciada
 - [ ] `docs/extractos_ejemplo/galicia.csv` a mano para arrastrar
 - [ ] Auditoría y proyecciones ya ejecutadas una vez (pantallas con datos)
-- [ ] Semáforo Monotributo en **rojo**, sugiere **E**
+- [ ] Semáforo Monotributo encendido (amarillo o rojo según el mes), sugiere **E**
 - [ ] Zoom del navegador al 100–110% para que se lea de lejos
 - [ ] Slides abiertos en otra ventana para volver al cierre

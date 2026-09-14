@@ -249,7 +249,7 @@ y auditoría. Montos en formato argentino ($ 1.234.567,89). Disclaimer al pie.
 > "En resumen: un sistema que automatiza la clasificación de gastos con ML
 > local respetando la privacidad, audita los registros, proyecta la
 > facturación y anticipa el riesgo de recategorización fiscal. Está
-> contenedorizado con Docker, cubierto por 97 tests automatizados y las 13
+> contenedorizado con Docker, cubierto por 115 tests automatizados y las 17
 > historias de usuario del backlog están implementadas y verificadas."
 
 ---

@@ -59,7 +59,7 @@
 | Componente | Tecnología |
 |---|---|
 | Contenedores | Docker + Docker Compose 3.8 |
-| Modelo IA externo | Groq llama-3.3-70b-versatile — solo resúmenes y recomendaciones |
+| Modelo IA externo | Groq openai/gpt-oss-120b — solo resúmenes y recomendaciones |
 
 ---
 
@@ -497,7 +497,7 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080   # 7 días
 
 GROQ_API_KEY=<clave expuesta — ver notas de seguridad>
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 ### Alembic (`alembic.ini` + `alembic/env.py`)
@@ -614,8 +614,8 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 
 #### Infraestructura
 - [x] Docker Compose con 3 servicios (db, api, frontend)
-- [x] Migraciones Alembic con 5 revisiones aplicadas
-- [x] Suite de tests con 11 módulos, 97 tests (SQLite in-memory)
+- [x] Migraciones Alembic con 7 revisiones aplicadas
+- [x] Suite de tests con 11 módulos, 115 tests (SQLite in-memory)
 - [x] Smoke tests end-to-end sobre PostgreSQL real (S2.1–S2.4)
 
 #### Demo y documentación

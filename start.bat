@@ -32,7 +32,7 @@ if not exist .env (
     echo ALGORITHM=HS256
     echo ACCESS_TOKEN_EXPIRE_MINUTES=10080
     echo GROQ_API_KEY=
-    echo GROQ_MODEL=llama-3.3-70b-versatile
+    echo GROQ_MODEL=openai/gpt-oss-120b
   ) > .env
 )
 
