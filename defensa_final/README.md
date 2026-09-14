@@ -16,7 +16,8 @@ Modalidad presencial, demostración en vivo sobre equipo propio.
 | [01_GUION_DEFENSA_35MIN.md](01_GUION_DEFENSA_35MIN.md) | Guion completo, cronometrado bloque por bloque. Idea fuerza + qué decir + trampas. | Para ensayar y el día de la defensa |
 | [02_ARQUITECTURA_Y_PATRONES.md](02_ARQUITECTURA_Y_PATRONES.md) | Índice "pregunta del tribunal → `archivo:línea`". Cada patrón con su justificación y la alternativa descartada. | Ronda de preguntas |
 | `tesis/` | El PDF de la tesis **aprobada**, como fuente de verdad de datos y terminología | Consulta |
-| `slides/` | Presentación de apoyo | Bloques 1, 2, 5 y 6 |
+| [gen_slides_defensa.js](gen_slides_defensa.js) | Generador reproducible del deck. Los slides se editan **acá**, no en PowerPoint. | Al cambiar el guion |
+| `slides/` | `FreelanceControl_Defensa_Final.pptx` — 30 slides (27 + 3 de anexo) | Bloques 1, 2, 5 y 6 |
 | `video/` | Video explicativo del sistema | Bloque 3 |
 
 ---
@@ -31,6 +32,43 @@ Modalidad presencial, demostración en vivo sobre equipo propio.
 | 4 · **Demo en vivo** | 10:00 – 24:00 | App |
 | 5 · Código y decisiones | 24:00 – 33:00 | Editor + slides |
 | 6 · Cierre | 33:00 – 35:00 | Slides |
+
+---
+
+## Regenerar la presentación
+
+Los slides no se editan a mano: se generan desde código, así se mantienen
+sincronizados con el guion y con los datos reales del proyecto.
+
+```bash
+node defensa_final/gen_slides_defensa.js
+```
+
+Requiere `pptxgenjs` instalado de forma global (`npm i -g pptxgenjs`). Cada
+slide lleva arriba a la derecha su **bloque del guion y su marca de reloj**, de
+modo que en el ensayo se ve de un vistazo si se va atrasado o adelantado.
+
+Para revisar el resultado sin abrir PowerPoint:
+
+```bash
+soffice --headless --convert-to pdf --outdir /tmp defensa_final/slides/FreelanceControl_Defensa_Final.pptx
+```
+
+### Estructura del deck
+
+| Slides | Bloque |
+|---|---|
+| 1 – 4 | Apertura: el problema |
+| 5 – 9 | Propuesta, alcance y límites |
+| 10 | Transición al video |
+| 11 | Guion de la demo en vivo |
+| 12 – 23 | Código y decisiones de diseño |
+| 24 – 27 | Cierre: resultados y trabajo futuro |
+| 28 – 30 | **Anexo**: respaldo para la ronda de preguntas |
+
+Las tres últimas no se muestran en la exposición: están para proyectar si el
+tribunal pregunta por los detectores de auditoría, los costos o dónde vive una
+funcionalidad concreta en el código.
 
 ---
 
