@@ -479,3 +479,43 @@ def test_importar_preview_respeta_correcciones_usuario(client, auth_headers):
 
     assert response.status_code == 200
     assert response.json()["preview"][0]["categoria"] == "Marketing"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HU-07 · último criterio de aceptación:
+# "Dada una importación confirmada, cuando falla el procesamiento de algún
+#  registro, entonces el sistema revierte todos los anteriores y no persiste
+#  ninguno."
+#
+# El endpoint envuelve la persistencia en un try/commit/except/rollback. Para
+# ejercitar esa rama hay que provocar un fallo real en el commit: se parchea
+# Session.commit para que levante una excepción, de modo que la transacción
+# quede a medias y el rollback tenga algo que revertir.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_importar_confirmar_revierte_todo_si_falla_la_persistencia(client, auth_headers, db):
+    movimientos = [
+        _gasto("2026-03-01T00:00:00", "Adobe Photoshop", 1200, "Software"),
+        _gasto("2026-03-02T00:00:00", "AWS EC2", 2800, "Infraestructura"),
+        _ingreso("2026-03-03T00:00:00", "Honorarios cliente Acme", 95000),
+    ]
+
+    # La BD arranca vacía para este usuario.
+    assert client.get("/gastos/", headers=auth_headers).json() == []
+    assert client.get("/ingresos/", headers=auth_headers).json() == []
+
+    # El commit falla a mitad de la operación (p. ej. la BD se cae).
+    with patch.object(type(db), "commit", side_effect=RuntimeError("BD caída")):
+        response = client.post(
+            "/importar/confirmar",
+            json={"movimientos": movimientos, "mapeo": {}},
+            headers=auth_headers,
+        )
+
+    # El endpoint informa el fallo y aclara que no quedaron registros parciales.
+    assert response.status_code == 500
+    assert "revertida" in response.json()["detail"].lower()
+
+    # Ningún registro quedó persistido: ni los que iban antes del fallo.
+    assert client.get("/gastos/", headers=auth_headers).json() == []
+    assert client.get("/ingresos/", headers=auth_headers).json() == []

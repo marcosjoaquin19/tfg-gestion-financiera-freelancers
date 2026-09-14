@@ -8,13 +8,30 @@ puedan listar y marcar como resueltas.
 
 from datetime import datetime, timedelta
 
-GASTO_BASE = {"descripcion": "Gasto test", "monto": 1000, "categoria": "Software", "fecha": "2026-03-01T10:00:00"}
+
+def _hace(dias: int, hora: str = "10:00:00") -> str:
+    """Fecha ISO `dias` días antes de hoy.
+
+    Los detectores de auditoría trabajan sobre una ventana móvil (los últimos
+    MESES_VENTANA meses), así que los tests no pueden usar fechas fijas: con el
+    paso del calendario quedarían fuera de la ventana y dejarían de detectarse.
+    """
+    return (datetime.now() - timedelta(days=dias)).strftime(f"%Y-%m-%dT{hora}")
+
+
+# Par "base" de duplicados: D0 y D0+1 (1 día de diferencia, dentro de la
+# ventana de 3 días). Ambos a ~30 días de hoy, bien adentro de la ventana móvil.
+D0 = _hace(31)
+D1 = _hace(30)
+D10 = _hace(21)   # 10 días después de D0: fuera de la ventana de duplicados
+
+GASTO_BASE = {"descripcion": "Gasto test", "monto": 1000, "categoria": "Software", "fecha": D0}
 FACTURA_BASE = {
     "cliente_nombre": "Cliente Test",
     "descripcion": "Servicio test",
     "monto": 50000,
-    "fecha_emision": "2026-01-01T10:00:00",
-    "fecha_vencimiento": "2026-01-15T10:00:00",  # ya vencida
+    "fecha_emision": _hace(60),
+    "fecha_vencimiento": _hace(45),  # ya vencida
 }
 
 
@@ -29,8 +46,8 @@ def test_auditoria_sin_datos(client, auth_headers):
 
 def test_detecta_gasto_duplicado(client, auth_headers):
     # mismo monto y categoría con 1 día de diferencia (dentro de la ventana de 3 días)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert response.status_code == 200
@@ -43,8 +60,8 @@ def test_detecta_gasto_duplicado(client, auth_headers):
 
 def test_no_detecta_duplicado_fuera_de_ventana(client, auth_headers):
     # mismo monto y categoría pero con 10 días de diferencia (fuera de la ventana)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-11T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D10}, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert response.json()["detalle"]["gastos_duplicados"] == 0
@@ -53,8 +70,8 @@ def test_no_detecta_duplicado_fuera_de_ventana(client, auth_headers):
 def test_detecta_anomalia_estadistica(client, auth_headers):
     # 5 gastos normales de $1000 y uno de $50000 en la misma categoría
     for i in range(5):
-        client.post("/gastos/", json={**GASTO_BASE, "monto": 1000, "fecha": f"2026-03-0{i+1}T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "monto": 50000, "fecha": "2026-03-10T10:00:00"}, headers=auth_headers)
+        client.post("/gastos/", json={**GASTO_BASE, "monto": 1000, "fecha": _hace(31 - i)}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "monto": 50000, "fecha": _hace(22)}, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert response.json()["detalle"]["anomalias"] >= 1
@@ -69,7 +86,7 @@ def test_no_detecta_anomalia_con_pocos_gastos(client, auth_headers):
 
 
 def test_detecta_factura_vencida(client, auth_headers):
-    # la fecha de vencimiento es en enero 2026, ya pasó
+    # la fecha de vencimiento ya pasó
     client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
@@ -95,7 +112,7 @@ def test_no_detecta_factura_pagada_como_discrepancia(client, auth_headers):
     # la marcamos como pagada antes de auditar
     client.patch(f"/facturas/{creada['id']}/estado", json={
         "estado": "pagada",
-        "fecha_pago": "2026-01-10T10:00:00"
+        "fecha_pago": _hace(50)
     }, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
@@ -103,8 +120,8 @@ def test_no_detecta_factura_pagada_como_discrepancia(client, auth_headers):
 
 
 def test_resolver_alerta(client, auth_headers):
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
 
     alertas = client.get("/alertas/", headers=auth_headers).json()
@@ -120,8 +137,8 @@ def test_resolver_alerta(client, auth_headers):
 
 
 def test_auditoria_no_duplica_alertas(client, auth_headers):
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
 
     # corremos la auditoría dos veces
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
@@ -134,8 +151,8 @@ def test_auditoria_no_duplica_alertas(client, auth_headers):
 
 def test_alerta_resuelta_no_reaparece(client, auth_headers):
     # Creamos un duplicado y lo detectamos
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
 
     alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
@@ -149,8 +166,8 @@ def test_alerta_resuelta_no_reaparece(client, auth_headers):
 
 
 def test_eliminar_gasto_duplicado_resuelve_de_raiz(client, auth_headers):
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
 
     alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
@@ -179,11 +196,11 @@ def test_eliminar_gasto_duplicado_resuelve_de_raiz(client, auth_headers):
 
 INGRESO_TRANSF = {
     "descripcion": "Transferencia recibida de Marcos Joaquin",
-    "monto": 150000, "categoria": "Otros", "fecha": "2026-06-10T14:00:00",
+    "monto": 150000, "categoria": "Otros", "fecha": _hace(20, "14:00:00"),
 }
 GASTO_TRANSF = {
     "descripcion": "Transf enviada a Mercado Pago",
-    "monto": 150000, "categoria": "Otros", "fecha": "2026-06-10T13:55:00",
+    "monto": 150000, "categoria": "Otros", "fecha": _hace(20, "13:55:00"),
 }
 
 
@@ -216,8 +233,8 @@ def test_no_marca_transferencia_sin_vocabulario(client, auth_headers):
 def test_no_marca_transferencia_con_fechas_lejanas(client, auth_headers):
     # Vocabulario y monto coinciden pero las patas están a 10 días: no es
     # el mismo movimiento.
-    client.post("/ingresos/", json={**INGRESO_TRANSF, "fecha": "2026-06-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_TRANSF, "fecha": "2026-06-11T10:00:00"}, headers=auth_headers)
+    client.post("/ingresos/", json={**INGRESO_TRANSF, "fecha": _hace(29)}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_TRANSF, "fecha": _hace(19)}, headers=auth_headers)
 
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert response.json()["detalle"]["transferencias_propias"] == 0
@@ -249,8 +266,8 @@ def test_descartar_transferencia_elimina_ambas_patas(client, auth_headers):
 def test_descartar_transferencia_rechaza_otro_tipo_de_alerta(client, auth_headers):
     # El endpoint de descarte solo aplica a alertas transferencia_propia:
     # con una alerta de gasto duplicado debe responder 400 sin tocar nada.
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**GASTO_BASE, "fecha": "2026-03-02T10:00:00"}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
 
     alerta_id = client.get("/alertas/", headers=auth_headers).json()[0]["id"]
@@ -265,10 +282,13 @@ def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_heade
     # monto y podía borrarse el del par equivocado; ahora la alerta guarda
     # la referencia directa (gasto_id_duplicado) al gasto repetido.
     par = {"descripcion": "Hosting mensual", "monto": 5000, "categoria": "Infraestructura"}
-    client.post("/gastos/", json={**par, "fecha": "2026-04-01T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**par, "fecha": "2026-04-02T10:00:00"}, headers=auth_headers)
-    client.post("/gastos/", json={**par, "fecha": "2026-05-01T10:00:00"}, headers=auth_headers)
-    r_dup_mayo = client.post("/gastos/", json={**par, "fecha": "2026-05-02T10:00:00"}, headers=auth_headers)
+    # Par "abril": dos gastos a 60 y 59 días; par "mayo": a 30 y 29 días.
+    ids_abril = {
+        client.post("/gastos/", json={**par, "fecha": _hace(60)}, headers=auth_headers).json()["id"],
+        client.post("/gastos/", json={**par, "fecha": _hace(59)}, headers=auth_headers).json()["id"],
+    }
+    id_sobreviviente_mayo = client.post("/gastos/", json={**par, "fecha": _hace(30)}, headers=auth_headers).json()["id"]
+    r_dup_mayo = client.post("/gastos/", json={**par, "fecha": _hace(29)}, headers=auth_headers)
     id_dup_mayo = r_dup_mayo.json()["id"]
 
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
@@ -286,11 +306,11 @@ def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_heade
     assert id_dup_mayo not in ids  # se borró exactamente el repetido de mayo
 
     # El par de abril quedó intacto y sigue marcado como duplicado.
-    abril = [g for g in gastos if g["fecha"].startswith("2026-04")]
+    abril = [g for g in gastos if g["id"] in ids_abril]
     assert len(abril) == 2
     assert all(g["es_duplicado"] for g in abril)
 
     # El sobreviviente de mayo ya no integra ningún par → se desmarcó.
-    mayo = [g for g in gastos if g["fecha"].startswith("2026-05")]
+    mayo = [g for g in gastos if g["id"] == id_sobreviviente_mayo]
     assert len(mayo) == 1
     assert mayo[0]["es_duplicado"] is False
