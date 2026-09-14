@@ -19,6 +19,8 @@ Modalidad presencial, demostración en vivo sobre equipo propio.
 | [gen_slides_defensa.js](gen_slides_defensa.js) | Generador reproducible del deck. Los slides se editan **acá**, no en PowerPoint. | Al cambiar el guion |
 | `slides/` | `FreelanceControl_Defensa_Final.pptx` — 30 slides (27 + 3 de anexo) | Bloques 1, 2, 5 y 6 |
 | `video/` | Video explicativo del sistema | Bloque 3 |
+| [gen_pdfs_lectura.py](gen_pdfs_lectura.py) | Convierte los documentos a PDF para leerlos cómodo | Antes de cada lectura |
+| `lectura/` | Los mismos documentos en PDF (generados, no se versionan) | Para leer y anotar |
 
 ---
 
@@ -69,6 +71,32 @@ soffice --headless --convert-to pdf --outdir /tmp defensa_final/slides/Freelance
 Las tres últimas no se muestran en la exposición: están para proyectar si el
 tribunal pregunta por los detectores de auditoría, los costos o dónde vive una
 funcionalidad concreta en el código.
+
+---
+
+## Acceso desde el escritorio
+
+`~/Desktop/TFG_Defensa` es un **enlace simbólico** a esta carpeta, no una copia:
+lo que se abre desde el escritorio y lo que vive en el repositorio son el mismo
+archivo. No hay dos versiones que se puedan desfasar.
+
+Para volver a crearlo si se borra:
+
+```bash
+ln -s /Users/marcosjoaquin/proyecto-tfg/defensa_final ~/Desktop/TFG_Defensa
+```
+
+### Leer los documentos en PDF
+
+Los `.md` son la fuente de verdad, pero se leen mejor en PDF:
+
+```bash
+./venv/bin/python defensa_final/gen_pdfs_lectura.py
+```
+
+Deja en `lectura/` el guion, el índice de patrones, este README y la
+presentación, todos en PDF. **Hay que regenerarlos cada vez que se edita un
+documento**, porque son una copia: por eso no se versionan en git.
 
 ---
 

@@ -30,3 +30,6 @@ demo_capturas/
 # La tesis aprobada se conserva localmente en defensa_final/tesis/ pero no
 # se publica en el repositorio.
 defensa_final/tesis/
+
+# PDF de lectura: se regeneran con gen_pdfs_lectura.py, no se versionan.
+defensa_final/lectura/
