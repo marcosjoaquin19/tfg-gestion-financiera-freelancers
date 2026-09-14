@@ -7,6 +7,9 @@ el monto estimado y el rango (inferior/superior) del intervalo de confianza.
 Requiere un mínimo de ingresos históricos para entrenar; si no, no proyecta.
 """
 
+# PATRÓN: Strategy + Degradación elegante — Prophet si hay historial suficiente, media móvil si no.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from datetime import datetime, timezone
 import statistics
 from dateutil.relativedelta import relativedelta

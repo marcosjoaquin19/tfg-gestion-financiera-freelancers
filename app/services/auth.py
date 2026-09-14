@@ -6,6 +6,9 @@ y crear/decodificar los tokens JWT que identifican al usuario en cada request.
 Lo usan el router de auth (login/registro) y la dependencia get_current_user.
 """
 
+# PATRÓN: Facade de seguridad — hash, verificación y firma de tokens en un solo punto.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from passlib.context import CryptContext
 # CryptContext → maneja el hasheo de passwords, soporta múltiple algoritmos
 # nosotros vamos a usar bcrypt, que es el estándar actual

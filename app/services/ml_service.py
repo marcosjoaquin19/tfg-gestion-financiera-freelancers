@@ -11,6 +11,12 @@ Funciones clave: clasificar(), reentrenar_modelo_usuario(), registrar_ejemplo()
 y obtener_estado_modelo().
 """
 
+# PATRÓN: Strategy — _elegir_algoritmo() selecciona Naive Bayes o SVM según el volumen de datos.
+# PATRÓN: Pipeline — TF-IDF y clasificador encadenados en un solo objeto entrenable.
+# PATRÓN: Memento — el modelo entrenado se serializa (joblib+base64) y persiste en la BD.
+# PATRÓN: Lazy loading con fallback — obtener_o_crear_modelo(): modelo del usuario → modelo base → reentrenar.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 import base64
 import logging
 import re
@@ -39,7 +45,11 @@ CATEGORIAS_VALIDAS = [
     "Impuestos", "Monotributo", "Otros",
 ]
 
-# 216 ejemplos base (18 por categoría)
+# Dataset base: 600 ejemplos, 50 por cada una de las 12 categorías.
+# El balanceo es deliberado: con clases desbalanceadas la exactitud global
+# se vuelve engañosa (el modelo acierta prediciendo siempre la clase mayoritaria).
+# Con 50 por categoría, el 76 % de accuracy medido por validación cruzada de 5
+# particiones es una medida honesta. Ver Anexo A de la tesis.
 DATASET_BASE = [
     # ── Software ───────────────────────────────────────────────────────────
     ("licencia windows", "Software"),

@@ -29,6 +29,10 @@ Mapa de módulos de la aplicación (cada router = una sección de la app):
   - reportes        → generación de reportes (PDF / Excel).
 """
 
+# PATRÓN: Arquitectura en capas (Layered Architecture) — routers → services → models.
+# PATRÓN: Registro centralizado de routers (Front Controller): app.include_router().
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv

@@ -14,6 +14,10 @@ sinónimos relevados sobre los bancos arriba mencionados. En ningún caso se
 transmite el contenido del archivo a servicios externos.
 """
 
+# PATRÓN: Adapter / Capa anticorrupción — traduce 9 formatos de homebanking a un movimiento interno único.
+# PATRÓN: Diccionario de sinónimos como tabla de mapeo: agregar un banco no toca la lógica.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 import io
 import logging
 import re

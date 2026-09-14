@@ -5,6 +5,9 @@ tablas del reporte PDF (reportes_service) usen exactamente la misma
 convención: separador de miles con punto, decimales con coma.
 """
 
+# PATRÓN: Single Source of Truth — un único formateador de moneda para toda la app.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 
 def formato_pesos_ar(valor, decimales: int = 2) -> str:
     """Formatea un número como pesos argentinos.

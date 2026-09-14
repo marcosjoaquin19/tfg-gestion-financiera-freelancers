@@ -7,6 +7,10 @@ valida y devuelve el usuario correspondiente, o corta con 401/403 si el token
 es inválido o la cuenta está desactivada. Es el "guardia" de las rutas privadas.
 """
 
+# PATRÓN: Inyección de dependencias — get_current_user se inyecta con Depends().
+# PATRÓN: Guard / Protected Resource — corta con 401/403 antes de ejecutar el endpoint.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 # OAuth2PasswordBearer → le dice a FastAPI cómo extraer el token del header

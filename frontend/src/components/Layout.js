@@ -5,6 +5,9 @@
  * módulo y envuelve el contenido de cada página. Recibe `activeSection` para
  * resaltar el ítem activo y muestra el contenido (children) a su derecha.
  */
+
+// PATRÓN: Composite — Layout envuelve a cualquier pantalla (children) y aporta la navegación común.
+// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 

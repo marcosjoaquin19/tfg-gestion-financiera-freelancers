@@ -7,6 +7,9 @@
  * Cada ruta privada corresponde a un módulo de la app (Dashboard, Ingresos,
  * Gastos, Facturas, Auditoría, Proyecciones, Clasificador, etc.).
  */
+
+// PATRÓN: Guard / Protected Route — PrivateRoute envuelve las rutas que exigen sesión iniciada.
+// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';

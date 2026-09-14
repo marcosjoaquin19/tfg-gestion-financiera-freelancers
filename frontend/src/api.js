@@ -8,6 +8,10 @@
  *  - Response: si la API responde 401 (sesión inválida/expirada) en un endpoint
  *    que no sea login/registro, borra el token y redirige al login.
  */
+
+// PATRÓN: Interceptor — el token JWT y el manejo global del 401 se resuelven acá, no en cada pantalla.
+// PATRÓN: Singleton — una única instancia de axios compartida por toda la aplicación.
+// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 import axios from 'axios';
 
 // Instancia de axios apuntando a la URL del backend (configurable por entorno).

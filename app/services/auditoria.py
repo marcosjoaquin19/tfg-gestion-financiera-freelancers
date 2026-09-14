@@ -7,6 +7,11 @@ monotributo sin pagar y riesgo de recategorización. Lo usa el router de alertas
 ejecutar_auditoria() corre todas las reglas y persiste las alertas encontradas.
 """
 
+# PATRÓN: Strategy — cada detector es una función independiente con la misma firma; ejecutar_auditoria() las orquesta.
+# PATRÓN: Factory Method — _crear_alerta() centraliza la construcción de alertas.
+# PATRÓN: Idempotencia por huella — _huella_alerta() evita regenerar alertas ya resueltas por el usuario.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from app.models.gasto import Gasto

@@ -10,6 +10,12 @@ Reúne dos funcionalidades:
 También expone clasificar_gasto(), usado al crear gastos.
 """
 
+# PATRÓN: Facade — punto único de entrada a clasificación, resumen y recomendaciones.
+# PATRÓN: Cache-Aside — clasificar_gasto() consulta la corrección del usuario antes de invocar el modelo.
+# PATRÓN: Chain of Responsibility — corrección explícita → modelo ML → 'Otros' + revisión manual.
+# PATRÓN: Fallback determinístico — si no hay API de IA disponible, el resumen se arma con reglas locales.
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 import os
 import logging
 from decimal import Decimal
@@ -111,7 +117,7 @@ Resumí la situación financiera destacando los puntos más relevantes."""
                                  total_gastos, cant_facturas_pend, total_facturas_pend), False, False
 
     try:
-        model_name = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        model_name = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         client = Groq(api_key=api_key)
         response = client.chat.completions.create(
             model=model_name,
