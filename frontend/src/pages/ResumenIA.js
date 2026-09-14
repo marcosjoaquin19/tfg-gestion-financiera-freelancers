@@ -7,6 +7,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api from '../api';
 
 const MESES = [
@@ -124,6 +125,7 @@ export default function ResumenIA() {
           Seleccioná un período y hacé click en Generar resumen.
         </div>
       )}
+      <AvisoAlcance detalle="Este resumen lo redacta un modelo de lenguaje a partir de totales calculados por el sistema; verifique las cifras antes de tomar decisiones." />
     </Layout>
   );
 }

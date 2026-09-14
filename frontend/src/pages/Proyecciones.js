@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api from '../api';
 
 const MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -396,6 +397,7 @@ export default function Proyecciones() {
           </div>
         </>
       )}
+      <AvisoAlcance detalle="Las proyecciones son estimaciones estadísticas sobre su historial: no son una garantía de ingresos futuros." />
     </Layout>
   );
 }

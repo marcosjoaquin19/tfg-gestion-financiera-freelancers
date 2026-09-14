@@ -7,6 +7,10 @@ de forma totalmente programática, lo que también permite explicar línea
 por línea cómo se construye cada sección durante la defensa.
 """
 
+# PATRÓN: Builder — cada _seccion_*() aporta un fragmento y generar_pdf_mensual() ensambla el documento.
+# PATRÓN: Template Method — _pie_pagina() lo invoca ReportLab en cada página (onFirstPage/onLaterPages).
+# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+
 from io import BytesIO
 from datetime import datetime
 from decimal import Decimal
@@ -382,9 +386,17 @@ def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
 
 
 def _seccion_pie(estilos) -> list:
+    # Descargo de alcance. Va en el PDF además de en la pantalla porque el
+    # reporte es justamente el artefacto que sale de la aplicación y circula
+    # fuera de ella (el usuario se lo envía al contador o lo imprime): tiene
+    # que llevar el límite de responsabilidad consigo. Mismo enunciado que el
+    # componente frontend/src/components/AvisoAlcance.js.
     texto = (
-        "Documento generado automáticamente por FreelanceControl. "
-        "No reemplaza el asesoramiento de un contador matriculado."
+        "Documento generado automáticamente por FreelanceControl a partir de los datos "
+        "cargados por el usuario. El sistema informa, proyecta y alerta: no constituye "
+        "asesoramiento contable, fiscal ni financiero, y no reemplaza la intervención de "
+        "un profesional matriculado. Las cifras deben verificarse contra la documentación "
+        "respaldatoria antes de su presentación ante organismos de control."
     )
     return [Spacer(1, 0.6 * cm), Paragraph(texto, estilos["Pie"])]
 

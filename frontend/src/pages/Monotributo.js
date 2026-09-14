@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api, { extraerMensajeError } from '../api';
 
 // La escala de categorías se trae del backend (GET /monotributo/categorias, que
@@ -368,20 +369,7 @@ export default function Monotributo() {
         </div>
       )}
 
-      {/* ── Venta de productos (próximamente) ── */}
-      <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '20px' }}>
-        <div style={{ marginBottom: '10px' }}>
-          <span style={{ background: '#1e293b', color: '#475569', fontSize: '11px', fontWeight: 600, padding: '3px 10px', borderRadius: '20px' }}>
-            Próximamente
-          </span>
-        </div>
-        <p style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: 500, color: '#64748b' }}>
-          Venta de productos
-        </p>
-        <p style={{ margin: 0, fontSize: '13px', color: '#475569' }}>
-          Esta funcionalidad estará disponible en una próxima actualización.
-        </p>
-      </div>
+      <AvisoAlcance detalle="El cálculo se basa en la escala publicada por ARCA y en los ingresos registrados en el sistema; la categorización definitiva la determina ARCA." />
     </Layout>
   );
 }

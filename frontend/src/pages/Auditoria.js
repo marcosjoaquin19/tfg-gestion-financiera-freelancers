@@ -7,6 +7,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api from '../api';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -346,6 +347,7 @@ export default function Auditoria() {
           })}
         </div>
       )}
+      <AvisoAlcance detalle="Las alertas señalan posibles inconsistencias para su revisión; no son una determinación de error ni un dictamen profesional." />
     </Layout>
   );
 }

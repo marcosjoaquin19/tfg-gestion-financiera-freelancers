@@ -6,6 +6,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api from '../api';
 
 export default function Recomendaciones() {
@@ -95,6 +96,7 @@ export default function Recomendaciones() {
           ))}
         </div>
       )}
+      <AvisoAlcance detalle="Las sugerencias surgen de reglas aplicadas sobre sus propios datos y son de carácter orientativo." />
     </Layout>
   );
 }
