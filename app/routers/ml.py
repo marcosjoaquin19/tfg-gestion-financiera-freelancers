@@ -72,8 +72,12 @@ def corregir(
     resultado = ml_service.reentrenar_modelo_usuario(db, current_user.id)
     estado = ml_service.obtener_estado_modelo(db, current_user.id)
 
+    # El detalle del reentrenamiento va bajo su propia clave: si se expandiera
+    # con **resultado sobre este diccionario, su "mensaje" pisaría el de
+    # confirmación y el usuario leería "pocos ejemplos propios" justo después
+    # de que su corrección se guardó correctamente.
     return {
         "mensaje": "Modelo actualizado con tu corrección",
         "nuevo_estado": estado,
-        **resultado,
+        "detalle_entrenamiento": resultado,
     }

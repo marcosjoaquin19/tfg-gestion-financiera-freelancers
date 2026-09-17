@@ -41,8 +41,28 @@ def test_clasificar_descripcion_conocida_devuelve_categoria_correcta(db):
     # El clasificador entrenado debe reproducir esa categoría.
     resultado = ml_service.clasificar_gasto("adobe photoshop", db, usuario_id=0)
     assert resultado["categoria"] == "Software"
-    assert resultado["fuente"] == "ml_propio"
+    # El usuario 0 no tiene modelo reentrenado propio: la predicción sale del
+    # modelo base, y la respuesta lo tiene que declarar como tal.
+    assert resultado["fuente"] == "ml_base"
     assert 0.0 <= resultado["confianza"] <= 1.0
+
+
+def test_fuente_distingue_modelo_propio_del_modelo_base(db):
+    """Regresión: la fuente informada tiene que coincidir con /ml/estado.
+
+    Antes se devolvía "ml_propio" siempre, incluso cuando el usuario todavía
+    no había cruzado el umbral de reentrenamiento y la predicción venía del
+    modelo base compartido.
+    """
+    # Sin modelo propio → ml_base, coherente con usa_modelo_base=True.
+    assert ml_service.clasificar_gasto("adobe photoshop", db, usuario_id=0)["fuente"] == "ml_base"
+    estado = ml_service.obtener_estado_modelo(db, 0)
+    assert estado["tiene_modelo_propio"] is False
+
+    # Ninguna fuente posible del clasificador es un servicio externo.
+    assert ml_service.clasificar_gasto("notebook dell", db, usuario_id=0)["fuente"] in (
+        "ml_base", "ml_propio",
+    )
 
 
 def test_clasificar_siempre_devuelve_categoria_valida(db):

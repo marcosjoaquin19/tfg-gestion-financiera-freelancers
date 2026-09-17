@@ -18,7 +18,7 @@ Trabajo Final de Grado.
 | Backend     | Python 3.11 · FastAPI · SQLAlchemy · Alembic            |
 | Base de datos | PostgreSQL 15                                         |
 | Machine Learning | scikit-learn (clasificador de gastos) · Prophet (proyecciones) |
-| IA generativa | Groq (resumen y recomendaciones) — **opcional**, con fallback local |
+| IA generativa | Groq (**solo** el resumen financiero mensual) — **opcional**, con fallback local |
 | Frontend    | React 19 · React Router · Axios                         |
 | Auth        | JWT (python-jose) · bcrypt                               |
 | Infra       | Docker · Docker Compose                                  |
@@ -221,5 +221,8 @@ En la carpeta [`docs/`](docs/) se incluye material complementario:
   hay que crearlo a partir de `.env.example` como se indica arriba.
 - La **clasificación de gastos** funciona de forma totalmente local con el modelo
   de Machine Learning; no depende de ningún servicio externo.
-- La **IA generativa** (resumen y recomendaciones) es opcional: si no se configura
-  `GROQ_API_KEY`, la aplicación usa un fallback local y sigue funcionando.
+- La **IA generativa** se usa en un único punto: el resumen financiero mensual, y
+  sobre datos numéricos agregados. Es opcional: si no se configura `GROQ_API_KEY`,
+  la aplicación arma el resumen con una plantilla local y sigue funcionando.
+- Las **recomendaciones NO usan IA generativa**: se calculan con reglas
+  determinísticas sobre los datos del usuario, para que sean siempre explicables.

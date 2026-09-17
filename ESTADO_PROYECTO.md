@@ -59,7 +59,7 @@
 | Componente | Tecnología |
 |---|---|
 | Contenedores | Docker + Docker Compose 3.8 |
-| Modelo IA externo | Groq openai/gpt-oss-120b — solo resúmenes y recomendaciones |
+| Modelo IA externo | Groq openai/gpt-oss-120b — solo el resumen financiero mensual |
 
 ---
 
@@ -549,7 +549,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 - Reentrenamiento automático: al acumular 20+ gastos propios se entrena un modelo personalizado que combina el dataset base con los ejemplos del usuario; las correcciones manuales también disparan reentrenamiento.
 - **Cortocircuito de correcciones**: antes de invocar el ML, `clasificar_gasto` busca un match exacto en las correcciones previas del usuario (`cache_clasificacion`). Si existe, devuelve esa categoría con confianza 1.0 y `fuente=correccion_usuario`, sin esperar al reentrenamiento. El match usa normalización canónica (NFKD sin tildes + colapso de espacios + minúsculas), tolerante a variantes tipográficas.
 - Si la confianza de la predicción es inferior a 0.30, se sugiere "Otros" y se marca el gasto para revisión manual.
-- Groq se reserva exclusivamente para el resumen financiero y las recomendaciones, sobre datos numéricos agregados, con fallback local determinístico.
+- Groq se reserva exclusivamente para el resumen financiero mensual, sobre datos numéricos agregados, con fallback local determinístico. Las recomendaciones se generan con reglas determinísticas locales, sin intervención del modelo externo.
 - Categorías: Software, Hardware, Infraestructura, Marketing, Servicios, Capacitación, Suscripciones, Transporte, Alimentación, Impuestos, Monotributo, Otros.
 
 ### Monotributo
@@ -588,7 +588,7 @@ Las cinco migraciones son **idempotentes** (verifican existencia antes de crear)
 - [x] Marca para revisión manual cuando la confianza es baja
 - [x] **Cortocircuito de correcciones**: `clasificar_gasto` busca primero en `cache_clasificacion` del usuario; si existe match (normalización NFKD + espacios + lowercase), devuelve la corrección con confianza 1.0 sin invocar el ML
 
-#### Módulo IA externa — Groq / LLaMA 3.3
+#### Módulo IA externa — Groq / openai/gpt-oss-120b
 - [x] Resumen financiero mensual en lenguaje natural (con fallback local)
 - [x] Recomendaciones personalizadas sobre datos agregados (con fallback local)
 

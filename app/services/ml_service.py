@@ -791,8 +791,14 @@ def entrenar_modelo_base(db: Session) -> ModeloClasificador:
     return nuevo
 
 
-def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str]:
-    """Retorna (pipeline, algoritmo)."""
+def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str, bool]:
+    """Retorna (pipeline, algoritmo, es_modelo_propio).
+
+    El tercer elemento distingue si el pipeline devuelto es el modelo
+    personalizado del usuario o el modelo base compartido. Sin ese dato la
+    respuesta de clasificación no puede decir con honestidad de dónde salió
+    la predicción, y se contradice con lo que informa GET /ml/estado.
+    """
     modelo_usuario = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id == usuario_id,
         ModeloClasificador.activo == True,
@@ -801,7 +807,7 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str]
     if modelo_usuario:
         try:
             pipeline = _deserializar_modelo(modelo_usuario.modelo_serializado)
-            return pipeline, modelo_usuario.algoritmo
+            return pipeline, modelo_usuario.algoritmo, True
         except Exception as e:
             logger.error(f"Error deserializando modelo usuario {usuario_id}, reentrenando base: {e}")
 
@@ -815,12 +821,12 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str]
 
     try:
         pipeline = _deserializar_modelo(modelo_base.modelo_serializado)
-        return pipeline, modelo_base.algoritmo
+        return pipeline, modelo_base.algoritmo, False
     except Exception as e:
         logger.error(f"Error deserializando modelo base, reentrenando: {e}")
         modelo_base = entrenar_modelo_base(db)
         pipeline = _deserializar_modelo(modelo_base.modelo_serializado)
-        return pipeline, modelo_base.algoritmo
+        return pipeline, modelo_base.algoritmo, False
 
 
 def _confianza_svm(scores: np.ndarray) -> tuple[int, float]:
@@ -844,7 +850,7 @@ def _confianza_svm(scores: np.ndarray) -> tuple[int, float]:
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
     try:
-        pipeline, algoritmo = obtener_o_crear_modelo(db, usuario_id)
+        pipeline, algoritmo, es_propio = obtener_o_crear_modelo(db, usuario_id)
         clases = pipeline.classes_
 
         if algoritmo == "svm":
@@ -860,7 +866,9 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
         return {
             "categoria": categoria,
             "confianza": confianza,
-            "fuente": "ml_propio",
+            # "ml_propio" solo si el pipeline es el modelo reentrenado del
+            # usuario; si todavía no cruzó el umbral, es el modelo base.
+            "fuente": "ml_propio" if es_propio else "ml_base",
             "algoritmo": algoritmo,
         }
     except Exception as e:
@@ -868,7 +876,7 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
         return {
             "categoria": "Otros",
             "confianza": 0.0,
-            "fuente": "ml_propio",
+            "fuente": "ml_base",
             "algoritmo": "naive_bayes",
         }
 

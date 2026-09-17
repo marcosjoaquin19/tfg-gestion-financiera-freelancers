@@ -1,0 +1,32 @@
+# Contexto de build de la imagen de la API.
+# Sin este archivo el contexto era de ~828 MB (venv, node_modules, capturas del
+# demo), lo que hacía que cada reconstrucción tardara varios minutos y engordaba
+# la imagen con archivos que el contenedor no usa.
+
+# Entornos virtuales y dependencias locales
+venv/
+.venv/
+frontend/node_modules/
+frontend/build/
+node_modules/
+
+# Caches de Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Control de versiones y metadatos del editor
+.git/
+.gitignore
+.DS_Store
+.claude/
+
+# Material de documentación y defensa: no forma parte del runtime
+docs/
+defensa_final/
+demo_capturas/
+*.md
+
+# Secretos: las variables llegan por env_file, nunca dentro de la imagen
+.env

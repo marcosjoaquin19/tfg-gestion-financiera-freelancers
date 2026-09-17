@@ -323,7 +323,9 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
             # reforzaría el sesgo del modelo en lugar de corregirlo.
             return {
                 "categoria_sugerida": resultado_ml["categoria"],
-                "fuente": "ml_propio",
+                # Puede ser "ml_propio" (modelo reentrenado del usuario) o
+                # "ml_base" (modelo compartido). Nunca un servicio externo.
+                "fuente": resultado_ml["fuente"],
                 "confianza": resultado_ml["confianza"],
                 "requiere_revision": False,
             }
@@ -331,7 +333,7 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
         # como placeholder y delegamos al usuario la corrección.
         return {
             "categoria_sugerida": "Otros",
-            "fuente": "ml_propio",
+            "fuente": resultado_ml["fuente"],
             "confianza": resultado_ml["confianza"],
             "requiere_revision": True,
         }
@@ -339,7 +341,7 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
         logger.error(f"Error ML clasificar_gasto usuario {usuario_id}: {e}")
         return {
             "categoria_sugerida": "Otros",
-            "fuente": "ml_propio",
+            "fuente": "ml_base",
             "confianza": 0.0,
             "requiere_revision": True,
         }

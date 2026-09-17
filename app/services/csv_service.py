@@ -375,7 +375,7 @@ def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) 
     # se sugiere "Otros" para que el usuario revise.
     if pendientes:
         try:
-            pipeline, algoritmo = ml_service.obtener_o_crear_modelo(db, usuario_id)
+            pipeline, algoritmo, _es_propio = ml_service.obtener_o_crear_modelo(db, usuario_id)
             descripciones = [movimientos[i].get("descripcion", "") for i in pendientes]
             clases = pipeline.classes_
 

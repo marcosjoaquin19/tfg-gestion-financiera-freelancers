@@ -32,14 +32,25 @@ const selectStyle = {
   outline: 'none', width: '100%', cursor: 'pointer',
 };
 
+// Etiquetas cortas del historial. Ninguna fuente de clasificación sale del
+// servidor propio: el clasificador no consulta modelos de lenguaje externos.
+const HISTORIAL_FUENTE = {
+  correccion_usuario: { label: '·corrección', color: '#c4b5fd' },
+  ml_propio:          { label: '·ML personal', color: '#4ade80' },
+  ml_base:            { label: '·ML base',     color: '#67e8f9' },
+};
+
 function BadgeFuente({ fuente }) {
   // Cada fuente tiene su color: correcciones del usuario son ground truth,
   // por eso van en violeta para distinguirse del ML predictivo.
   const config = {
     correccion_usuario: { label: 'Corrección tuya', bg: '#3b1d5c', color: '#c4b5fd' },
-    ml_propio:          { label: 'ML Propio',       bg: '#14532d', color: '#4ade80' },
+    ml_propio:          { label: 'ML personal',     bg: '#14532d', color: '#4ade80' },
+    ml_base:            { label: 'ML base',         bg: '#164e63', color: '#67e8f9' },
   };
-  const { label, bg, color } = config[fuente] || { label: 'IA', bg: '#1e3a5f', color: '#3b82f6' };
+  // La clasificación SIEMPRE se resuelve localmente: ninguna de las fuentes
+  // posibles es un servicio externo. El default refleja eso.
+  const { label, bg, color } = config[fuente] || { label: 'ML local', bg: '#164e63', color: '#67e8f9' };
   return (
     <span style={{
       background: bg, color,
@@ -381,8 +392,8 @@ export default function Clasificador() {
                 <span style={{ color: '#475569', margin: '0 4px' }}>→</span>
                 <span style={{ color: '#3b82f6', fontWeight: 500 }}>{h.categoria}</span>
                 {h.fuente && (
-                  <span style={{ marginLeft: '6px', color: h.fuente === 'ml_propio' ? '#4ade80' : '#3b82f6', fontSize: '10px' }}>
-                    {h.fuente === 'ml_propio' ? '·ML' : '·Groq'}
+                  <span style={{ marginLeft: '6px', color: HISTORIAL_FUENTE[h.fuente]?.color || '#67e8f9', fontSize: '10px' }}>
+                    {HISTORIAL_FUENTE[h.fuente]?.label || '·ML local'}
                   </span>
                 )}
               </button>
