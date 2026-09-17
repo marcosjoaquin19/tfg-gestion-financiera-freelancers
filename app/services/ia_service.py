@@ -48,10 +48,18 @@ MESES_ES = {
 
 def _fallback_resumen(mes: int, anio: int, total_ingresos: Decimal, cant_ingresos: int,
                       total_gastos: Decimal, cant_facturas_pend: int, total_facturas_pend: Decimal) -> str:
+    # Este es el texto que ve el usuario justo cuando el servicio externo no
+    # responde, así que usa el mismo formato de moneda que el resto de la app
+    # (miles con punto, decimales con coma) y no el formato por defecto de
+    # Python, que mostraría "$2900000.00".
+    from app.services.formato import formato_pesos_ar
+
     return (
-        f"En {MESES_ES[mes]} {anio} registraste {cant_ingresos} ingreso(s) por ${total_ingresos:.2f}. "
-        f"Tus gastos fueron ${total_gastos:.2f}. "
-        f"Tenés {cant_facturas_pend} factura(s) pendiente(s) por ${total_facturas_pend:.2f}."
+        f"En {MESES_ES[mes]} {anio} registraste {cant_ingresos} ingreso(s) "
+        f"por {formato_pesos_ar(total_ingresos)}. "
+        f"Tus gastos fueron {formato_pesos_ar(total_gastos)}. "
+        f"Tenés {cant_facturas_pend} factura(s) pendiente(s) "
+        f"por {formato_pesos_ar(total_facturas_pend)}."
     )
 
 
