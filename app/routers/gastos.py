@@ -126,11 +126,18 @@ def crear_gasto(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    # Si el cliente no manda categoría, la infiere el clasificador local (HU-04).
+    # Debajo del umbral de confianza, clasificar_gasto() ya devuelve "Otros",
+    # que es el comportamiento esperado para una descripción sin señal clara.
+    categoria = datos.categoria
+    if categoria is None:
+        categoria = clasificar_gasto(datos.descripcion, db, current_user.id)["categoria_sugerida"]
+
     nuevo_gasto = Gasto(
         usuario_id=current_user.id,
         descripcion=datos.descripcion,
         monto=datos.monto,
-        categoria=datos.categoria,
+        categoria=categoria,
         fecha=datos.fecha,
         # es_duplicado arranca en False, el módulo de auditoría lo puede marcar después
     )

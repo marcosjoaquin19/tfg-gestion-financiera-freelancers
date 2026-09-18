@@ -155,15 +155,30 @@ def confirmar_importacion(
         db, current_user.id, movimientos_dict,
     )
 
+    # Validación previa de fechas, ANTES de abrir la transacción.
+    # Antes, una fecha ilegible se reemplazaba en silencio por datetime.now():
+    # un movimiento de mayo quedaba registrado como de hoy, lo que además
+    # desplaza el período fiscal al que se imputa. Un registro que no se puede
+    # interpretar tiene que frenar la importación completa, no inventarse.
+    fechas = {}
+    for i, mov in enumerate(a_importar):
+        try:
+            fechas[i] = datetime.fromisoformat(mov["fecha"])
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"El movimiento {i + 1} ('{mov.get('descripcion', '')[:60]}') tiene una "
+                    f"fecha ilegible: '{mov.get('fecha')}'. No se importó ningún registro."
+                ),
+            )
+
     # Persistencia transaccional atómica (Objetivo Específico 1 — TFG):
     # si falla cualquier inserción, se revierte la operación completa
     # y ningún registro parcial queda en la base de datos.
     try:
-        for mov in a_importar:
-            try:
-                fecha = datetime.fromisoformat(mov["fecha"])
-            except (ValueError, TypeError):
-                fecha = datetime.now()
+        for i, mov in enumerate(a_importar):
+            fecha = fechas[i]
 
             if mov["tipo"] == "ingreso":
                 ingresos_nuevos.append(Ingreso(

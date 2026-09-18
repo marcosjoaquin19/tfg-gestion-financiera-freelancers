@@ -27,6 +27,17 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
 
 
+# PATRÓN: State — transiciones admitidas del ciclo de vida de una factura.
+# PAGADA es un estado terminal: sin esto, un PATCH podía revertir una factura
+# cobrada a pendiente y borrar de paso su fecha de pago, mientras que PUT y
+# DELETE sí la protegían. La puerta tiene que estar cerrada por los tres lados.
+TRANSICIONES_VALIDAS = {
+    EstadoFactura.PENDIENTE: {EstadoFactura.PAGADA, EstadoFactura.VENCIDA},
+    EstadoFactura.VENCIDA:   {EstadoFactura.PAGADA},
+    EstadoFactura.PAGADA:    set(),
+}
+
+
 # Helper interno: busca una factura del usuario o corta con un error 404.
 # Evita repetir esta misma validación en cada endpoint.
 def _get_factura_or_404(factura_id: int, db: Session, usuario_id: int) -> Factura:
@@ -133,6 +144,16 @@ def actualizar_estado_factura(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Debe indicar la fecha de pago al marcar una factura como pagada",
+        )
+
+    destinos_validos = TRANSICIONES_VALIDAS[factura.estado]
+    if datos.estado != factura.estado and datos.estado not in destinos_validos:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Transición de estado inválida: {factura.estado.value} → {datos.estado.value}. "
+                "Una factura pagada no vuelve atrás."
+            ),
         )
 
     factura.estado = datos.estado

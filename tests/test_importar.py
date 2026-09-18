@@ -519,3 +519,33 @@ def test_importar_confirmar_revierte_todo_si_falla_la_persistencia(client, auth_
     # Ningún registro quedó persistido: ni los que iban antes del fallo.
     assert client.get("/gastos/", headers=auth_headers).json() == []
     assert client.get("/ingresos/", headers=auth_headers).json() == []
+
+
+def test_importacion_con_fecha_ilegible_no_persiste_nada(client, auth_headers):
+    """HU-07: si falla el procesamiento de un registro, no se persiste ninguno.
+
+    Antes, una fecha ilegible se sustituía en silencio por la fecha del día:
+    el movimiento entraba igual, pero imputado a otro período fiscal.
+    """
+    antes_ing = len(client.get("/ingresos/", headers=auth_headers).json())
+    antes_gas = len(client.get("/gastos/", headers=auth_headers).json())
+
+    movimientos = [
+        {"fecha": "2026-05-04T00:00:00", "descripcion": "Honorarios cliente Orion",
+         "monto": 310000.0, "tipo": "ingreso", "categoria": "Servicios"},
+        {"fecha": "no-es-una-fecha", "descripcion": "IIBB Percepcion AGIP",
+         "monto": 2870.5, "tipo": "gasto", "categoria": "Impuestos"},
+        {"fecha": "2026-05-20T00:00:00", "descripcion": "Comision bancaria",
+         "monto": 4200.0, "tipo": "gasto", "categoria": "Servicios"},
+    ]
+    response = client.post(
+        "/importar/confirmar",
+        json={"movimientos": movimientos, "mapeo": {}},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+    assert "IIBB" in response.json()["detail"]
+
+    # Ni el movimiento válido anterior ni el posterior quedaron persistidos.
+    assert len(client.get("/ingresos/", headers=auth_headers).json()) == antes_ing
+    assert len(client.get("/gastos/", headers=auth_headers).json()) == antes_gas

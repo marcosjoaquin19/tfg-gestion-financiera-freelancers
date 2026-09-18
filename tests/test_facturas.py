@@ -97,3 +97,45 @@ def test_eliminar_factura(client, auth_headers):
     creada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
     assert client.delete(f"/facturas/{creada['id']}", headers=auth_headers).status_code == 204
     assert client.get(f"/facturas/{creada['id']}", headers=auth_headers).status_code == 404
+
+
+def test_factura_pagada_no_puede_volver_a_pendiente(client, auth_headers):
+    """PB-04: PAGADA es un estado terminal.
+
+    PUT y DELETE ya rechazaban tocar una factura cobrada, pero PATCH /estado
+    la revertía y borraba la fecha de pago.
+    """
+    creada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
+    fid = creada["id"]
+
+    pagada = client.patch(
+        f"/facturas/{fid}/estado",
+        json={"estado": "pagada", "fecha_pago": "2026-09-20"},
+        headers=auth_headers,
+    )
+    assert pagada.status_code == 200
+    assert pagada.json()["estado"] == "pagada"
+
+    for destino in ("pendiente", "vencida"):
+        revertir = client.patch(
+            f"/facturas/{fid}/estado",
+            json={"estado": destino},
+            headers=auth_headers,
+        )
+        assert revertir.status_code == 409, f"se permitió pagada → {destino}"
+
+    # La fecha de pago sigue en su lugar.
+    assert client.get(f"/facturas/{fid}", headers=auth_headers).json()["fecha_pago"] is not None
+
+
+def test_factura_vencida_puede_cobrarse(client, auth_headers):
+    """Una factura vencida que finalmente se cobra sí debe poder pasar a pagada."""
+    creada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
+    fid = creada["id"]
+    assert client.patch(f"/facturas/{fid}/estado", json={"estado": "vencida"},
+                        headers=auth_headers).status_code == 200
+    cobrada = client.patch(f"/facturas/{fid}/estado",
+                           json={"estado": "pagada", "fecha_pago": "2026-10-05"},
+                           headers=auth_headers)
+    assert cobrada.status_code == 200
+    assert cobrada.json()["estado"] == "pagada"

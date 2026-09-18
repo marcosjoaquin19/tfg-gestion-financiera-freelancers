@@ -15,7 +15,11 @@ from datetime import datetime
 class GastoCreate(BaseModel):
     descripcion: str
     monto: float
-    categoria: str
+    # Opcional a propósito (HU-04): el usuario puede registrar un gasto con solo
+    # descripción y monto, y el clasificador local infiere la categoría. La
+    # interfaz igual la envía, porque muestra la sugerencia para que el usuario
+    # la confirme o la modifique antes de guardar.
+    categoria: str | None = None
     fecha: datetime
 
     # Regla de negocio: no se aceptan gastos con monto cero o negativo.
