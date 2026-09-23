@@ -6,17 +6,24 @@ sube el archivo, el sistema detecta automáticamente las columnas (fecha, monto,
 descripción), clasifica cada movimiento como ingreso o gasto, marca posibles
 duplicados y, tras la confirmación del usuario, guarda los movimientos en la BD.
 La lógica de parseo y clasificación vive en csv_service.
+
+Los ingresos que entran por acá pasan por la misma revisión de carga repetida
+que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
+"Solo duplicados" se comporten igual venga el dato de donde venga.
 """
 
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.dependencies import get_current_user
+from app.services.duplicados_ingreso import _actualizar_marca_duplicado
+from app.services.categorias_ingreso import CATEGORIAS_INGRESO
+from app.services.ml_service import CATEGORIAS_VALIDAS as CATEGORIAS_GASTO
 from app.services.csv_service import (
     clasificar_movimientos,
     detectar_columnas_csv,
@@ -47,6 +54,28 @@ class MovimientoImportar(BaseModel):
     monto: float
     tipo: str
     categoria: str
+
+    @model_validator(mode="after")
+    def categoria_valida_segun_el_tipo(self):
+        """La categoría tiene que existir en el catálogo del tipo de movimiento.
+
+        Ingresos y gastos usan catálogos distintos: el clasificador de ML
+        trabaja con categorías de gasto, y el módulo de ingresos tiene las
+        suyas. En la práctica el preview ya asigna una válida, pero /confirmar
+        es un endpoint como cualquier otro y puede recibir una llamada directa;
+        sin esta validación entraba texto libre y los totales por categoría del
+        Dashboard y del PDF se fragmentaban.
+        """
+        catalogos = {"ingreso": CATEGORIAS_INGRESO, "gasto": CATEGORIAS_GASTO}
+        validas = catalogos.get(self.tipo)
+        if validas is None:
+            raise ValueError("El tipo de movimiento debe ser 'ingreso' o 'gasto'")
+        if self.categoria not in validas:
+            raise ValueError(
+                f"Categoría inválida para un {self.tipo}. "
+                "Las válidas son: " + ", ".join(validas)
+            )
+        return self
 
 
 class ConfirmarRequest(BaseModel):
@@ -207,10 +236,31 @@ def confirmar_importacion(
             detail=f"Error al persistir la importación. La operación fue revertida y no se cargaron registros parciales. ({type(e).__name__})",
         )
 
+    # filtrar_no_duplicados ya descartó los movimientos que el archivo repetía
+    # respecto de lo que había en la base. Queda el caso del archivo que trae
+    # la misma línea dos veces adentro: ésas entran como nuevas, y acá se
+    # marcan para que aparezcan en "Solo duplicados" igual que una carga
+    # repetida hecha a mano. Se avisa, no se bloquea: dos cobros iguales el
+    # mismo día son posibles y la decisión es del usuario.
+    #
+    # Los gastos no lo necesitan: el módulo de Auditoría tiene su propio
+    # detector de gastos duplicados (detectar_gastos_duplicados), que los
+    # ingresos no tienen.
+    ingresos_marcados = 0
+    if ingresos_nuevos:
+        hubo_cambios = False
+        for ingreso in ingresos_nuevos:
+            if _actualizar_marca_duplicado(db, ingreso):
+                hubo_cambios = True
+        if hubo_cambios:
+            db.commit()
+        ingresos_marcados = sum(1 for i in ingresos_nuevos if i.es_duplicado)
+
     return {
         "importados": len(ingresos_nuevos) + len(gastos_nuevos),
         "ingresos_creados": len(ingresos_nuevos),
         "gastos_creados": len(gastos_nuevos),
         "omitidos_por_duplicado": omitidos_por_duplicado,
         "omitidos_por_transferencia": omitidos_por_transferencia,
+        "ingresos_marcados_duplicados": ingresos_marcados,
     }

@@ -288,7 +288,7 @@ def test_coincidencia_de_monto_sin_vocabulario_no_se_omite(client, auth_headers)
     # coinciden en monto y fecha NO son una transferencia y deben importarse.
     payload = {
         "movimientos": [
-            _gasto("2026-06-10T00:00:00", "Compra notebook Lenovo", 80000, "Equipamiento"),
+            _gasto("2026-06-10T00:00:00", "Compra notebook Lenovo", 80000, "Hardware"),
             _ingreso("2026-06-10T00:00:00", "Honorarios cliente Beta", 80000),
         ],
         "mapeo": {},
@@ -549,3 +549,99 @@ def test_importacion_con_fecha_ilegible_no_persiste_nada(client, auth_headers):
     # Ni el movimiento válido anterior ni el posterior quedaron persistidos.
     assert len(client.get("/ingresos/", headers=auth_headers).json()) == antes_ing
     assert len(client.get("/gastos/", headers=auth_headers).json()) == antes_gas
+
+
+# ── Consistencia con la carga manual de ingresos ────────────────────────────
+
+MAPEO_BASE = {
+    "columna_fecha": "Fecha",
+    "columna_descripcion": "Concepto",
+    "columna_debito": "Débito",
+    "columna_credito": "Crédito",
+    "formato_fecha": "%d/%m/%Y",
+}
+
+
+def _movimiento(descripcion="COBRO CLIENTE ZETA", monto=333000.0, tipo="ingreso",
+                categoria="Otros", fecha="2026-08-15T00:00:00"):
+    return {
+        "fecha": fecha, "descripcion": descripcion,
+        "monto": monto, "tipo": tipo, "categoria": categoria,
+    }
+
+
+def test_archivo_con_la_misma_fila_dos_veces_marca_los_ingresos(client, auth_headers):
+    """Las filas repetidas dentro del propio archivo entran, pero advertidas.
+
+    filtrar_no_duplicados solo descarta lo que ya estaba en la base; dos
+    líneas idénticas del mismo archivo la atraviesan. Antes quedaban sin
+    marca, así que el filtro "Solo duplicados" no las mostraba aunque fueran
+    exactamente el caso que ese filtro tiene que encontrar.
+    """
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE,
+        "movimientos": [_movimiento(), _movimiento()],
+    }, headers=auth_headers)
+    assert respuesta.status_code == 200
+    assert respuesta.json()["ingresos_creados"] == 2
+    assert respuesta.json()["ingresos_marcados_duplicados"] == 2
+
+    duplicados = client.get("/ingresos/?solo_duplicados=true", headers=auth_headers)
+    assert len(duplicados.json()) == 2
+
+
+def test_importar_un_ingreso_ya_cargado_a_mano_lo_omite(client, auth_headers):
+    # La detección previa a la persistencia sigue siendo la primera defensa.
+    client.post("/ingresos/", json={
+        "descripcion": "COBRO CLIENTE ZETA", "monto": 333000,
+        "categoria": "Otros", "fecha": "2026-08-15T00:00:00",
+    }, headers=auth_headers)
+
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE, "movimientos": [_movimiento()],
+    }, headers=auth_headers)
+    assert respuesta.json()["ingresos_creados"] == 0
+    assert respuesta.json()["omitidos_por_duplicado"] == 1
+
+
+def test_importar_cuotas_de_un_plan_de_pago_no_marca_nada(client, auth_headers):
+    cuotas = ["2026-03-10T00:00:00", "2026-04-10T00:00:00", "2026-05-10T00:00:00"]
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE,
+        "movimientos": [
+            _movimiento(descripcion="CUOTA PLAN DE PAGO ACME", monto=250000.0, fecha=f)
+            for f in cuotas
+        ],
+    }, headers=auth_headers)
+    assert respuesta.json()["ingresos_creados"] == 3
+    assert respuesta.json()["ingresos_marcados_duplicados"] == 0
+
+
+def test_confirmar_rechaza_una_categoria_inventada(client, auth_headers):
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE,
+        "movimientos": [_movimiento(categoria="asdasdasd")],
+    }, headers=auth_headers)
+    assert respuesta.status_code == 422
+
+
+def test_confirmar_rechaza_una_categoria_de_gasto_en_un_ingreso(client, auth_headers):
+    # "Suscripciones" existe para gastos, no para ingresos: los catálogos
+    # son distintos y cada tipo se valida contra el suyo.
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE,
+        "movimientos": [_movimiento(categoria="Suscripciones")],
+    }, headers=auth_headers)
+    assert respuesta.status_code == 422
+
+
+def test_confirmar_acepta_una_categoria_de_gasto_en_un_gasto(client, auth_headers):
+    respuesta = client.post("/importar/confirmar", json={
+        "mapeo": MAPEO_BASE,
+        "movimientos": [_movimiento(
+            descripcion="ADOBE CREATIVE CLOUD", monto=32000.0,
+            tipo="gasto", categoria="Suscripciones",
+        )],
+    }, headers=auth_headers)
+    assert respuesta.status_code == 200
+    assert respuesta.json()["gastos_creados"] == 1
