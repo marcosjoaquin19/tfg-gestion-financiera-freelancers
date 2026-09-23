@@ -19,12 +19,18 @@ from pydantic import BaseModel, EmailStr, ConfigDict, Field
 # Pydantic va a validar que el body del request tenga estos campos
 # -------------------------------------------------------------------
 class UsuarioCreate(BaseModel):
-    nombre: str
+    nombre: str = Field(min_length=1, max_length=100)
     # nombre completo del usuario, ej: "Marcos Joaquín"
+    # El largo máximo acompaña al de la columna `nombre` en la tabla usuarios
+    # (String(100)). Sin este límite un nombre más largo pasaba la validación,
+    # llegaba al INSERT y la base lo rechazaba: el usuario veía un error 500
+    # en lugar de un mensaje claro de validación.
 
-    email: EmailStr
+    email: EmailStr = Field(max_length=150)
     # Pydantic verifica automáticamente que sea un email válido
     # si mandan "marcos@@", devuelve error 422 sin que vos hagas nada
+    # El máximo acompaña al de la columna `email` (String(150)), por el mismo
+    # motivo que el nombre.
 
     password: str = Field(min_length=8, max_length=128)
     # el password en texto plano que manda el usuario
