@@ -16,11 +16,11 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Control de versiones y metadatos del editor
-.git/
-.gitignore
+# Control de versiones, caches y metadatos de herramientas locales.
+# El patrón cubre toda entrada oculta de la raíz (.git, caches, editores),
+# ninguna de las cuales forma parte del runtime de la API.
+.*/
 .DS_Store
-.claude/
 
 # Material de documentación y defensa: no forma parte del runtime
 docs/
