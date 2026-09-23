@@ -100,3 +100,42 @@ def test_usuario_no_ve_ingresos_de_otro(client):
     # user2 intenta acceder al ingreso de user1
     response = client.get(f"/ingresos/{creado['id']}", headers=headers2)
     assert response.status_code == 404
+
+
+def test_crear_ingreso_descripcion_demasiado_larga(client, auth_headers):
+    # La columna admite 255 caracteres: un texto más largo llegaba al INSERT
+    # y la base devolvía un error 500 sin explicación.
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "descripcion": "X" * 300,
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_crear_ingreso_categoria_demasiado_larga(client, auth_headers):
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "categoria": "Y" * 200,
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_crear_ingreso_descripcion_vacia(client, auth_headers):
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "descripcion": "",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_crear_ingreso_monto_fuera_de_rango(client, auth_headers):
+    # Numeric(12, 2) admite hasta 10 dígitos enteros.
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "monto": 99999999999999,
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_crear_ingreso_monto_maximo_admitido(client, auth_headers):
+    # El borde superior válido sí debe entrar.
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "monto": 9999999999.99,
+    }, headers=auth_headers)
+    assert response.status_code == 201
