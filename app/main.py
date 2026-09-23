@@ -33,8 +33,13 @@ Mapa de módulos de la aplicación (cada router = una sección de la app):
 # PATRÓN: Registro centralizado de routers (Front Controller): app.include_router().
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
-from fastapi import FastAPI
+import math
+
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from app.database import engine
 from app import models
@@ -55,6 +60,32 @@ app = FastAPI(
     description="API REST para gestión financiera con auditoría y predicciones",
     version="1.0.0"
 )
+
+def _valores_serializables(valor):
+    """Reemplaza NaN e Infinity por texto dentro del detalle de un error."""
+    if isinstance(valor, float) and not math.isfinite(valor):
+        return str(valor)
+    if isinstance(valor, dict):
+        return {k: _valores_serializables(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [_valores_serializables(v) for v in valor]
+    return valor
+
+
+@app.exception_handler(RequestValidationError)
+async def error_de_validacion(request: Request, exc: RequestValidationError):
+    """Misma respuesta 422 que arma FastAPI por defecto, con una salvedad.
+
+    El detalle del error repite el valor recibido. Si alguien manda un monto
+    NaN o Infinity (el lector de JSON de Python los acepta), ese valor no se
+    puede volver a escribir en JSON y el propio mensaje de error terminaba en
+    un 500. Acá se lo convierte a texto antes de responder.
+    """
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _valores_serializables(jsonable_encoder(exc.errors()))},
+    )
+
 
 # CORS: por seguridad, el navegador bloquea que una web llame a otra de distinto
 # origen. Acá autorizamos explícitamente al frontend (React, puerto 3000/3001)

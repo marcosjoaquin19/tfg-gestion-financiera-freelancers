@@ -36,14 +36,12 @@ from sqlalchemy.orm import Session
 from app.models.modelo_clasificador import ModeloClasificador
 from app.models.cache_clasificacion import CacheClasificacion
 from app.models.gasto import Gasto
+from app.services.categorias_gasto import CATEGORIAS_GASTO
 
 logger = logging.getLogger(__name__)
 
-CATEGORIAS_VALIDAS = [
-    "Software", "Hardware", "Infraestructura", "Marketing", "Servicios",
-    "Capacitación", "Suscripciones", "Transporte", "Alimentación",
-    "Impuestos", "Monotributo", "Otros",
-]
+# Alias histórico: el resto del módulo y los tests usan este nombre.
+CATEGORIAS_VALIDAS = CATEGORIAS_GASTO
 
 # Dataset base: 600 ejemplos, 50 por cada una de las 12 categorías.
 # El balanceo es deliberado: con clases desbalanceadas la exactitud global

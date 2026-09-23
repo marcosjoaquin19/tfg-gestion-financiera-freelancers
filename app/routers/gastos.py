@@ -3,7 +3,8 @@ Router de Gastos — registro y consulta de gastos.
 
 Expone el CRUD de gastos bajo /gastos. Al crear un gasto, si no se indica
 categoría se la asigna automáticamente el clasificador de ML, y se detectan
-duplicados al instante (mismo monto/categoría dentro de una ventana de días).
+duplicados al instante (mismo monto/categoría dentro de una ventana de días);
+editar o borrar un gasto recalcula esa marca.
 
 Endpoints:
   POST   /gastos/      → crea un gasto (clasificación automática + chequeo de duplicados).
@@ -31,16 +32,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/gastos", tags=["Gastos"])
 
 
-def _marcar_duplicado_si_corresponde(db: Session, nuevo_gasto: Gasto) -> bool:
-    """Detección inmediata de duplicados al crear un gasto.
-
-    Si ya existe otro gasto del mismo usuario con igual monto y categoría
-    dentro de la ventana de días (misma regla que usa la Auditoría), marca
-    AMBOS como duplicados al instante. Así aparecen en "Solo duplicados" sin
-    necesidad de ejecutar la auditoría manualmente. La auditoría sigue siendo
-    la fuente para el resto de detectores (anomalías, facturas, etc.).
-    """
-    fecha = nuevo_gasto.fecha
+def _buscar_gastos_gemelos(db: Session, gasto: Gasto) -> list[Gasto]:
+    """Otros gastos del mismo usuario con igual monto y categoría dentro de la
+    ventana de días. Es la misma regla que usa el detector de la Auditoría."""
+    fecha = gasto.fecha
     fecha_naive = fecha.replace(tzinfo=None) if fecha.tzinfo else fecha
     desde = fecha_naive - timedelta(days=VENTANA_DUPLICADOS_DIAS)
     hasta = fecha_naive + timedelta(days=VENTANA_DUPLICADOS_DIAS)
@@ -48,26 +43,55 @@ def _marcar_duplicado_si_corresponde(db: Session, nuevo_gasto: Gasto) -> bool:
     candidatos = (
         db.query(Gasto)
         .filter(
-            Gasto.usuario_id == nuevo_gasto.usuario_id,
-            Gasto.id != nuevo_gasto.id,
-            Gasto.monto == nuevo_gasto.monto,
-            Gasto.categoria == nuevo_gasto.categoria,
+            Gasto.usuario_id == gasto.usuario_id,
+            Gasto.id != gasto.id,
+            Gasto.monto == gasto.monto,
+            Gasto.categoria == gasto.categoria,
         )
         .all()
     )
 
-    coincidencias = [
+    return [
         g for g in candidatos
         if desde <= (g.fecha.replace(tzinfo=None) if g.fecha.tzinfo else g.fecha) <= hasta
     ]
 
-    if not coincidencias:
-        return False
 
-    nuevo_gasto.es_duplicado = True
-    for g in coincidencias:
-        g.es_duplicado = True
-    return True
+def _marcar_duplicado_si_corresponde(db: Session, gasto: Gasto) -> bool:
+    """Detección inmediata de duplicados al crear o editar un gasto.
+
+    Si hay gemelos, marca AMBOS como duplicados al instante, así aparecen en
+    "Solo duplicados" sin ejecutar la auditoría a mano. Si no los hay (por
+    ejemplo, porque se le corrigió el importe), le retira la marca.
+    Devuelve si cambió algo.
+    """
+    gemelos = _buscar_gastos_gemelos(db, gasto)
+    hubo_cambios = False
+
+    nueva_marca = bool(gemelos)
+    if gasto.es_duplicado != nueva_marca:
+        gasto.es_duplicado = nueva_marca
+        hubo_cambios = True
+
+    for g in gemelos:
+        if not g.es_duplicado:
+            g.es_duplicado = True
+            hubo_cambios = True
+    return hubo_cambios
+
+
+def _revisar_huerfanos(db: Session, antiguos_gemelos: list[Gasto]) -> bool:
+    """Desmarca a los que se quedaron sin par tras editar o borrar un gasto.
+
+    Sin este paso, corregir el importe de un duplicado (o borrarlo) dejaba al
+    otro gasto advertido para siempre, avisando de un problema que ya no existe.
+    """
+    hubo_cambios = False
+    for anterior in antiguos_gemelos:
+        if anterior.es_duplicado and not _buscar_gastos_gemelos(db, anterior):
+            anterior.es_duplicado = False
+            hubo_cambios = True
+    return hubo_cambios
 
 
 def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
@@ -216,16 +240,29 @@ def actualizar_gasto(
     # el usuario está corrigiendo una clasificación — esa es la señal más
     # valiosa para reentrenar.
     categoria_anterior = gasto.categoria
+    gemelos_anteriores = _buscar_gastos_gemelos(db, gasto)
 
     gasto.descripcion = datos.descripcion
     gasto.monto = datos.monto
-    gasto.categoria = datos.categoria
+    # Si la edición no trae categoría se conserva la actual: la columna no
+    # admite vacío (antes esto terminaba en error 500) y reclasificar en
+    # silencio podría pisar una categoría que el usuario ya había corregido.
+    if datos.categoria is not None:
+        gasto.categoria = datos.categoria
     gasto.fecha = datos.fecha
+    db.flush()
+    # Releemos para comparar con el monto ya redondeado a 2 decimales por la
+    # base, igual que al crear.
+    db.refresh(gasto)
+
+    # El cambio puede crear un par nuevo o deshacer el anterior.
+    _marcar_duplicado_si_corresponde(db, gasto)
+    _revisar_huerfanos(db, gemelos_anteriores)
 
     db.commit()
     db.refresh(gasto)
 
-    if categoria_anterior != datos.categoria:
+    if categoria_anterior != gasto.categoria:
         background_tasks.add_task(_reentrenar_en_background, current_user.id, "correccion")
 
     return gasto
@@ -245,5 +282,9 @@ def eliminar_gasto(
     if not gasto:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gasto no encontrado")
 
+    # Si era la mitad de un par duplicado, el otro gasto deja de serlo.
+    gemelos = _buscar_gastos_gemelos(db, gasto)
     db.delete(gasto)
+    db.flush()
+    _revisar_huerfanos(db, gemelos)
     db.commit()

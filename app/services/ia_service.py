@@ -28,15 +28,13 @@ from app.models.factura import Factura, EstadoFactura
 from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.proyeccion import Proyeccion
 
+from app.services.categorias_gasto import CATEGORIAS_GASTO
+
 logger = logging.getLogger(__name__)
 
 # Categorías cerradas válidas para clasificación de gastos.
-# Se mantienen acá para los fallbacks locales y para validar respuestas agregadas.
-CATEGORIAS = [
-    "Software", "Hardware", "Infraestructura", "Marketing", "Servicios",
-    "Capacitación", "Suscripciones", "Transporte", "Alimentación",
-    "Impuestos", "Monotributo", "Otros",
-]
+# La lista vive en categorias_gasto; este alias la usan los fallbacks locales.
+CATEGORIAS = CATEGORIAS_GASTO
 
 
 MESES_ES = {

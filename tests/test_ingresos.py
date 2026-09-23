@@ -272,3 +272,16 @@ def test_filtro_solo_duplicados(client, auth_headers):
 
     duplicados = client.get("/ingresos/?solo_duplicados=true", headers=auth_headers)
     assert len(duplicados.json()) == 2
+
+
+def test_crear_ingreso_monto_nan_no_se_guarda(client, auth_headers):
+    # Antes el NaN pasaba la validación, se guardaba en la base y recién
+    # fallaba al armar la respuesta: error 500 con el registro ya persistido.
+    cuerpo = ('{"descripcion": "prueba", "monto": NaN, "categoria": "Otros", '
+              '"fecha": "2026-03-01T10:00:00"}')
+    response = client.post(
+        "/ingresos/", content=cuerpo,
+        headers={**auth_headers, "Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert client.get("/ingresos/", headers=auth_headers).json() == []

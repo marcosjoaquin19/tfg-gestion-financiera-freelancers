@@ -23,8 +23,10 @@ class IngresoCreate(BaseModel):
     # Sin ellos, un texto más largo pasaba la validación, llegaba al INSERT y
     # la base cortaba la operación con un error 500 sin explicación.
 
-    monto: float
-    # el valor del ingreso, debe ser positivo y caber en Numeric(12, 2)
+    monto: float = Field(allow_inf_nan=False)
+    # el valor del ingreso, debe ser positivo y caber en Numeric(12, 2).
+    # allow_inf_nan=False: sin esto un NaN ("no es un número") pasaba los
+    # controles, se guardaba y la respuesta fallaba con error 500.
 
     categoria: str = Field(min_length=1, max_length=100)
     # ej: "Desarrollo", "Consultoría", "Diseño"
