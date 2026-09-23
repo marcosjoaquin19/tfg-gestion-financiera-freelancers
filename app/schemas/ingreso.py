@@ -9,6 +9,8 @@ Validan y dan forma a los datos de ingresos en la API:
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
+from app.services.categorias_ingreso import CATEGORIAS_INGRESO
+
 
 # -------------------------------------------------------------------
 # SCHEMA DE CREACIÓN
@@ -27,6 +29,7 @@ class IngresoCreate(BaseModel):
     categoria: str = Field(min_length=1, max_length=100)
     # ej: "Desarrollo", "Consultoría", "Diseño"
     # Mismo criterio que la descripción: la columna admite 100 caracteres.
+    # Además se valida contra la lista cerrada (ver validador más abajo).
 
     fecha: datetime
     # fecha en que se recibió el ingreso
@@ -46,6 +49,18 @@ class IngresoCreate(BaseModel):
             raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
         return v
 
+    @field_validator("categoria")
+    @classmethod
+    def categoria_debe_estar_en_la_lista(cls, v):
+        # La pantalla ya ofrece un desplegable con estas mismas opciones, pero
+        # la API también se puede llamar directamente: sin esta validación
+        # entraba cualquier texto y los totales por categoría se fragmentaban.
+        if v not in CATEGORIAS_INGRESO:
+            raise ValueError(
+                "Categoría inválida. Las válidas son: " + ", ".join(CATEGORIAS_INGRESO)
+            )
+        return v
+
 
 # -------------------------------------------------------------------
 # SCHEMA DE RESPUESTA
@@ -58,6 +73,9 @@ class IngresoResponse(BaseModel):
     monto: float
     categoria: str
     fecha: datetime
+    es_duplicado: bool
+    # lo marca el backend al crear: hay otro ingreso igual el mismo día.
+    # Es un aviso, no un bloqueo: el usuario decide si lo corrige o lo deja.
     fecha_creacion: datetime
     # fecha_creacion la genera PostgreSQL automáticamente, por eso no está en Create
 

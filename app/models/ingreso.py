@@ -5,7 +5,7 @@ Representa la tabla `ingresos`. Cada fila es un cobro registrado por el
 freelancer (monto, categoría y fecha), asociado al usuario dueño.
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Numeric, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -29,6 +29,10 @@ class Ingreso(Base):
     
     fecha = Column(DateTime(timezone=True), nullable=False)
     # fecha en que se recibió el ingreso
+
+    es_duplicado = Column(Boolean, default=False, nullable=False)
+    # se marca cuando ya existe otro ingreso idéntico el mismo día.
+    # Es una advertencia para el usuario, no impide guardar el registro.
     
     fecha_creacion = Column(DateTime(timezone=True), server_default=func.now())
 

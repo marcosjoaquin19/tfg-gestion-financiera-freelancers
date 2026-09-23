@@ -139,3 +139,136 @@ def test_crear_ingreso_monto_maximo_admitido(client, auth_headers):
         **INGRESO_BASE, "monto": 9999999999.99,
     }, headers=auth_headers)
     assert response.status_code == 201
+
+
+# ── Categoría: lista cerrada ────────────────────────────────────────────────
+
+def test_crear_ingreso_categoria_invalida(client, auth_headers):
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "categoria": "asdasdasd",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+    # El mensaje enumera las categorías válidas para que el cliente pueda corregir.
+    assert "Desarrollo" in str(response.json()["detail"])
+
+
+def test_crear_ingreso_categoria_valida_no_listada_en_gastos(client, auth_headers):
+    # "Redacción y Contenido" es propia de ingresos: no está entre las de gasto.
+    response = client.post("/ingresos/", json={
+        **INGRESO_BASE, "categoria": "Redacción y Contenido",
+    }, headers=auth_headers)
+    assert response.status_code == 201
+
+
+# ── Duplicados ──────────────────────────────────────────────────────────────
+
+def test_ingreso_repetido_el_mismo_dia_se_marca(client, auth_headers):
+    primero = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers)
+    assert primero.json()["es_duplicado"] is False
+
+    segundo = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers)
+    assert segundo.status_code == 201, "la carga repetida se advierte, no se bloquea"
+    assert segundo.json()["es_duplicado"] is True
+
+    # El primero también queda marcado: el par se señala completo.
+    revisado = client.get(f"/ingresos/{primero.json()['id']}", headers=auth_headers)
+    assert revisado.json()["es_duplicado"] is True
+
+
+def test_plan_de_pagos_en_cuotas_iguales_no_es_duplicado(client, auth_headers):
+    """Mismo importe y misma descripción en fechas distintas: son cuotas."""
+    cuotas = ["2026-03-10T00:00:00", "2026-04-10T00:00:00", "2026-05-10T00:00:00"]
+    for fecha in cuotas:
+        respuesta = client.post("/ingresos/", json={
+            "descripcion": "Plan de pago cliente Acme - cuota",
+            "monto": 250000,
+            "categoria": "Consultoría",
+            "fecha": fecha,
+        }, headers=auth_headers)
+        assert respuesta.status_code == 201
+        assert respuesta.json()["es_duplicado"] is False, f"la cuota del {fecha} no es duplicado"
+
+
+def test_cuotas_consecutivas_con_pocos_dias_de_diferencia_no_son_duplicado(client, auth_headers):
+    # La regla de gastos usa una ventana de ±3 días; la de ingresos exige el
+    # mismo día justamente para no marcar pagos cercanos pero distintos.
+    base = {"descripcion": "Honorarios quincena", "monto": 90000, "categoria": "Servicios"}
+    a = client.post("/ingresos/", json={**base, "fecha": "2026-03-10T00:00:00"}, headers=auth_headers)
+    b = client.post("/ingresos/", json={**base, "fecha": "2026-03-12T00:00:00"}, headers=auth_headers)
+    assert a.json()["es_duplicado"] is False
+    assert b.json()["es_duplicado"] is False
+
+
+def test_mismo_monto_y_dia_con_otra_descripcion_no_es_duplicado(client, auth_headers):
+    # Dos clientes que pagan lo mismo el mismo día son dos cobros distintos.
+    a = client.post("/ingresos/", json={
+        **INGRESO_BASE, "descripcion": "Cliente A - landing",
+    }, headers=auth_headers)
+    b = client.post("/ingresos/", json={
+        **INGRESO_BASE, "descripcion": "Cliente B - landing",
+    }, headers=auth_headers)
+    assert a.json()["es_duplicado"] is False
+    assert b.json()["es_duplicado"] is False
+
+
+def test_duplicado_ignora_mayusculas_y_espacios_sobrantes(client, auth_headers):
+    a = client.post("/ingresos/", json={**INGRESO_BASE, "descripcion": "Proyecto Web"}, headers=auth_headers)
+    b = client.post("/ingresos/", json={**INGRESO_BASE, "descripcion": "  proyecto   web  "}, headers=auth_headers)
+    assert a.json()["es_duplicado"] is False
+    assert b.json()["es_duplicado"] is True
+
+
+def test_corregir_el_monto_retira_la_advertencia_a_los_dos(client, auth_headers):
+    primero = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers).json()
+    segundo = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers).json()
+    assert segundo["es_duplicado"] is True
+
+    # El usuario corrige el importe del segundo: dejan de ser el mismo cobro.
+    corregido = client.put(f"/ingresos/{segundo['id']}", json={
+        **INGRESO_BASE, "monto": 999000,
+    }, headers=auth_headers)
+    assert corregido.json()["es_duplicado"] is False
+
+    quedo = client.get(f"/ingresos/{primero['id']}", headers=auth_headers)
+    assert quedo.json()["es_duplicado"] is False, "el que quedó solo ya no es duplicado"
+
+
+def test_borrar_una_de_las_dos_cargas_limpia_la_advertencia(client, auth_headers):
+    primero = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers).json()
+    segundo = client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers).json()
+    assert segundo["es_duplicado"] is True
+
+    client.delete(f"/ingresos/{segundo['id']}", headers=auth_headers)
+
+    quedo = client.get(f"/ingresos/{primero['id']}", headers=auth_headers)
+    assert quedo.json()["es_duplicado"] is False
+
+
+def test_el_duplicado_no_cruza_usuarios(client, auth_headers):
+    client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers)
+
+    client.post("/auth/register", json={
+        "nombre": "Otro", "email": "otro.ingresos@test.com", "password": "password123",
+    })
+    login = client.post("/auth/login", data={
+        "username": "otro.ingresos@test.com", "password": "password123",
+    })
+    headers_otro = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    # El mismo ingreso, pero de otro usuario: no hay relación entre ambos.
+    ajeno = client.post("/ingresos/", json=INGRESO_BASE, headers=headers_otro)
+    assert ajeno.json()["es_duplicado"] is False
+
+
+def test_filtro_solo_duplicados(client, auth_headers):
+    client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers)
+    client.post("/ingresos/", json=INGRESO_BASE, headers=auth_headers)
+    client.post("/ingresos/", json={
+        **INGRESO_BASE, "descripcion": "Otro cobro", "monto": 1234,
+    }, headers=auth_headers)
+
+    todos = client.get("/ingresos/", headers=auth_headers)
+    assert len(todos.json()) == 3
+
+    duplicados = client.get("/ingresos/?solo_duplicados=true", headers=auth_headers)
+    assert len(duplicados.json()) == 2

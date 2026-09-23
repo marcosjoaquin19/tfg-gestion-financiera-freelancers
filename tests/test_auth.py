@@ -95,9 +95,17 @@ def test_ruta_privada_sin_token(client):
 
 
 def test_ruta_privada_con_token_manipulado(client, auth_headers):
-    # Se altera el último carácter del token: la firma deja de validar.
-    token = auth_headers["Authorization"].split(" ")[1]
-    token_roto = token[:-1] + ("a" if token[-1] != "a" else "b")
+    """Alterar el contenido del token invalida la firma.
+
+    Se modifica el payload (la parte del medio), que es donde viaja el id de
+    usuario: es exactamente lo que intentaría quien quisiera hacerse pasar por
+    otro. No se toca la firma, porque en base64url los últimos caracteres
+    pueden codificar bits de relleno y un cambio ahí no siempre altera el
+    valor decodificado.
+    """
+    cabecera, payload, firma = auth_headers["Authorization"].split(" ")[1].split(".")
+    payload_alterado = ("B" if payload[0] != "B" else "C") + payload[1:]
+    token_roto = f"{cabecera}.{payload_alterado}.{firma}"
     response = client.get("/ingresos/", headers={"Authorization": f"Bearer {token_roto}"})
     assert response.status_code == 401
 

@@ -26,7 +26,7 @@ INGRESOS = [
     # Octubre 2025 — base baja
     {"fecha": "2025-10-05", "descripcion": "Desarrollo landing page empresa textil",      "monto": 38000, "categoria": "Desarrollo Web"},
     {"fecha": "2025-10-14", "descripcion": "Consultoría técnica startup fintech",          "monto": 22000, "categoria": "Consultoría"},
-    {"fecha": "2025-10-28", "descripcion": "Mantenimiento mensual e-commerce",             "monto": 15000, "categoria": "Mantenimiento"},
+    {"fecha": "2025-10-28", "descripcion": "Mantenimiento mensual e-commerce",             "monto": 15000, "categoria": "Soporte y Mantenimiento"},
 
     # Noviembre 2025 — leve suba
     {"fecha": "2025-11-03", "descripcion": "App móvil para delivery local (fase 1)",       "monto": 55000, "categoria": "Desarrollo Mobile"},
@@ -36,10 +36,10 @@ INGRESOS = [
     # Diciembre 2025 — pico fin de año
     {"fecha": "2025-12-02", "descripcion": "Rediseño plataforma de turnos médicos",        "monto": 72000, "categoria": "Desarrollo Web"},
     {"fecha": "2025-12-10", "descripcion": "App móvil para delivery local (fase 2)",       "monto": 55000, "categoria": "Desarrollo Mobile"},
-    {"fecha": "2025-12-22", "descripcion": "Soporte técnico urgente cliente premium",      "monto": 12000, "categoria": "Soporte"},
+    {"fecha": "2025-12-22", "descripcion": "Soporte técnico urgente cliente premium",      "monto": 12000, "categoria": "Soporte y Mantenimiento"},
 
     # Enero 2026 — baja estacional post-fiestas
-    {"fecha": "2026-01-08", "descripcion": "Migración de base de datos a PostgreSQL",      "monto": 33000, "categoria": "Infraestructura"},
+    {"fecha": "2026-01-08", "descripcion": "Migración de base de datos a PostgreSQL",      "monto": 33000, "categoria": "Servicios"},
     {"fecha": "2026-01-20", "descripcion": "Consultoría arquitectura microservicios",      "monto": 26000, "categoria": "Consultoría"},
     {"fecha": "2026-01-29", "descripcion": "Dashboard analytics para empresa logística",   "monto": 48000, "categoria": "Desarrollo Web"},
 

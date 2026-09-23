@@ -3,6 +3,11 @@
  *
  * Permite listar, crear, editar y eliminar los ingresos del freelancer
  * consumiendo el endpoint /ingresos. Incluye filtros y el formulario de carga.
+ *
+ * Marca con una etiqueta los ingresos que el backend detectó como una carga
+ * repetida del mismo cobro, y ofrece el filtro "Solo duplicados" para
+ * revisarlos: un ingreso contado dos veces infla la facturación anual que
+ * mira el semáforo del Monotributo.
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
@@ -71,6 +76,8 @@ export default function Ingresos() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
+  const [soloDuplicados, setSoloDuplicados] = useState(false);
+  const [avisoDuplicado, setAvisoDuplicado] = useState('');
   // Ordenamiento multi-criterio: lista de {campo, dir}. El PRIMER elemento manda
   // y el resto desempata. "Fecha" agrupa por MES (no por día), así dos ingresos
   // del mismo mes empatan y el siguiente criterio (monto) los ordena adentro.
@@ -136,12 +143,19 @@ export default function Ingresos() {
     }
     setSaving(true);
     try {
-      await api.post('/ingresos/', {
+      const { data: creado } = await api.post('/ingresos/', {
         descripcion: form.descripcion,
         monto: montoNum,
         categoria: form.categoria,
         fecha: form.fecha + 'T00:00:00',
       });
+      // El backend no bloquea la carga repetida, la señala: puede ser un error
+      // o dos cobros iguales el mismo día, y eso solo lo sabe el usuario.
+      setAvisoDuplicado(
+        creado.es_duplicado
+          ? 'Ya tenías un ingreso igual ese mismo día. Se guardó igual: revisalo si fue sin querer.'
+          : ''
+      );
       setShowForm(false);
       setForm({ descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO() });
       await fetchIngresos();
@@ -167,17 +181,20 @@ export default function Ingresos() {
     }
   }
 
-  // El filtro ofrece TODAS las categorías canónicas (las mismas que el alta)
-  // MÁS cualquier categoría que ya exista en los datos cargados (registros viejos
-  // como "Software", "Infraestructura", "Servicios"). Así el filtro y el alta
-  // coinciden, y nunca se pierde la posibilidad de filtrar un registro existente.
+  // El filtro ofrece las mismas categorías que el alta. La lista espeja la del
+  // backend (app/services/categorias_ingreso.py), que es quien valida: si se
+  // agrega una categoría hay que tocar los dos lados. Se suma cualquier valor
+  // presente en los datos por si quedara algún registro anterior sin normalizar.
   const categoriasDisponibles = Array.from(
     new Set([...CATEGORIAS, ...ingresos.map((i) => i.categoria)])
   ).sort((a, b) => a.localeCompare(b, 'es'));
 
-  const ingresosFiltrados = filtroCategoria
+  let ingresosFiltrados = filtroCategoria
     ? ingresos.filter((i) => i.categoria === filtroCategoria)
     : ingresos;
+  if (soloDuplicados) {
+    ingresosFiltrados = ingresosFiltrados.filter((i) => i.es_duplicado);
+  }
 
   // "Fecha" se compara por período año-mes (no por día), para que los ingresos
   // del mismo mes empaten y el monto pueda ordenarlos dentro del mes.
@@ -309,7 +326,31 @@ export default function Ingresos() {
           <option value="">Todas las categorías</option>
           {categoriasDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#94a3b8', cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox" checked={soloDuplicados} onChange={(e) => setSoloDuplicados(e.target.checked)}
+            style={{ accentColor: '#3b82f6', width: '15px', height: '15px' }}
+          />
+          Solo duplicados
+        </label>
       </div>
+
+      {avisoDuplicado && (
+        <div style={{
+          background: '#2d1f00', border: '1px solid #78350f', color: '#fbbf24',
+          borderRadius: '8px', padding: '10px 14px', marginBottom: '16px',
+          fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px',
+        }}>
+          <span>{avisoDuplicado}</span>
+          <button
+            onClick={() => setAvisoDuplicado('')}
+            style={{ background: 'none', border: 'none', color: '#fbbf24', cursor: 'pointer', fontSize: '15px', lineHeight: 1 }}
+            aria-label="Cerrar aviso"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Tabla */}
       <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
@@ -345,8 +386,18 @@ export default function Ingresos() {
                 borderBottom: idx < ingresosOrdenados.length - 1 ? '1px solid #1e293b' : 'none',
               }}
             >
-              <div style={{ padding: '12px 16px', fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {ingreso.descripcion}
+              <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {ingreso.descripcion}
+                </span>
+                {ingreso.es_duplicado && (
+                  <span style={{
+                    fontSize: '11px', background: '#2d1f00', color: '#fbbf24',
+                    borderRadius: '4px', padding: '2px 6px', whiteSpace: 'nowrap', flexShrink: 0,
+                  }}>
+                    Duplicado
+                  </span>
+                )}
               </div>
               <div style={{ padding: '12px 16px' }}>
                 <span style={{
