@@ -4,6 +4,10 @@
  * Permite listar, crear, editar y eliminar gastos (endpoint /gastos). Al cargar
  * un gasto, el backend puede sugerir su categoría con el clasificador de ML.
  * Ofrece filtros, incluido el de "solo duplicados" detectados por la auditoría.
+ *
+ * La lista se muestra mes por mes (por defecto, el mes en curso): cada mes
+ * nuevo arranca su propia hoja, y la consulta nunca choca con el tope de 200
+ * filas que tiene la API, por más meses de uso que se acumulen.
  */
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -15,6 +19,28 @@ const CATEGORIAS = [
   'Capacitación', 'Suscripciones', 'Transporte', 'Alimentación',
   'Impuestos', 'Monotributo', 'Otros',
 ];
+
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+// Máximo de filas que devuelve la API por consulta (ver routers/gastos.py).
+const LIMITE_API = 200;
+const TODOS = 'todos';
+
+// Clave de período "AAAA-MM", la misma que usa el selector.
+function clavePeriodo(anio, mes) {
+  return `${anio}-${String(mes).padStart(2, '0')}`;
+}
+
+function nombrePeriodo(clave) {
+  const [anio, mes] = clave.split('-').map(Number);
+  return `${MESES[mes - 1]} ${anio}`;
+}
+
+const hoy = new Date();
+const PERIODO_ACTUAL = clavePeriodo(hoy.getFullYear(), hoy.getMonth() + 1);
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -67,6 +93,9 @@ function DeleteBtn({ onDelete }) {
 
 export default function Gastos() {
   const [gastos, setGastos] = useState([]);
+  // Mes que se está mirando ("AAAA-MM" o TODOS) y meses que tienen gastos.
+  const [periodo, setPeriodo] = useState(PERIODO_ACTUAL);
+  const [meses, setMeses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -88,11 +117,21 @@ export default function Gastos() {
   });
   const location = useLocation();
 
-  async function fetchGastos() {
+  async function fetchGastos(periodoElegido = periodo) {
     setLoading(true);
+    const params = { limite: LIMITE_API };
+    if (periodoElegido !== TODOS) {
+      const [anio, mes] = periodoElegido.split('-').map(Number);
+      params.anio = anio;
+      params.mes = mes;
+    }
     try {
-      const res = await api.get('/gastos/', { params: { limite: 200 } });
-      setGastos(res.data);
+      const [resGastos, resMeses] = await Promise.all([
+        api.get('/gastos/', { params }),
+        api.get('/gastos/meses'),
+      ]);
+      setGastos(resGastos.data);
+      setMeses(resMeses.data);
     } catch (_) {
       setGastos([]);
     } finally {
@@ -100,7 +139,7 @@ export default function Gastos() {
     }
   }
 
-  useEffect(() => { fetchGastos(); }, []);
+  useEffect(() => { fetchGastos(periodo); }, [periodo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Si venimos desde el Clasificador con una descripción/categoría ya elegida,
   // abrimos el formulario pre-cargado para que el usuario no reescriba nada.
@@ -158,7 +197,14 @@ export default function Gastos() {
       setShowForm(false);
       setForm({ descripcion: '', monto: '', categoria: 'Software', fecha: todayISO() });
       setClasificacion(null);
-      await fetchGastos();
+      // Si el gasto es de otro mes, saltamos a ese mes para que el usuario lo
+      // vea recién cargado en lugar de pensar que no se guardó.
+      const periodoDelGasto = form.fecha.slice(0, 7);
+      if (periodo !== TODOS && periodoDelGasto !== periodo) {
+        setPeriodo(periodoDelGasto);
+      } else {
+        await fetchGastos();
+      }
     } catch (err) {
       setFormError(extraerMensajeError(err, 'No se pudo guardar el gasto'));
     } finally {
@@ -170,7 +216,9 @@ export default function Gastos() {
     if (!window.confirm('¿Eliminar este gasto?')) return;
     try {
       await api.delete(`/gastos/${id}`);
-      setGastos((prev) => prev.filter((g) => g.id !== id));
+      // Recargamos: borrar puede cambiar la marca de duplicado de otro gasto
+      // y el conteo del selector de meses.
+      await fetchGastos();
     } catch (err) {
       window.alert(extraerMensajeError(err, 'No se pudo eliminar el gasto'));
     }
@@ -226,6 +274,22 @@ export default function Gastos() {
     }
     return new Date(b.fecha) - new Date(a.fecha);
   });
+
+  // Opciones del selector: el mes en curso siempre (aunque todavía no tenga
+  // gastos, porque es donde se carga lo nuevo) y después los meses con datos.
+  const opcionesPeriodo = meses.map((m) => ({
+    clave: clavePeriodo(m.anio, m.mes), cantidad: m.cantidad,
+  }));
+  if (!opcionesPeriodo.some((o) => o.clave === PERIODO_ACTUAL)) {
+    opcionesPeriodo.unshift({ clave: PERIODO_ACTUAL, cantidad: 0 });
+  }
+  if (periodo !== TODOS && !opcionesPeriodo.some((o) => o.clave === periodo)) {
+    opcionesPeriodo.push({ clave: periodo, cantidad: 0 });
+  }
+  opcionesPeriodo.sort((a, b) => b.clave.localeCompare(a.clave));
+
+  const totalPeriodo = gastos.reduce((s, g) => s + Number(g.monto || 0), 0);
+  const tituloPeriodo = periodo === TODOS ? 'Todos los meses' : nombrePeriodo(periodo);
 
   const thStyle = {
     padding: '12px 16px', fontSize: '12px', color: '#475569',
@@ -373,6 +437,18 @@ export default function Gastos() {
 
       {/* Filtros */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        <select
+          aria-label="Mes"
+          value={periodo} onChange={(e) => setPeriodo(e.target.value)}
+          style={{ ...inputStyle, width: 'auto', minWidth: '200px', cursor: 'pointer' }}
+        >
+          {opcionesPeriodo.map((o) => (
+            <option key={o.clave} value={o.clave}>
+              {nombrePeriodo(o.clave)} ({o.cantidad})
+            </option>
+          ))}
+          <option value={TODOS}>Todos los meses</option>
+        </select>
         {/* Buscador con lupa */}
         <div style={{ position: 'relative', flex: '1 1 240px', minWidth: '200px', maxWidth: '360px' }}>
           <span style={{
@@ -415,6 +491,20 @@ export default function Gastos() {
         </label>
       </div>
 
+      {/* Resumen del período elegido */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '15px', fontWeight: 500, color: '#e2e8f0' }}>{tituloPeriodo}</span>
+        <span style={{ fontSize: '13px', color: '#64748b' }}>
+          {gastos.length} {gastos.length === 1 ? 'gasto' : 'gastos'} · Total{' '}
+          <strong style={{ color: '#f87171' }}>{fmtMonto(totalPeriodo)}</strong>
+        </span>
+      </div>
+      {periodo === TODOS && gastos.length >= LIMITE_API && (
+        <p style={{ fontSize: '12px', color: '#fbbf24', margin: '0 0 10px 0' }}>
+          Se muestran los {LIMITE_API} gastos más recientes. Elegí un mes para ver los anteriores.
+        </p>
+      )}
+
       {/* Tabla */}
       <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
         {/* Header */}
@@ -437,7 +527,9 @@ export default function Gastos() {
           </div>
         ) : gastosFiltrados.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: '#475569', fontSize: '14px' }}>
-            No hay gastos registrados
+            {gastos.length === 0 && periodo !== TODOS
+              ? `No hay gastos registrados en ${tituloPeriodo}`
+              : 'No hay gastos que coincidan con los filtros'}
           </div>
         ) : (
           gastosFiltrados.map((gasto, idx) => (

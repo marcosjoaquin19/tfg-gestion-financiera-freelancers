@@ -201,3 +201,58 @@ def test_editar_un_gasto_hasta_igualar_a_otro_lo_marca(client, auth_headers):
     editado = client.put(f"/gastos/{segundo['id']}", json=GASTO_BASE, headers=auth_headers)
     assert editado.json()["es_duplicado"] is True
     assert client.get(f"/gastos/{primero['id']}", headers=auth_headers).json()["es_duplicado"] is True
+
+
+# ── Listado mes por mes ─────────────────────────────────────────────────────
+# La pantalla muestra un mes a la vez: así la lista nunca choca con el tope de
+# 200 filas por consulta, por más meses de uso que acumule el usuario.
+
+def _cargar_en(client, auth_headers, fecha, monto=1000):
+    client.post("/gastos/", json={**GASTO_BASE, "monto": monto, "fecha": fecha}, headers=auth_headers)
+
+
+def test_listar_gastos_de_un_mes(client, auth_headers):
+    _cargar_en(client, auth_headers, "2026-08-31T23:00:00", 100)  # último momento de agosto
+    _cargar_en(client, auth_headers, "2026-09-01T00:00:00", 200)  # primer momento de septiembre
+    _cargar_en(client, auth_headers, "2026-09-30T12:00:00", 300)
+    _cargar_en(client, auth_headers, "2026-10-01T00:00:00", 400)
+
+    response = client.get("/gastos/?mes=9&anio=2026", headers=auth_headers)
+    assert response.status_code == 200
+    assert sorted(g["monto"] for g in response.json()) == [200, 300]
+
+
+def test_listar_gastos_de_diciembre_no_se_pasa_al_anio_siguiente(client, auth_headers):
+    _cargar_en(client, auth_headers, "2026-12-15T10:00:00", 100)
+    _cargar_en(client, auth_headers, "2027-01-02T10:00:00", 200)
+    response = client.get("/gastos/?mes=12&anio=2026", headers=auth_headers)
+    assert [g["monto"] for g in response.json()] == [100]
+
+
+def test_filtro_de_mes_invalido(client, auth_headers):
+    assert client.get("/gastos/?mes=13&anio=2026", headers=auth_headers).status_code == 422
+    assert client.get("/gastos/?mes=0&anio=2026", headers=auth_headers).status_code == 422
+    # Mes sin año (o al revés) es ambiguo: se rechaza en lugar de adivinar.
+    assert client.get("/gastos/?mes=9", headers=auth_headers).status_code == 422
+    assert client.get("/gastos/?anio=2026", headers=auth_headers).status_code == 422
+
+
+def test_meses_con_gastos(client, auth_headers):
+    _cargar_en(client, auth_headers, "2026-08-10T10:00:00", 100)
+    _cargar_en(client, auth_headers, "2026-09-05T10:00:00", 200)
+    _cargar_en(client, auth_headers, "2026-09-20T10:00:00", 300)
+
+    response = client.get("/gastos/meses", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json() == [
+        {"anio": 2026, "mes": 9, "cantidad": 2, "total": 500},
+        {"anio": 2026, "mes": 8, "cantidad": 1, "total": 100},
+    ]
+
+
+def test_meses_con_gastos_no_cruza_usuarios(client, auth_headers):
+    _cargar_en(client, auth_headers, "2026-09-05T10:00:00")
+    client.post("/auth/register", json={"nombre": "Otra", "email": "otra@test.com", "password": "password123"})
+    token = client.post("/auth/login", data={"username": "otra@test.com", "password": "password123"}).json()["access_token"]
+    response = client.get("/gastos/meses", headers={"Authorization": f"Bearer {token}"})
+    assert response.json() == []

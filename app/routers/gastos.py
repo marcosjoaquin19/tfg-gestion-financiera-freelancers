@@ -8,15 +8,17 @@ editar o borrar un gasto recalcula esa marca.
 
 Endpoints:
   POST   /gastos/      → crea un gasto (clasificación automática + chequeo de duplicados).
-  GET    /gastos/      → lista con filtros (categoría, solo duplicados, etc.).
+  GET    /gastos/      → lista con filtros (mes, categoría, solo duplicados, etc.).
+  GET    /gastos/meses → meses con gastos cargados (para el selector de la pantalla).
   GET    /gastos/{id}  → devuelve un gasto.
   PUT    /gastos/{id}  → edita un gasto.
   DELETE /gastos/{id}  → elimina un gasto.
 """
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.database import SessionLocal, get_db
@@ -182,17 +184,68 @@ def crear_gasto(
     return nuevo_gasto
 
 
+class MesConGastos(BaseModel):
+    anio: int
+    mes: int
+    cantidad: int
+    total: float
+
+
+@router.get("/meses", response_model=list[MesConGastos])
+def listar_meses_con_gastos(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    """Meses en los que el usuario tiene gastos, del más reciente al más viejo.
+
+    Alimenta el selector de mes de la pantalla: así solo se ofrecen meses con
+    datos y cada opción muestra cuántos gastos tiene.
+    """
+    anio = extract("year", Gasto.fecha)
+    mes = extract("month", Gasto.fecha)
+    filas = (
+        db.query(anio.label("anio"), mes.label("mes"),
+                 func.count(Gasto.id), func.sum(Gasto.monto))
+        .filter(Gasto.usuario_id == current_user.id)
+        .group_by(anio, mes)
+        .order_by(anio.desc(), mes.desc())
+        .all()
+    )
+    return [
+        MesConGastos(anio=int(a), mes=int(m), cantidad=c, total=float(t or 0))
+        for a, m, c, t in filas
+    ]
+
+
 @router.get("/", response_model=list[GastoResponse])
 def listar_gastos(
     categoria: str | None = Query(default=None),
     solo_duplicados: bool = Query(default=False),
     # ?solo_duplicados=true → filtra solo los gastos marcados como duplicados por auditoría
+    mes: int | None = Query(default=None, ge=1, le=12),
+    anio: int | None = Query(default=None, ge=2000, le=2100),
+    # ?mes=9&anio=2026 → solo los gastos de ese mes. La pantalla lista mes por
+    # mes: un mes nunca se acerca al tope de 200 filas, mientras que la lista
+    # completa de un usuario con varios meses de uso sí lo supera.
     limite: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    if (mes is None) != (anio is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Para filtrar por mes hay que indicar el mes y el año juntos",
+        )
+
     query = db.query(Gasto).filter(Gasto.usuario_id == current_user.id)
+
+    if mes is not None:
+        # Rango [día 1 del mes, día 1 del mes siguiente), en UTC, que es como
+        # se guardan y se muestran las fechas.
+        desde = datetime(anio, mes, 1, tzinfo=timezone.utc)
+        hasta = datetime(anio + (mes == 12), mes % 12 + 1, 1, tzinfo=timezone.utc)
+        query = query.filter(Gasto.fecha >= desde, Gasto.fecha < hasta)
 
     if categoria:
         query = query.filter(Gasto.categoria == categoria)
