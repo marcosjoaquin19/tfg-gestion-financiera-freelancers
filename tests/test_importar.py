@@ -645,3 +645,116 @@ def test_confirmar_acepta_una_categoria_de_gasto_en_un_gasto(client, auth_header
     }, headers=auth_headers)
     assert respuesta.status_code == 200
     assert respuesta.json()["gastos_creados"] == 1
+
+
+# ── Montos en formato argentino y filas defectuosas (revisión M06) ──────────
+import pytest
+from app.services.csv_service import _parse_monto
+
+
+@pytest.mark.parametrize("texto, esperado", [
+    ("15.000", 15000.0),            # punto de miles, sin decimales
+    ("-15.000", -15000.0),
+    ("1.250.000", 1250000.0),       # varios puntos de miles
+    ("1.234,56", 1234.56),          # formato argentino completo
+    ("-3.500,50", -3500.5),
+    ("3500,50", 3500.5),            # coma decimal sola
+    ("1234.56", 1234.56),           # punto decimal (Mercado Pago, Brubank)
+    ("12500.00", 12500.0),
+    ("1,234.56", 1234.56),          # formato inglés
+    ("1,250,000", 1250000.0),
+    ("$ 1.500,00", 1500.0),
+    ("(1.234,56)", -1234.56),       # negativo entre paréntesis
+    ("1.234,56-", -1234.56),        # negativo con el signo al final
+    ("850", 850.0),
+    (15000, 15000.0),               # Excel ya entrega números
+    (1234.5, 1234.5),
+])
+def test_parse_monto_formatos(texto, esperado):
+    assert _parse_monto(texto) == pytest.approx(esperado)
+
+
+@pytest.mark.parametrize("texto", ["abc", "", "   ", None, "NaN", "inf", "1.2.3,4,5"])
+def test_parse_monto_ilegible_devuelve_none(texto):
+    assert _parse_monto(texto) is None
+
+
+def _preview(client, auth_headers, contenido: bytes, nombre="extracto.csv"):
+    return client.post(
+        "/importar/preview",
+        files={"archivo": (nombre, io.BytesIO(contenido), "text/csv")},
+        headers=auth_headers,
+    )
+
+
+def test_preview_lee_montos_con_punto_de_miles(client, auth_headers):
+    """Antes "-15.000" se leía como 15 pesos y "1.250.000" desaparecía."""
+    csv_bytes = (
+        "Fecha;Descripcion;Importe\n"
+        "20/09/2026;Supermercado Coto;-15.000\n"
+        "21/09/2026;Pago cliente Acme;1.250.000\n"
+        "22/09/2026;Uber viaje;-3.500,50\n"
+    ).encode()
+    data = _preview(client, auth_headers, csv_bytes).json()
+    montos = {m["descripcion"]: (m["tipo"], m["monto"]) for m in data["preview"]}
+    assert montos == {
+        "Supermercado Coto": ("gasto", 15000.0),
+        "Pago cliente Acme": ("ingreso", 1250000.0),
+        "Uber viaje": ("gasto", 3500.5),
+    }
+
+
+def test_preview_informa_las_filas_que_no_pudo_leer(client, auth_headers):
+    csv_bytes = (
+        "Fecha,Descripcion,Importe\n"
+        "20/09/2026,Supermercado Coto,-15000\n"
+        ",Fila sin fecha,-100\n"
+        "32/13/2026,Fecha imposible,-300\n"
+        "22/09/2026,Monto roto,abc\n"
+    ).encode()
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["total_filas"] == 1
+    assert data["resumen"]["omitidas"] == 3
+    motivos = {f["fila"]: f["motivo"] for f in data["filas_omitidas"]}
+    assert motivos[2] == "sin fecha"
+    assert motivos[3].startswith("fecha ilegible")
+    assert motivos[4].startswith("importe ilegible")
+
+
+def test_preview_descripcion_vacia_no_se_convierte_en_nan(client, auth_headers):
+    csv_bytes = b"Fecha,Descripcion,Importe\n20/09/2026,,-200\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["preview"][0]["descripcion"] == "Sin descripción"
+
+
+def test_preview_recorta_descripciones_mas_largas_que_la_columna(client, auth_headers):
+    csv_bytes = ("Fecha,Descripcion,Importe\n20/09/2026," + "x" * 400 + ",-200\n").encode()
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert len(data["preview"][0]["descripcion"]) == 255
+
+
+@pytest.mark.parametrize("cambio", [
+    {"monto": -500},
+    {"monto": 0},
+    {"monto": 10 ** 10},
+    {"descripcion": "   "},
+    {"descripcion": "x" * 256},
+])
+def test_confirmar_rechaza_movimientos_invalidos_sin_guardar_nada(client, auth_headers, cambio):
+    valido = {"fecha": "2026-09-20T00:00:00", "descripcion": "Cafe", "monto": 850.0,
+              "tipo": "gasto", "categoria": "Alimentación"}
+    response = client.post("/importar/confirmar", json={
+        "movimientos": [valido, {**valido, "descripcion": "Taxi", **cambio}],
+        "mapeo": {},
+    }, headers=auth_headers)
+    assert response.status_code == 422
+    assert client.get("/gastos/", headers=auth_headers).json() == [], "no queda nada a medias"
+
+
+def test_confirmar_rechaza_monto_nan(client, auth_headers):
+    cuerpo = ('{"mapeo": {}, "movimientos": [{"fecha": "2026-09-20T00:00:00", "descripcion": "x", '
+              '"monto": NaN, "tipo": "gasto", "categoria": "Otros"}]}')
+    response = client.post("/importar/confirmar", content=cuerpo,
+                           headers={**auth_headers, "Content-Type": "application/json"})
+    assert response.status_code == 422
+    assert client.get("/gastos/", headers=auth_headers).json() == []

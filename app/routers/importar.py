@@ -14,7 +14,7 @@ que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
 
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
@@ -50,10 +50,31 @@ TAMANO_MAXIMO_BYTES = 10 * 1024 * 1024  # 10 MB
 
 class MovimientoImportar(BaseModel):
     fecha: str
-    descripcion: str
-    monto: float
+    descripcion: str = Field(max_length=255)
+    monto: float = Field(allow_inf_nan=False)
     tipo: str
     categoria: str
+
+    # Mismas reglas que la carga manual de ingresos y gastos. /confirmar
+    # recibe la lista que armó el preview, pero es un endpoint como cualquier
+    # otro: sin estos controles, un monto negativo o NaN se guardaba tal cual,
+    # y uno fuera de rango hacía fallar la importación con un error 500.
+    @field_validator("descripcion")
+    @classmethod
+    def descripcion_no_vacia(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("La descripción no puede estar vacía")
+        return v
+
+    @field_validator("monto")
+    @classmethod
+    def monto_valido(cls, v):
+        if v <= 0:
+            raise ValueError("El monto debe ser mayor a cero")
+        if v >= 10 ** 10:
+            raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
+        return v
 
     @model_validator(mode="after")
     def categoria_valida_segun_el_tipo(self):
@@ -129,7 +150,10 @@ async def preview_csv(
             detail="No se pudo detectar la estructura del archivo. Verificá que tenga encabezados claros (fecha, descripción, monto).",
         )
 
-    todos = procesar_csv(df, mapeo)
+    # Filas que no se pudieron leer (sin fecha, importe ilegible, etc.): se
+    # informan en la respuesta para que el usuario sepa qué quedó afuera.
+    filas_omitidas: list[dict] = []
+    todos = procesar_csv(df, mapeo, omitidas=filas_omitidas)
     if not todos:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -157,8 +181,10 @@ async def preview_csv(
         "total_filas": len(todos),
         "preview": preview,
         "mapeo_detectado": mapeo,
+        "filas_omitidas": filas_omitidas,
         "resumen": {
             "total": len(todos),
+            "omitidas": len(filas_omitidas),
             "nuevos": len(todos) - posibles_duplicados - transferencias_propias,
             "posibles_duplicados": posibles_duplicados,
             "transferencias_propias": transferencias_propias,

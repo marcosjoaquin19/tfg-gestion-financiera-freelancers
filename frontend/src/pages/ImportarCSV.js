@@ -9,7 +9,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -36,6 +36,8 @@ export default function ImportarCSV() {
   const [preview, setPreview] = useState([]);
   const [totalFilas, setTotalFilas] = useState(0);
   const [resumen, setResumen] = useState(null);
+  // Filas del archivo que no se pudieron leer (sin fecha, importe ilegible…).
+  const [filasOmitidas, setFilasOmitidas] = useState([]);
   const [mapeo, setMapeo] = useState(null);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef();
@@ -73,10 +75,11 @@ export default function ImportarCSV() {
       setPreview(res.data.preview);
       setTotalFilas(res.data.total_filas);
       setResumen(res.data.resumen);
+      setFilasOmitidas(res.data.filas_omitidas || []);
       setMapeo(res.data.mapeo_detectado);
       setPaso(PASO.PREVIEW);
     } catch (err) {
-      setErrorMsg(err.response?.data?.detail || 'Error al analizar el archivo');
+      setErrorMsg(extraerMensajeError(err, 'Error al analizar el archivo'));
     } finally {
       setAnalizando(false);
     }
@@ -93,8 +96,10 @@ export default function ImportarCSV() {
       });
       setResultado(res.data);
       setPaso(PASO.EXITO);
-    } catch (_) {
-      setErrorMsg('Error al importar los movimientos');
+    } catch (err) {
+      // El backend explica el motivo (por ejemplo, qué movimiento tiene la
+      // fecha ilegible) y garantiza que no se guardó nada a medias.
+      setErrorMsg(extraerMensajeError(err, 'Error al importar los movimientos'));
     } finally {
       setImportando(false);
     }
@@ -105,6 +110,7 @@ export default function ImportarCSV() {
     setArchivo(null);
     setPreview([]);
     setResumen(null);
+    setFilasOmitidas([]);
     setMapeo(null);
     setResultado(null);
     setErrorMsg('');
@@ -255,6 +261,26 @@ export default function ImportarCSV() {
               )}
               {resumen.transferencias_propias > 0 && (
                 <div>⇄ {resumen.transferencias_propias} {resumen.transferencias_propias === 1 ? 'movimiento parece' : 'movimientos parecen'} parte de una transferencia entre tus propias cuentas (no es facturación real) y se omitirá{resumen.transferencias_propias === 1 ? '' : 'n'} al confirmar.</div>
+              )}
+            </div>
+          )}
+
+          {/* Filas del archivo que quedaron afuera: antes se descartaban en silencio */}
+          {filasOmitidas.length > 0 && (
+            <div style={{
+              background: '#1f0d0d', border: '1px solid #7f1d1d', borderRadius: '8px',
+              padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#fca5a5',
+            }}>
+              <div style={{ marginBottom: '6px' }}>
+                ✕ {filasOmitidas.length} {filasOmitidas.length === 1 ? 'fila del archivo no se pudo leer y no se importará' : 'filas del archivo no se pudieron leer y no se importarán'}:
+              </div>
+              {filasOmitidas.slice(0, 10).map((f) => (
+                <div key={f.fila} style={{ color: '#f87171', fontSize: '12px' }}>
+                  Fila {f.fila}{f.descripcion ? ` (${f.descripcion.slice(0, 40)})` : ''}: {f.motivo}
+                </div>
+              ))}
+              {filasOmitidas.length > 10 && (
+                <div style={{ fontSize: '12px', color: '#94a3b8' }}>y {filasOmitidas.length - 10} más.</div>
               )}
             </div>
           )}

@@ -151,7 +151,15 @@ def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | Non
 
             # sep=None + engine='python' auto-detecta coma, punto-coma y tabulación.
             # Cubre Galicia (;), Brubank (\t), y extractos genéricos (,).
-            return pd.read_csv(io.StringIO(texto), sep=None, engine="python")
+            # dtype=str: pandas no interpreta los números por su cuenta. Si lo
+            # hiciera, leería "15.000" (quince mil, con punto de miles) como
+            # 15.0 y "1.250.000" como texto ilegible. Los montos los convierte
+            # _parse_monto, que conoce el formato argentino. keep_default_na
+            # evita que una celda vacía se convierta en el texto "nan".
+            return pd.read_csv(
+                io.StringIO(texto), sep=None, engine="python",
+                dtype=str, keep_default_na=False,
+            )
         if extension == ".xlsx":
             # openpyxl es la dependencia que pandas usa por debajo para .xlsx.
             # Leemos primero sin encabezado para poder localizar el preámbulo,
@@ -181,7 +189,7 @@ def _detectar_formato_fecha(serie: pd.Series) -> str:
         "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d",
         "%d/%m/%y", "%d-%m-%y",
     ]
-    muestras = serie.dropna().astype(str).head(5).tolist()
+    muestras = [m for m in serie.dropna().astype(str).str.strip().tolist() if m][:5]
     if not muestras:
         return "%d/%m/%Y"
 
@@ -236,13 +244,29 @@ def detectar_columnas_csv(df: pd.DataFrame, db: Session = None) -> dict | None:
     }
 
 
-def procesar_csv(df: pd.DataFrame, mapeo: dict) -> list[dict]:
+# Largo máximo de la descripción en la base (columna String(255)).
+MAX_DESCRIPCION = 255
+
+
+def _celda_vacia(valor) -> bool:
+    return valor is None or (isinstance(valor, float) and pd.isna(valor)) or str(valor).strip() == ""
+
+
+def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) -> list[dict]:
     """Convierte cada fila del DataFrame en un movimiento normalizado.
 
     Recibe el DataFrame ya leído (por leer_dataframe) más el mapeo de columnas
     detectado por detectar_columnas_csv. La salida es una lista de dicts con
     las claves fecha, descripción, monto y tipo, lista para clasificar.
+
+    Si se pasa la lista `omitidas`, se le agrega una entrada por cada fila que
+    no se pudo convertir ({"fila", "descripcion", "motivo"}), para mostrarle
+    al usuario qué quedó afuera. Antes esas filas se descartaban en silencio.
     """
+    def omitir(numero, descripcion, motivo):
+        if omitidas is not None:
+            omitidas.append({"fila": numero, "descripcion": descripcion, "motivo": motivo})
+
     if df is None or df.empty:
         return []
 
@@ -255,32 +279,57 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict) -> list[dict]:
 
     movimientos = []
 
-    for _, row in df.iterrows():
+    for numero, (_, row) in enumerate(df.iterrows(), start=1):
+        # numero: posición del movimiento en la tabla (1 = primera fila de datos).
         try:
+            desc_raw = row.get(col_desc) if col_desc else None
+            descripcion = "Sin descripción" if _celda_vacia(desc_raw) else str(desc_raw).strip()
+            # La columna admite 255 caracteres; un concepto bancario más largo
+            # se recorta en lugar de hacer fallar toda la importación.
+            descripcion = descripcion[:MAX_DESCRIPCION]
+
             fecha_raw = row.get(col_fecha) if col_fecha else None
-            if fecha_raw is None or (isinstance(fecha_raw, float) and pd.isna(fecha_raw)):
+            if _celda_vacia(fecha_raw):
+                omitir(numero, descripcion, "sin fecha")
                 continue
             try:
                 fecha = pd.to_datetime(str(fecha_raw), format=fmt_fecha)
             except (ValueError, TypeError):
-                fecha = pd.to_datetime(str(fecha_raw), errors="coerce")
+                # dayfirst: si una fila no sigue el formato detectado, se
+                # prioriza igual el orden día/mes que usan los bancos locales.
+                fecha = pd.to_datetime(str(fecha_raw), errors="coerce", dayfirst=True)
                 if pd.isna(fecha):
+                    omitir(numero, descripcion, f"fecha ilegible: '{fecha_raw}'")
                     continue
-
-            descripcion = str(row.get(col_desc, "Sin descripción")).strip()
 
             if col_debito and col_credito:
-                debito = _parse_monto(row.get(col_debito, 0))
-                credito = _parse_monto(row.get(col_credito, 0))
-                if credito and credito > 0:
+                debito_raw, credito_raw = row.get(col_debito), row.get(col_credito)
+                debito = _parse_monto(debito_raw)
+                credito = _parse_monto(credito_raw)
+                if credito is None and not _celda_vacia(credito_raw):
+                    omitir(numero, descripcion, f"importe ilegible: '{credito_raw}'")
+                    continue
+                if debito is None and not _celda_vacia(debito_raw):
+                    omitir(numero, descripcion, f"importe ilegible: '{debito_raw}'")
+                    continue
+                # Algunos bancos anotan el débito con signo menos: se toma el valor absoluto.
+                credito = abs(credito) if credito else None
+                debito = abs(debito) if debito else None
+                if credito:
                     monto, tipo = credito, "ingreso"
-                elif debito and debito > 0:
+                elif debito:
                     monto, tipo = debito, "gasto"
                 else:
+                    omitir(numero, descripcion, "sin importe")
                     continue
             elif col_monto:
-                monto_val = _parse_monto(row.get(col_monto, 0))
-                if not monto_val or monto_val == 0:
+                monto_raw = row.get(col_monto)
+                monto_val = _parse_monto(monto_raw)
+                if monto_val is None and not _celda_vacia(monto_raw):
+                    omitir(numero, descripcion, f"importe ilegible: '{monto_raw}'")
+                    continue
+                if not monto_val:
+                    omitir(numero, descripcion, "sin importe")
                     continue
                 if monto_val > 0:
                     monto, tipo = monto_val, "ingreso"
@@ -298,24 +347,66 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict) -> list[dict]:
 
         except Exception as e:
             logger.warning(f"Fila ignorada por error: {e}")
+            omitir(numero, "", "no se pudo leer la fila")
             continue
 
     return movimientos
 
 
+_MILES_CON_PUNTO = re.compile(r"^\d{1,3}(\.\d{3})+$")
+
+
 def _parse_monto(valor) -> float | None:
-    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+    """Convierte un importe del extracto a número. Devuelve None si no se puede.
+
+    Los bancos argentinos escriben "1.234,56": punto de miles y coma decimal.
+    Otros exportan "1234.56" o "1,234.56". La regla:
+      - Si hay punto y coma, el separador que aparece ÚLTIMO es el decimal.
+      - Si hay solo comas: una sola es decimal ("3500,50"); varias son de
+        miles ("1,250,000").
+      - Si hay solo puntos: varios son de miles ("1.250.000"), y uno solo
+        seguido de exactamente tres dígitos también ("15.000" = quince mil).
+        Un importe bancario nunca tiene tres decimales.
+    También acepta el negativo entre paréntesis "(1.234,56)" y con el signo
+    al final "1.234,56-", que usan algunos homebanking.
+    """
+    if valor is None or isinstance(valor, bool):
         return None
+    if isinstance(valor, (int, float)):
+        # Excel ya entrega números reales: no hay formato que interpretar.
+        return None if pd.isna(valor) else float(valor)
+
+    s = str(valor).strip().replace("$", "").replace(" ", "").replace("\u00a0", "")
+    if not s:
+        return None
+
+    negativo = False
+    if s.startswith("(") and s.endswith(")"):
+        negativo, s = True, s[1:-1]
+    if s.endswith("-"):
+        negativo, s = True, s[:-1]
+    if s.startswith("-"):
+        negativo, s = not negativo, s[1:]
+    elif s.startswith("+"):
+        s = s[1:]
+
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")   # 1.234,56
+        else:
+            s = s.replace(",", "")                     # 1,234.56
+    elif "," in s:
+        s = s.replace(",", "") if s.count(",") > 1 else s.replace(",", ".")
+    elif "." in s and (s.count(".") > 1 or _MILES_CON_PUNTO.match(s)):
+        s = s.replace(".", "")
+
     try:
-        # Formato argentino: "1.234,56" → 1234.56
-        s = str(valor).strip().replace("$", "").replace(" ", "")
-        if "," in s and "." in s:
-            s = s.replace(".", "").replace(",", ".")
-        elif "," in s:
-            s = s.replace(",", ".")
-        return float(s)
-    except (ValueError, TypeError):
+        numero = float(s)
+    except ValueError:
         return None
+    if numero != numero or numero in (float("inf"), float("-inf")):
+        return None
+    return -numero if negativo else numero
 
 
 def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) -> list:
