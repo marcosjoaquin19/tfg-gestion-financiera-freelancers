@@ -29,6 +29,7 @@ from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.proyeccion import Proyeccion
 
 from app.services.categorias_gasto import CATEGORIAS_GASTO
+from app.services.facturas_estado import marcar_vencidas
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,8 @@ def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int
     ).group_by(Gasto.categoria).all()
     total_gastos = sum(r.total for r in gastos_por_categoria) or Decimal("0")
 
-    # Facturas pendientes
+    # Facturas pendientes (las ya vencidas se marcan antes, para no contarlas acá)
+    marcar_vencidas(db, usuario_id)
     facturas_pendientes = db.query(Factura).filter(
         Factura.usuario_id == usuario_id,
         Factura.estado == EstadoFactura.PENDIENTE,
@@ -159,6 +161,7 @@ def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
     ).all()
 
     # Facturas pendientes y vencidas
+    marcar_vencidas(db, usuario_id)
     facturas_pend = db.query(Factura).filter(
         Factura.usuario_id == usuario_id,
         Factura.estado == EstadoFactura.PENDIENTE,

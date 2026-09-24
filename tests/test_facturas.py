@@ -47,7 +47,8 @@ def test_listar_facturas(client, auth_headers):
 
 
 def test_listar_facturas_filtro_estado(client, auth_headers):
-    client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers)
+    # Con vencimiento a futuro: una atrasada ya se listaría como "vencida".
+    client.post("/facturas/", json=FACTURA_A_FUTURO, headers=auth_headers)
     response = client.get("/facturas/?estado=pendiente", headers=auth_headers)
     assert response.status_code == 200
     assert len(response.json()) == 1
@@ -234,3 +235,34 @@ def test_acortar_el_plazo_a_una_fecha_pasada_la_vence(client, auth_headers):
     response = client.put(f"/facturas/{fid}", json={**FACTURA_A_FUTURO, "fecha_vencimiento": _en_dias(-1)},
                           headers=auth_headers)
     assert response.json()["estado"] == "vencida"
+
+
+# ── El servidor marca las vencidas (ya no depende de abrir la pantalla) ──────
+
+def test_listar_marca_vencidas_las_pendientes_atrasadas(client, auth_headers):
+    # FACTURA_BASE venció el 1/4/2026; FACTURA_A_FUTURO vence en 30 días.
+    atrasada = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()
+    al_dia = client.post("/facturas/", json=FACTURA_A_FUTURO, headers=auth_headers).json()
+    assert atrasada["estado"] == "pendiente", "al crearla todavía no se recalcula"
+
+    estados = {f["id"]: f["estado"] for f in client.get("/facturas/", headers=auth_headers).json()}
+    assert estados[atrasada["id"]] == "vencida"
+    assert estados[al_dia["id"]] == "pendiente"
+
+
+def test_filtro_vencida_incluye_las_recien_vencidas(client, auth_headers):
+    client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers)
+    vencidas = client.get("/facturas/?estado=vencida", headers=auth_headers).json()
+    assert len(vencidas) == 1
+
+
+def test_marcar_vencidas_no_toca_pagadas(client, auth_headers, db):
+    from app.services.facturas_estado import marcar_vencidas
+    from app.models.usuario import Usuario
+
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    client.patch(f"/facturas/{fid}/estado", json={"estado": "pagada", "fecha_pago": "2026-03-20T00:00:00"},
+                 headers=auth_headers)
+    usuario_id = db.query(Usuario).first().id
+    assert marcar_vencidas(db, usuario_id) == 0
+    assert client.get(f"/facturas/{fid}", headers=auth_headers).json()["estado"] == "pagada"

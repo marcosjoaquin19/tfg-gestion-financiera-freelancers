@@ -2,7 +2,8 @@
  * Pantalla Facturas — emisión y seguimiento de facturas.
  *
  * Permite emitir facturas, listarlas con filtros (por estado y cliente) y
- * cambiar su estado (marcar como pagada o vencida) contra el endpoint /facturas.
+ * marcarlas como pagadas contra el endpoint /facturas. El paso a "vencida" lo
+ * hace el servidor solo, cuando la fecha de vencimiento ya pasó.
  * Refleja las reglas de negocio: una factura pagada no se edita ni elimina.
  */
 import { useState, useEffect } from 'react';
@@ -97,20 +98,10 @@ export default function Facturas() {
   async function fetchFacturas() {
     setLoading(true);
     try {
+      // Las pendientes con el vencimiento pasado ya llegan como "vencida":
+      // ese cambio lo hace el servidor (services/facturas_estado.py).
       const res = await api.get('/facturas/', { params: { limite: 200 } });
-      const ahora = new Date();
-      const vencidas = res.data.filter(
-        (f) => f.estado === 'pendiente' && new Date(f.fecha_vencimiento) < ahora
-      );
-      if (vencidas.length > 0) {
-        await Promise.all(
-          vencidas.map((f) => api.patch(`/facturas/${f.id}/estado`, { estado: 'vencida', fecha_pago: null }))
-        );
-        const actualizado = await api.get('/facturas/', { params: { limite: 200 } });
-        setFacturas(actualizado.data);
-      } else {
-        setFacturas(res.data);
-      }
+      setFacturas(res.data);
     } catch (_) {
       setFacturas([]);
     } finally {

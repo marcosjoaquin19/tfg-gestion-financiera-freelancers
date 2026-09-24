@@ -34,6 +34,7 @@ from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
+from app.services.facturas_estado import marcar_vencidas
 from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.categoria_monotributo import CategoriaMonotributo
 from app.services.formato import formato_pesos_ar
@@ -105,6 +106,7 @@ def _gastos_por_categoria(db: Session, usuario_id: int, mes: int, anio: int) -> 
 
 
 def _facturacion_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
+    marcar_vencidas(db, usuario_id)
     facturas = db.query(Factura).filter(
         Factura.usuario_id == usuario_id,
         extract("month", Factura.fecha_emision) == mes,

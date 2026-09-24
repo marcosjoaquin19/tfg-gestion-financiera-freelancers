@@ -23,6 +23,7 @@ from app.models.usuario import Usuario
 from app.models.factura import Factura, EstadoFactura
 from app.schemas.factura import FacturaCreate, FacturaUpdate, FacturaEstadoUpdate, FacturaResponse
 from app.dependencies import get_current_user
+from app.services.facturas_estado import marcar_vencidas
 
 
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
@@ -55,6 +56,7 @@ def _ya_vencio(factura: Factura) -> bool:
 # Helper interno: busca una factura del usuario o corta con un error 404.
 # Evita repetir esta misma validación en cada endpoint.
 def _get_factura_or_404(factura_id: int, db: Session, usuario_id: int) -> Factura:
+    marcar_vencidas(db, usuario_id)
     factura = db.query(Factura).filter(
         Factura.id == factura_id,
         Factura.usuario_id == usuario_id,
@@ -96,6 +98,9 @@ def listar_facturas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    # Antes de filtrar por estado: así ?estado=vencida ya incluye las que
+    # vencieron desde la última consulta.
+    marcar_vencidas(db, current_user.id)
     query = db.query(Factura).filter(Factura.usuario_id == current_user.id)
 
     if estado:
