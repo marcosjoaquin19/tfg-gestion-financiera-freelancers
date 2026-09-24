@@ -139,3 +139,98 @@ def test_factura_vencida_puede_cobrarse(client, auth_headers):
                            headers=auth_headers)
     assert cobrada.status_code == 200
     assert cobrada.json()["estado"] == "pagada"
+
+
+# ── Validación de datos y reglas de la máquina de estados (revisión M05) ─────
+from datetime import datetime, timedelta, timezone
+
+
+def _en_dias(dias: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(days=dias)).strftime("%Y-%m-%dT00:00:00")
+
+
+FACTURA_A_FUTURO = {**FACTURA_BASE, "fecha_emision": _en_dias(-5), "fecha_vencimiento": _en_dias(30)}
+
+
+def test_crear_factura_textos_vacios(client, auth_headers):
+    for campo in ("cliente_nombre", "descripcion"):
+        response = client.post("/facturas/", json={**FACTURA_BASE, campo: "   "}, headers=auth_headers)
+        assert response.status_code == 422, campo
+
+
+def test_crear_factura_textos_demasiado_largos(client, auth_headers):
+    assert client.post("/facturas/", json={**FACTURA_BASE, "cliente_nombre": "x" * 201},
+                       headers=auth_headers).status_code == 422
+    assert client.post("/facturas/", json={**FACTURA_BASE, "descripcion": "x" * 501},
+                       headers=auth_headers).status_code == 422
+
+
+def test_crear_factura_monto_fuera_de_rango_o_nan(client, auth_headers):
+    assert client.post("/facturas/", json={**FACTURA_BASE, "monto": 10 ** 10},
+                       headers=auth_headers).status_code == 422
+    cuerpo = ('{"cliente_nombre": "Acme", "descripcion": "x", "monto": NaN, '
+              '"fecha_emision": "2026-03-01T10:00:00", "fecha_vencimiento": "2026-04-01T10:00:00"}')
+    response = client.post("/facturas/", content=cuerpo,
+                           headers={**auth_headers, "Content-Type": "application/json"})
+    assert response.status_code == 422
+    assert client.get("/facturas/", headers=auth_headers).json() == []
+
+
+def test_no_se_marca_vencida_una_factura_que_no_vencio(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_A_FUTURO, headers=auth_headers).json()["id"]
+    response = client.patch(f"/facturas/{fid}/estado", json={"estado": "vencida"}, headers=auth_headers)
+    assert response.status_code == 409
+    assert client.get(f"/facturas/{fid}", headers=auth_headers).json()["estado"] == "pendiente"
+
+
+def test_fecha_de_pago_anterior_a_la_emision(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    response = client.patch(f"/facturas/{fid}/estado", json={
+        "estado": "pagada", "fecha_pago": "2020-01-01T00:00:00",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_se_puede_cobrar_el_mismo_dia_de_la_emision(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    mismo_dia = FACTURA_BASE["fecha_emision"][:10] + "T00:00:00"
+    response = client.patch(f"/facturas/{fid}/estado", json={
+        "estado": "pagada", "fecha_pago": mismo_dia,
+    }, headers=auth_headers)
+    assert response.status_code == 200
+
+
+def test_fecha_de_pago_en_una_factura_no_pagada(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    response = client.patch(f"/facturas/{fid}/estado", json={
+        "estado": "vencida", "fecha_pago": "2026-03-20T00:00:00",
+    }, headers=auth_headers)
+    assert response.status_code == 422
+
+
+def test_no_se_cambia_la_fecha_de_pago_de_una_factura_pagada(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    client.patch(f"/facturas/{fid}/estado", json={"estado": "pagada", "fecha_pago": "2026-03-20T00:00:00"},
+                 headers=auth_headers)
+    response = client.patch(f"/facturas/{fid}/estado", json={
+        "estado": "pagada", "fecha_pago": "2026-03-25T00:00:00",
+    }, headers=auth_headers)
+    assert response.status_code == 409
+    assert client.get(f"/facturas/{fid}", headers=auth_headers).json()["fecha_pago"].startswith("2026-03-20")
+
+
+def test_extender_el_plazo_de_una_vencida_la_vuelve_pendiente(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_BASE, headers=auth_headers).json()["id"]
+    client.patch(f"/facturas/{fid}/estado", json={"estado": "vencida"}, headers=auth_headers)
+
+    response = client.put(f"/facturas/{fid}", json={**FACTURA_BASE, "fecha_vencimiento": _en_dias(30)},
+                          headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["estado"] == "pendiente"
+
+
+def test_acortar_el_plazo_a_una_fecha_pasada_la_vence(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_A_FUTURO, headers=auth_headers).json()["id"]
+    response = client.put(f"/facturas/{fid}", json={**FACTURA_A_FUTURO, "fecha_vencimiento": _en_dias(-1)},
+                          headers=auth_headers)
+    assert response.json()["estado"] == "vencida"
