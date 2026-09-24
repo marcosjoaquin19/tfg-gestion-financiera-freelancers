@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from app.database import SessionLocal, get_db
 from app.models.usuario import Usuario
 from app.models.gasto import Gasto
@@ -120,7 +120,17 @@ def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
 
 
 class ClasificarRequest(BaseModel):
-    descripcion: str
+    descripcion: str = Field(max_length=255)
+    # Mismo tope que la columna de la descripción: nada más largo puede
+    # llegar a ser un gasto, y así un texto enorme no ocupa al servidor.
+
+    @field_validator("descripcion")
+    @classmethod
+    def descripcion_no_vacia(cls, v):
+        v = v.strip()
+        if not v:
+            raise ValueError("La descripción no puede estar vacía")
+        return v
 
 
 class ClasificarResponse(BaseModel):

@@ -326,7 +326,7 @@ export default function Gastos() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Descripción</label>
                 <input
-                  name="descripcion" required value={form.descripcion} onChange={handleFormChange}
+                  name="descripcion" required maxLength={255} value={form.descripcion} onChange={handleFormChange}
                   placeholder="Ej: Suscripción Adobe"
                   style={inputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}

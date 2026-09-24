@@ -166,3 +166,53 @@ def test_correccion_persiste_y_se_usa_en_reentrenamiento(client, auth_headers, d
     ).all()
     assert len(persistidas) == 1
     assert persistidas[0].categoria == "Marketing"
+
+
+# ── Entradas inválidas y aislamiento (revisión M04) ─────────────────────────
+
+def test_corregir_descripcion_vacia_no_crea_una_regla(client, auth_headers):
+    # Antes se guardaba la regla "texto vacío → Software" y desde ahí toda
+    # descripción en blanco salía clasificada con 100% de confianza.
+    for texto in ("", "   "):
+        response = client.post(
+            "/ml/corregir",
+            json={"descripcion": texto, "categoria_correcta": "Software"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422, texto
+
+
+def test_corregir_descripcion_demasiado_larga(client, auth_headers):
+    response = client.post(
+        "/ml/corregir",
+        json={"descripcion": "x" * 256, "categoria_correcta": "Software"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_clasificar_descripcion_vacia_o_demasiado_larga(client, auth_headers):
+    for texto in ("", "   ", "pizza " * 100):
+        response = client.post("/gastos/clasificar", json={"descripcion": texto}, headers=auth_headers)
+        assert response.status_code == 422, texto[:20]
+
+
+def test_correccion_de_un_usuario_no_afecta_a_otro(client, auth_headers):
+    """La corrección queda asociada a quien la hizo: el otro usuario sigue
+    recibiendo la predicción del modelo, no la regla ajena."""
+    client.post(
+        "/ml/corregir",
+        json={"descripcion": "Licencia anual de Adobe Photoshop", "categoria_correcta": "Marketing"},
+        headers=auth_headers,
+    )
+    propia = client.post("/gastos/clasificar", json={"descripcion": "Licencia anual de Adobe Photoshop"},
+                         headers=auth_headers).json()
+    assert propia["categoria_sugerida"] == "Marketing"
+    assert propia["fuente"] == "correccion_usuario"
+
+    client.post("/auth/register", json={"nombre": "Otra", "email": "otra@test.com", "password": "password123"})
+    token = client.post("/auth/login", data={"username": "otra@test.com", "password": "password123"}).json()["access_token"]
+    ajena = client.post("/gastos/clasificar", json={"descripcion": "Licencia anual de Adobe Photoshop"},
+                        headers={"Authorization": f"Bearer {token}"}).json()
+    assert ajena["fuente"] != "correccion_usuario"
+    assert ajena["categoria_sugerida"] != "Marketing"

@@ -13,7 +13,7 @@ Endpoints:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -28,8 +28,21 @@ CATEGORIAS_VALIDAS = ml_service.CATEGORIAS_VALIDAS
 
 # Cuerpo del request para corregir una clasificación desde el playground.
 class CorregirRequest(BaseModel):
-    descripcion: str
+    descripcion: str = Field(max_length=255)
+    # Mismo tope que la descripción de un gasto: una corrección enseña al
+    # modelo sobre descripciones de gastos, no tiene sentido que sea más larga.
     categoria_correcta: str
+
+    @field_validator("descripcion")
+    @classmethod
+    def descripcion_no_vacia(cls, v):
+        # Una corrección en blanco se guardaba como regla "texto vacío →
+        # categoría X": desde ahí, cualquier descripción en blanco salía
+        # clasificada con 100% de confianza.
+        v = v.strip()
+        if not v:
+            raise ValueError("La descripción no puede estar vacía")
+        return v
 
 
 # GET /ml/estado

@@ -9,13 +9,16 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const CATEGORIAS_VALIDAS = [
   'Software', 'Hardware', 'Infraestructura', 'Marketing', 'Servicios',
   'Capacitación', 'Suscripciones', 'Transporte', 'Alimentación',
   'Impuestos', 'Monotributo', 'Otros',
 ];
+
+// Mismo tope que la descripción de un gasto en la API.
+const MAX_DESCRIPCION = 255;
 
 const inputStyle = {
   background: '#0f1117', border: '1px solid #1e3a5f',
@@ -91,7 +94,7 @@ function CardEstadoML({ estado, cargando, onReentrenar, reentrenando }) {
 
   if (!estado) return null;
 
-  const { tiene_modelo_propio, algoritmo, precision, n_ejemplos, fecha_entrenamiento, usa_modelo_base } = estado;
+  const { tiene_modelo_propio, algoritmo, precision, n_ejemplos, fecha_entrenamiento } = estado;
   const precisionPct = precision != null ? Math.round(precision * 100) : null;
   const fechaStr = fecha_entrenamiento ? new Date(fecha_entrenamiento).toLocaleDateString('es-AR') : null;
   const algoLabel = algoritmo === 'svm' ? 'SVM' : algoritmo === 'naive_bayes' ? 'Naive Bayes' : '—';
@@ -153,6 +156,7 @@ export default function Clasificador() {
   const [corrigiendoCategoria, setCorrigiendoCategoria] = useState(false);
   const [categoriaCorrecta, setCategoriaCorrecta] = useState('');
   const [msgCorreccion, setMsgCorreccion] = useState(null);
+  const [errorClasificar, setErrorClasificar] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -175,6 +179,7 @@ export default function Clasificador() {
     if (!descripcion.trim()) return;
     setClasificando(true);
     setResultado(null);
+    setErrorClasificar('');
     setCorrigiendoCategoria(false);
     setMsgCorreccion(null);
     try {
@@ -185,8 +190,10 @@ export default function Clasificador() {
       setHistorial((prev) =>
         [{ descripcion: descripcion.trim(), categoria: categoria_sugerida, fuente }, ...prev].slice(0, 10)
       );
-    } catch (_) {
-      setResultado({ categoria: 'Otros', fuente: null, confianza: null });
+    } catch (err) {
+      // Antes se mostraba "Otros" como si fuera la respuesta del modelo. Un
+      // error tiene que verse como error, no como una predicción inventada.
+      setErrorClasificar(extraerMensajeError(err, 'No se pudo clasificar la descripción'));
     } finally {
       setClasificando(false);
     }
@@ -214,11 +221,11 @@ export default function Clasificador() {
         descripcion: descripcion.trim(),
         categoria_correcta: categoriaCorrecta,
       });
-      setMsgCorreccion('¡Modelo actualizado con tu corrección!');
+      setMsgCorreccion({ texto: '¡Modelo actualizado con tu corrección!', error: false });
       setCorrigiendoCategoria(false);
       await cargarEstado();
-    } catch (_) {
-      setMsgCorreccion('Error al guardar la corrección.');
+    } catch (err) {
+      setMsgCorreccion({ texto: extraerMensajeError(err, 'Error al guardar la corrección.'), error: true });
     }
   }
 
@@ -267,6 +274,7 @@ export default function Clasificador() {
         <div style={{ marginBottom: '14px' }}>
           <textarea
             rows={3}
+            maxLength={MAX_DESCRIPCION}
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -275,7 +283,9 @@ export default function Clasificador() {
             onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
             onBlur={(e) => (e.target.style.borderColor = '#1e3a5f')}
           />
-          <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569' }}>Ctrl + Enter para clasificar</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569' }}>
+            Ctrl + Enter para clasificar · {descripcion.length}/{MAX_DESCRIPCION}
+          </p>
         </div>
 
         {/* Botón */}
@@ -291,6 +301,10 @@ export default function Clasificador() {
         >
           {clasificando ? 'Clasificando...' : 'Clasificar con IA'}
         </button>
+
+        {errorClasificar && (
+          <p style={{ color: '#f87171', fontSize: '13px', margin: '12px 0 0 0' }}>{errorClasificar}</p>
+        )}
 
         {/* Resultado */}
         {resultado && (
@@ -361,8 +375,8 @@ export default function Clasificador() {
             )}
 
             {msgCorreccion && (
-              <p style={{ margin: '10px 0 0 0', fontSize: '12px', color: '#4ade80', textAlign: 'center' }}>
-                {msgCorreccion}
+              <p style={{ margin: '10px 0 0 0', fontSize: '12px', color: msgCorreccion.error ? '#f87171' : '#4ade80', textAlign: 'center' }}>
+                {msgCorreccion.texto}
               </p>
             )}
           </div>
