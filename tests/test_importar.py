@@ -1011,7 +1011,9 @@ def test_importar_ingresos_no_marca_gastos(client, auth_headers):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Resumen de tarjeta de crédito: las compras vienen en positivo.
+# Resumen de tarjeta de crédito: fuera del alcance de la importación (HU-07
+# habla de extractos de cuenta bancaria o billetera). La tarjeta entra por el
+# débito de su pago en el extracto del banco. El sistema solo avisa.
 # ─────────────────────────────────────────────────────────────────────────────
 
 TARJETA = (b"Fecha;Descripcion;Importe\n"
@@ -1020,136 +1022,52 @@ TARJETA = (b"Fecha;Descripcion;Importe\n"
            b"15/09/2026;NETFLIX.COM;8.999,00\n")
 
 
-def _preview_tarjeta(client, auth_headers, contenido, nombre="resumen.csv"):
-    return client.post(
-        "/importar/preview?compras_tarjeta=true",
-        files={"archivo": (nombre, io.BytesIO(contenido), "text/csv")},
-        headers=auth_headers,
-    )
+def _aviso_de_tarjeta(data):
+    return [a for a in data["avisos"] if "resumen de una tarjeta de crédito" in a]
 
 
-def test_resumen_de_tarjeta_en_modo_normal_avisa_y_menciona_el_boton(client, auth_headers):
+def test_resumen_de_tarjeta_avisa_que_se_importa_el_extracto_del_banco(client, auth_headers):
     data = _preview(client, auth_headers, TARJETA).json()
-    assert data["compras_tarjeta"] is False
-    assert all(m["tipo"] == "ingreso" for m in data["preview"])
-    assert any("Es un resumen de tarjeta" in a for a in data["avisos"])
-
-
-def test_resumen_de_tarjeta_convierte_las_compras_en_gastos_con_categoria(client, auth_headers):
-    from app.services.categorias_gasto import CATEGORIAS_GASTO
-    r = _preview_tarjeta(client, auth_headers, TARJETA)
-    assert r.status_code == 200
-    data = r.json()
-    assert data["compras_tarjeta"] is True
-    assert [m["tipo"] for m in data["preview"]] == ["gasto"] * 3
-    assert [m["monto"] for m in data["preview"]] == [185000.0, 6500.0, 8999.0]
-    assert all(m["categoria"] in CATEGORIAS_GASTO for m in data["preview"])
-    # El aviso de "todos son ingresos" ya no corresponde; queda el del modo tarjeta.
-    assert not any("se interpretaron como ingresos" in a for a in data["avisos"])
-    assert any("resumen de tarjeta" in a for a in data["avisos"])
-
-
-def test_resumen_de_tarjeta_omite_el_pago_y_las_devoluciones_informandolos(client, auth_headers):
-    contenido = TARJETA + b"10/09/2026;SU PAGO EN PESOS;-150.000,00\n12/09/2026;DEVOLUCION UBER;-6.500,00\n"
-    data = _preview_tarjeta(client, auth_headers, contenido).json()
-    assert [m["descripcion"] for m in data["preview"]] == [
-        "MERCADOLIBRE MONITOR LG", "UBER TRIP", "NETFLIX.COM"]
-    omitidas = {f["descripcion"]: f["motivo"] for f in data["filas_omitidas"]}
-    assert set(omitidas) == {"SU PAGO EN PESOS", "DEVOLUCION UBER"}
-    assert all("resumen de tarjeta" in m for m in omitidas.values())
-    assert data["resumen"]["omitidas"] == 2
-
-
-def test_extracto_bancario_leido_como_tarjeta_explica_por_que_no_quedo_nada(client, auth_headers):
-    extracto = b"Fecha;Descripcion;Importe\n02/09/2026;DEBITO HOSTING;-23.456,78\n03/09/2026;UBER;-6.500\n"
-    r = _preview_tarjeta(client, auth_headers, extracto)
-    assert r.status_code == 400
-    assert "modo normal" in r.json()["detail"]
-
-
-def test_modo_tarjeta_con_valor_invalido_da_422(client, auth_headers):
-    r = client.post(
-        "/importar/preview?compras_tarjeta=banana",
-        files={"archivo": ("r.csv", io.BytesIO(TARJETA), "text/csv")},
-        headers=auth_headers,
-    )
-    assert r.status_code == 422
-
-
-def test_modo_tarjeta_con_columnas_debito_y_credito(client, auth_headers):
-    contenido = (b"Fecha;Concepto;Debito;Credito\n"
-                 b"02/09/2026;SU PAGO;150.000,00;\n"
-                 b"05/09/2026;SPOTIFY;;4.500,00\n")
-    data = _preview_tarjeta(client, auth_headers, contenido).json()
-    assert [(m["descripcion"], m["tipo"]) for m in data["preview"]] == [("SPOTIFY", "gasto")]
-    assert [f["descripcion"] for f in data["filas_omitidas"]] == ["SU PAGO"]
-
-
-def test_modo_tarjeta_confirmado_no_suma_facturacion(client, auth_headers):
-    data = _preview_tarjeta(client, auth_headers, TARJETA).json()
-    movimientos = [{k: m[k] for k in ("fecha", "descripcion", "monto", "tipo", "categoria")}
-                   for m in data["preview"]]
-    resultado = _importar(client, auth_headers, movimientos)
-    assert resultado["gastos_creados"] == 3
-    assert resultado["ingresos_creados"] == 0
-    assert client.get("/ingresos/", headers=auth_headers).json() == []
-
-
-def test_resumen_de_tarjeta_importado_dos_veces_se_omite(client, auth_headers):
-    data = _preview_tarjeta(client, auth_headers, TARJETA).json()
-    movimientos = [{k: m[k] for k in ("fecha", "descripcion", "monto", "tipo", "categoria")}
-                   for m in data["preview"]]
-    _importar(client, auth_headers, movimientos)
-    otra_vez = _preview_tarjeta(client, auth_headers, TARJETA).json()
-    assert otra_vez["resumen"]["posibles_duplicados"] == 3
-    assert _importar(client, auth_headers, movimientos)["gastos_creados"] == 0
-
-
-def test_modo_tarjeta_con_excel(client, auth_headers):
-    import openpyxl
-    wb = openpyxl.Workbook()
-    wb.active.append(["Fecha", "Descripcion", "Importe"])
-    wb.active.append(["02/09/2026", "UBER TRIP", 6500])
-    wb.active.append(["10/09/2026", "SU PAGO", -6500])
-    contenido = io.BytesIO()
-    wb.save(contenido)
-    r = client.post(
-        "/importar/preview?compras_tarjeta=true",
-        files={"archivo": ("resumen.xlsx", io.BytesIO(contenido.getvalue()),
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        headers=auth_headers,
-    )
-    data = r.json()
-    assert [(m["descripcion"], m["tipo"]) for m in data["preview"]] == [("UBER TRIP", "gasto")]
-    assert len(data["filas_omitidas"]) == 1
-
-
-def test_modo_tarjeta_no_se_saltea_las_validaciones_del_archivo(client, auth_headers):
-    r = client.post(
-        "/importar/preview?compras_tarjeta=true",
-        files={"archivo": ("r.txt", io.BytesIO(TARJETA), "text/plain")},
-        headers=auth_headers,
-    )
-    assert r.status_code == 400
-    r = _preview_tarjeta(client, auth_headers, b"")
-    assert r.status_code == 400
+    aviso = _aviso_de_tarjeta(data)
+    assert len(aviso) == 1
+    assert "extracto del banco" in aviso[0]
+    assert "se van a sumar como ingresos" in aviso[0]
 
 
 def test_resumen_de_tarjeta_con_la_linea_su_pago_tambien_avisa(client, auth_headers):
     # Un resumen real trae el pago en negativo: ya no es "todo ingreso", pero
     # igual es una tarjeta y el usuario tiene que enterarse antes de confirmar.
     contenido = TARJETA + b"20/09/2026;SU PAGO EN PESOS;-150.000,00\n"
+    assert _aviso_de_tarjeta(_preview(client, auth_headers, contenido).json())
+
+
+def test_resumen_de_tarjeta_no_cambia_la_lectura_del_archivo(client, auth_headers):
+    # Solo se avisa: los signos se leen igual que en cualquier extracto.
+    contenido = TARJETA + b"20/09/2026;SU PAGO EN PESOS;-150.000,00\n"
     data = _preview(client, auth_headers, contenido).json()
-    assert any("Es un resumen de tarjeta" in a for a in data["avisos"])
+    assert [m["tipo"] for m in data["preview"]] == ["ingreso", "ingreso", "ingreso", "gasto"]
+
+
+def test_no_existe_un_modo_resumen_de_tarjeta(client, auth_headers):
+    # Un parámetro inventado no activa ninguna lectura alternativa.
+    r = client.post(
+        "/importar/preview?compras_tarjeta=true",
+        files={"archivo": ("r.csv", io.BytesIO(TARJETA), "text/csv")},
+        headers=auth_headers,
+    )
+    assert all(m["tipo"] == "ingreso" for m in r.json()["preview"])
 
 
 def test_extracto_bancario_que_paga_la_tarjeta_no_avisa(client, auth_headers):
+    # Así entra la tarjeta al sistema: un débito por el pago del resumen.
     contenido = (b"Fecha;Descripcion;Importe\n"
                  b"01/09/2026;TRANSFERENCIA CLIENTE ACME;500.000,00\n"
                  b"10/09/2026;PAGO TARJETA VISA;-150.000,00\n"
                  b"12/09/2026;DEBITO HOSTING;-23.456,78\n")
     data = _preview(client, auth_headers, contenido).json()
-    assert not any("tarjeta" in a for a in data["avisos"])
+    assert data["avisos"] == []
+    pago = [m for m in data["preview"] if m["descripcion"] == "PAGO TARJETA VISA"][0]
+    assert pago["tipo"] == "gasto" and pago["monto"] == 150000.0
 
 
 def test_extracto_con_solo_dos_cobros_no_avisa(client, auth_headers):

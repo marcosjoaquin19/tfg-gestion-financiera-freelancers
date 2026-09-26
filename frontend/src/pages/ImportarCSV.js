@@ -41,9 +41,6 @@ export default function ImportarCSV() {
   // Advertencias que no son errores (Excel con varias hojas, posible resumen de tarjeta).
   const [avisos, setAvisos] = useState([]);
   const [mapeo, setMapeo] = useState(null);
-  // true cuando el archivo se analizó como resumen de tarjeta de crédito:
-  // las compras (en positivo) se toman como gastos.
-  const [comprasTarjeta, setComprasTarjeta] = useState(false);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef();
   const navigate = useNavigate();
@@ -67,7 +64,7 @@ export default function ImportarCSV() {
     handleFile(e.dataTransfer.files[0]);
   }
 
-  async function handleAnalizar(modoTarjeta = false) {
+  async function handleAnalizar() {
     if (!archivo) return;
     setAnalizando(true);
     setErrorMsg('');
@@ -76,7 +73,6 @@ export default function ImportarCSV() {
       form.append('archivo', archivo);
       const res = await api.post('/importar/preview', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        params: modoTarjeta ? { compras_tarjeta: true } : undefined,
       });
       setPreview(res.data.preview);
       setTotalFilas(res.data.total_filas);
@@ -84,7 +80,6 @@ export default function ImportarCSV() {
       setFilasOmitidas(res.data.filas_omitidas || []);
       setAvisos(res.data.avisos || []);
       setMapeo(res.data.mapeo_detectado);
-      setComprasTarjeta(Boolean(res.data.compras_tarjeta));
       setPaso(PASO.PREVIEW);
     } catch (err) {
       setErrorMsg(extraerMensajeError(err, 'Error al analizar el archivo'));
@@ -121,7 +116,6 @@ export default function ImportarCSV() {
     setFilasOmitidas([]);
     setAvisos([]);
     setMapeo(null);
-    setComprasTarjeta(false);
     setResultado(null);
     setErrorMsg('');
   }
@@ -222,7 +216,7 @@ export default function ImportarCSV() {
             )}
 
             <button
-              onClick={() => handleAnalizar(false)}
+              onClick={handleAnalizar}
               disabled={!archivo || analizando}
               style={{
                 width: '100%', background: '#3b82f6', color: '#fff',
@@ -258,27 +252,6 @@ export default function ImportarCSV() {
                 (mostrando los primeros 20)
               </span>
             )}
-            {/* El resumen de una tarjeta lista las compras en positivo: sin este
-                botón entraban como ingresos e inflaban la facturación del
-                Monotributo. Vuelve a analizar el mismo archivo en el otro modo. */}
-            <button
-              onClick={() => handleAnalizar(!comprasTarjeta)}
-              disabled={analizando}
-              style={{
-                marginLeft: 'auto',
-                background: 'transparent', color: '#fbbf24',
-                border: '1px solid #78562a', borderRadius: '8px',
-                padding: '6px 14px', fontSize: '13px',
-                cursor: analizando ? 'not-allowed' : 'pointer',
-                opacity: analizando ? 0.7 : 1,
-              }}
-            >
-              {analizando
-                ? 'Analizando archivo...'
-                : comprasTarjeta
-                  ? 'No es un resumen de tarjeta: leerlo como extracto'
-                  : 'Es un resumen de tarjeta: importar las compras como gastos'}
-            </button>
           </div>
 
           {/* Aviso de movimientos que el backend va a omitir al confirmar */}

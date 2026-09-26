@@ -13,7 +13,7 @@ que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
 """
 
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -130,11 +130,6 @@ def _parece_resumen_de_tarjeta(movimientos: list[dict]) -> bool:
 @router.post("/preview")
 async def preview_csv(
     archivo: UploadFile = File(...),
-    compras_tarjeta: bool = Query(default=False),
-    # ?compras_tarjeta=true → el archivo es el resumen de una tarjeta de
-    # crédito: lo positivo son compras (gastos) y lo negativo se omite. Ver
-    # procesar_csv. La pantalla lo ofrece con el botón "Es un resumen de
-    # tarjeta", que vuelve a analizar el mismo archivo en este modo.
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -187,16 +182,12 @@ async def preview_csv(
     # Filas que no se pudieron leer (sin fecha, importe ilegible, etc.): se
     # informan en la respuesta para que el usuario sepa qué quedó afuera.
     filas_omitidas: list[dict] = []
-    todos = procesar_csv(df, mapeo, omitidas=filas_omitidas, compras_tarjeta=compras_tarjeta)
+    todos = procesar_csv(df, mapeo, omitidas=filas_omitidas)
     if not todos:
-        detalle = "No se encontraron movimientos válidos en el archivo."
-        if compras_tarjeta and filas_omitidas:
-            detalle = (
-                "Leído como resumen de tarjeta no quedó ninguna compra: todas las "
-                "líneas tienen monto negativo (pagos o devoluciones). Probablemente "
-                "sea un extracto bancario: analizalo en el modo normal."
-            )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detalle)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se encontraron movimientos válidos en el archivo.",
+        )
 
     # La detección de duplicados y la clasificación se aplican sobre el lote
     # COMPLETO, no solo sobre las 20 filas que el frontend muestra: el paso
@@ -225,26 +216,22 @@ async def preview_csv(
                 f"El Excel tiene {hojas} hojas y solo se leyó la primera. "
                 "Si hay movimientos en las otras, guardalas como archivos separados."
             )
-    if compras_tarjeta:
+    if _parece_resumen_de_tarjeta(todos):
+        # El sistema importa extractos de cuenta bancaria o de billetera
+        # (HU-07). La tarjeta de crédito entra por ahí: su pago mensual es un
+        # débito del extracto del banco ("PAGO TARJETA ..."). El resumen de la
+        # tarjeta, en cambio, lista las compras en positivo: importado, se
+        # sumaría como facturación (inflando el Monotributo) y además repetiría
+        # compras que ya están contenidas en ese pago.
         avisos.append(
-            "Leído como resumen de tarjeta: cada compra se importa como gasto y "
-            "se le asignó una categoría. Los montos negativos (el pago del resumen "
-            "o devoluciones) quedan afuera, porque ese pago ya figura en el "
-            "extracto del banco."
-        )
-    elif _parece_resumen_de_tarjeta(todos):
-        # Caso típico: el resumen de la tarjeta de crédito lista las compras
-        # en positivo. Importadas así, se sumarían como facturación e
-        # inflarían el cálculo del Monotributo.
-        avisos.append(
-            "Los movimientos se interpretaron como ingresos. Si es el resumen "
-            "de una tarjeta de crédito, las compras figuran en positivo pero son "
-            "gastos: usá el botón \"Es un resumen de tarjeta\" antes de confirmar."
+            "Esto parece el resumen de una tarjeta de crédito. El sistema importa "
+            "extractos de cuenta bancaria o de billetera virtual: el pago de la "
+            "tarjeta ya entra como un gasto cuando importás el extracto del banco. "
+            "Si lo confirmás, las compras se van a sumar como ingresos."
         )
 
     return {
         "total_filas": len(todos),
-        "compras_tarjeta": compras_tarjeta,
         "preview": preview,
         "mapeo_detectado": mapeo,
         "filas_omitidas": filas_omitidas,
