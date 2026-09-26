@@ -256,7 +256,7 @@ export default function Facturas() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Monto</label>
                 <input
-                  name="monto" type="number" step="0.01" min="0" required value={editForm.monto} onChange={handleEditChange}
+                  name="monto" type="number" step="0.01" min="0.01" required value={editForm.monto} onChange={handleEditChange}
                   style={modalInputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
                   onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
@@ -358,7 +358,7 @@ export default function Facturas() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Monto</label>
                 <input
-                  name="monto" type="number" step="0.01" min="0" required value={form.monto} onChange={handleFormChange}
+                  name="monto" type="number" step="0.01" min="0.01" required value={form.monto} onChange={handleFormChange}
                   placeholder="0.00"
                   style={inputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}

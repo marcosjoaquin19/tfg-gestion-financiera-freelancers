@@ -72,6 +72,19 @@ def _valores_serializables(valor):
     return valor
 
 
+def _sin_prefijo_value_error(errores: list) -> list:
+    """Quita el "Value error, " que la librería antepone a los mensajes propios.
+
+    Los validadores del sistema lanzan sus mensajes en castellano ("El monto
+    debe ser mayor a cero"), pero la librería de validación les agrega ese
+    prefijo en inglés, y la pantalla lo mostraba tal cual al usuario.
+    """
+    for error in errores:
+        if error.get("type") == "value_error" and isinstance(error.get("msg"), str):
+            error["msg"] = error["msg"].removeprefix("Value error, ")
+    return errores
+
+
 @app.exception_handler(RequestValidationError)
 async def error_de_validacion(request: Request, exc: RequestValidationError):
     """Misma respuesta 422 que arma FastAPI por defecto, con una salvedad.
@@ -83,7 +96,9 @@ async def error_de_validacion(request: Request, exc: RequestValidationError):
     """
     return JSONResponse(
         status_code=422,
-        content={"detail": _valores_serializables(jsonable_encoder(exc.errors()))},
+        content={"detail": _sin_prefijo_value_error(
+            _valores_serializables(jsonable_encoder(exc.errors()))
+        )},
     )
 
 

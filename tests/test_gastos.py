@@ -33,6 +33,16 @@ def test_crear_gasto_monto_negativo(client, auth_headers):
     assert response.status_code == 422
 
 
+def test_error_de_validacion_llega_en_castellano_sin_prefijo(client, auth_headers):
+    # La pantalla muestra el "msg" tal cual: no debe aparecer "Value error, ".
+    response = client.post("/gastos/", json={**GASTO_BASE, "monto": 0}, headers=auth_headers)
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["msg"] == "El monto debe ser mayor a cero"
+
+    response = client.post("/gastos/", json={**GASTO_BASE, "categoria": "Pizza"}, headers=auth_headers)
+    assert response.json()["detail"][0]["msg"].startswith("Categoría inválida.")
+
+
 def test_listar_gastos(client, auth_headers):
     client.post("/gastos/", json=GASTO_BASE, headers=auth_headers)
     client.post("/gastos/", json={**GASTO_BASE, "descripcion": "Hosting"}, headers=auth_headers)
