@@ -43,9 +43,16 @@ SINONIMOS_FECHA = [
     "fmov", "fechadeoperacion", "fechaoperac", "fechacontabilizacion",
 ]
 SINONIMOS_DESCRIPCION = [
-    "concepto", "descripcion", "detalle", "movimiento", "referencia",
-    "comprobante", "operacion", "descripciondelmovimiento", "descripcionoperacion",
-    "tipodemovimiento",
+    "concepto", "descripcion", "detalle", "descripciondelmovimiento",
+    "descripcionoperacion", "movimiento",
+]
+# Nombres que A VECES traen la descripción, pero que en muchos extractos son
+# un número de comprobante o un código. Solo se usan si no hay ninguna
+# columna de descripción propiamente dicha: con "Comprobante" y "Descripción
+# de la operación" en el mismo archivo, antes ganaba el comprobante y cada
+# gasto se llamaba "000123".
+SINONIMOS_DESCRIPCION_DEBILES = [
+    "referencia", "comprobante", "operacion", "tipodemovimiento",
 ]
 SINONIMOS_DEBITO = [
     "debito", "debitos", "egreso", "egresos", "salida", "importedebito",
@@ -70,16 +77,23 @@ def _normalizar(texto: str) -> str:
     return re.sub(r"[^a-z0-9]", "", sin_tildes.lower())
 
 
-def _buscar_columna(columnas_norm: dict[str, str], sinonimos: list[str]) -> str | None:
+def _buscar_columna(
+    columnas_norm: dict[str, str], sinonimos: list[str], usadas: set | None = None,
+) -> str | None:
     """Devuelve el nombre original de la columna que matchee algún sinónimo.
 
     columnas_norm: dict {nombre_normalizado: nombre_original}
+    usadas: columnas ya asignadas a otro campo, que no se vuelven a considerar.
+    Sin esto, "Fecha Movimiento" contiene "movimiento" y la misma columna
+    terminaba siendo a la vez la fecha y la descripción.
     Estrategia: primero match exacto, luego match por contains (más permisivo).
     """
+    usadas = usadas or set()
+    candidatas = {n: o for n, o in columnas_norm.items() if o not in usadas}
     for sin in sinonimos:
-        if sin in columnas_norm:
-            return columnas_norm[sin]
-    for nombre_norm, nombre_orig in columnas_norm.items():
+        if sin in candidatas:
+            return candidatas[sin]
+    for nombre_norm, nombre_orig in candidatas.items():
         for sin in sinonimos:
             if sin in nombre_norm:
                 return nombre_orig
@@ -107,7 +121,8 @@ def _fila_es_encabezado(tokens: list) -> bool:
     tiene_fecha = any(
         any(sin in norm for sin in SINONIMOS_FECHA) for norm in normalizados
     )
-    otros = SINONIMOS_DESCRIPCION + SINONIMOS_MONTO + SINONIMOS_DEBITO + SINONIMOS_CREDITO
+    otros = (SINONIMOS_DESCRIPCION + SINONIMOS_DESCRIPCION_DEBILES
+             + SINONIMOS_MONTO + SINONIMOS_DEBITO + SINONIMOS_CREDITO)
     tiene_otro = any(
         any(sin in norm for sin in otros) for norm in normalizados
     )
@@ -133,7 +148,10 @@ def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | Non
             # Algunos bancos exportan en latin-1; intentamos utf-8 primero
             # y caemos a latin-1 si falla la decodificación.
             try:
-                texto = contenido_bytes.decode("utf-8")
+                # utf-8-sig descarta la marca invisible (BOM) que agrega Excel
+                # al guardar como "CSV UTF-8"; sin ella, el encabezado quedaba
+                # como "\ufeffFecha".
+                texto = contenido_bytes.decode("utf-8-sig")
             except UnicodeDecodeError:
                 texto = contenido_bytes.decode("latin-1")
 
@@ -183,23 +201,43 @@ def leer_dataframe(contenido_bytes: bytes, extension: str) -> pd.DataFrame | Non
     return None
 
 
+def contar_hojas_excel(contenido_bytes: bytes) -> int:
+    """Cantidad de hojas de un .xlsx (0 si no se puede leer)."""
+    try:
+        return len(pd.ExcelFile(io.BytesIO(contenido_bytes), engine="openpyxl").sheet_names)
+    except Exception:
+        return 0
+
+
 def _detectar_formato_fecha(serie: pd.Series) -> str:
-    """Intenta inferir el formato de fecha probando los más comunes en Argentina."""
+    """Infiere el formato de fecha del archivo, priorizando los argentinos.
+
+    Se elige el primer formato que sirve para TODAS las fechas del archivo (se
+    miran hasta 500). Con solo las primeras 5, un extracto con fechas mes/día
+    ("09/20/2026") se leía mezclado: las filas ambiguas como día/mes y el
+    resto como mes/día, dentro del mismo archivo. Mes/día va después de
+    día/mes: "03/04/2026" se sigue leyendo como 3 de abril.
+    """
     formatos = [
         "%d/%m/%Y", "%d-%m-%Y", "%Y-%m-%d", "%Y/%m/%d",
-        "%d/%m/%y", "%d-%m-%y",
+        "%d/%m/%y", "%d-%m-%y", "%m/%d/%Y", "%m-%d-%Y",
     ]
-    muestras = [m for m in serie.dropna().astype(str).str.strip().tolist() if m][:5]
+    muestras = [m for m in serie.dropna().astype(str).str.strip().tolist() if m][:500]
     if not muestras:
         return "%d/%m/%Y"
 
+    # Si traen hora ("20/09/2026 14:35"), el formato se decide con la fecha.
+    solo_fecha = [m.split(" ")[0].split("T")[0] for m in muestras]
+    mejor, mejor_validas = "%d/%m/%Y", -1
     for fmt in formatos:
-        try:
-            pd.to_datetime(muestras, format=fmt)
+        validas = pd.to_datetime(pd.Series(solo_fecha), format=fmt, errors="coerce").notna().sum()
+        if validas == len(solo_fecha):
             return fmt
-        except (ValueError, TypeError):
-            continue
-    return "%d/%m/%Y"
+        # Si ninguno sirve para todas (por ejemplo, hay una fila "Total"), se
+        # queda con el que más fechas interpreta.
+        if validas > mejor_validas:
+            mejor, mejor_validas = fmt, validas
+    return mejor
 
 
 def detectar_columnas_csv(df: pd.DataFrame, db: Session = None) -> dict | None:
@@ -215,11 +253,21 @@ def detectar_columnas_csv(df: pd.DataFrame, db: Session = None) -> dict | None:
 
     columnas_norm = {_normalizar(c): c for c in df.columns}
 
-    col_fecha = _buscar_columna(columnas_norm, SINONIMOS_FECHA)
-    col_desc = _buscar_columna(columnas_norm, SINONIMOS_DESCRIPCION)
-    col_debito = _buscar_columna(columnas_norm, SINONIMOS_DEBITO)
-    col_credito = _buscar_columna(columnas_norm, SINONIMOS_CREDITO)
-    col_monto = _buscar_columna(columnas_norm, SINONIMOS_MONTO)
+    # Cada columna se asigna a un solo campo. El orden importa: primero lo
+    # más reconocible (fecha), después la descripción y al final los montos.
+    usadas: set = set()
+
+    def asignar(sinonimos):
+        col = _buscar_columna(columnas_norm, sinonimos, usadas)
+        if col is not None:
+            usadas.add(col)
+        return col
+
+    col_fecha = asignar(SINONIMOS_FECHA)
+    col_desc = asignar(SINONIMOS_DESCRIPCION) or asignar(SINONIMOS_DESCRIPCION_DEBILES)
+    col_debito = asignar(SINONIMOS_DEBITO)
+    col_credito = asignar(SINONIMOS_CREDITO)
+    col_monto = asignar(SINONIMOS_MONTO)
 
     if col_fecha is None or col_desc is None:
         return None
@@ -246,6 +294,8 @@ def detectar_columnas_csv(df: pd.DataFrame, db: Session = None) -> dict | None:
 
 # Largo máximo de la descripción en la base (columna String(255)).
 MAX_DESCRIPCION = 255
+# Tope de importe: la columna es Numeric(12, 2), igual que en la carga manual.
+MONTO_MAXIMO = 10 ** 10
 
 
 def _celda_vacia(valor) -> bool:
@@ -281,6 +331,7 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
 
     for numero, (_, row) in enumerate(df.iterrows(), start=1):
         # numero: posición del movimiento en la tabla (1 = primera fila de datos).
+        descripcion = ""
         try:
             desc_raw = row.get(col_desc) if col_desc else None
             descripcion = "Sin descripción" if _celda_vacia(desc_raw) else str(desc_raw).strip()
@@ -293,8 +344,13 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
                 omitir(numero, descripcion, "sin fecha")
                 continue
             try:
-                fecha = pd.to_datetime(str(fecha_raw), format=fmt_fecha)
+                texto_fecha = str(fecha_raw).strip().split(" ")[0].split("T")[0]
+                fecha = pd.to_datetime(texto_fecha, format=fmt_fecha)
             except (ValueError, TypeError):
+                fecha = None
+            if fecha is None or pd.isna(fecha):
+                # Según el texto, pandas a veces devuelve "fecha vacía" (NaT)
+                # en lugar de dar error: los dos casos van por acá.
                 # dayfirst: si una fila no sigue el formato detectado, se
                 # prioriza igual el orden día/mes que usan los bancos locales.
                 fecha = pd.to_datetime(str(fecha_raw), errors="coerce", dayfirst=True)
@@ -315,6 +371,10 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
                 # Algunos bancos anotan el débito con signo menos: se toma el valor absoluto.
                 credito = abs(credito) if credito else None
                 debito = abs(debito) if debito else None
+                if credito and debito:
+                    # Antes se tomaba el crédito y el débito se perdía sin aviso.
+                    omitir(numero, descripcion, "tiene débito y crédito en la misma fila")
+                    continue
                 if credito:
                     monto, tipo = credito, "ingreso"
                 elif debito:
@@ -338,6 +398,12 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
             else:
                 continue
 
+            if monto >= MONTO_MAXIMO:
+                # Mismo tope que la carga manual. Si pasaba al preview, después
+                # hacía fallar la importación completa al confirmar.
+                omitir(numero, descripcion, "importe fuera de rango (máximo $10.000 millones)")
+                continue
+
             movimientos.append({
                 "fecha": fecha.strftime("%Y-%m-%dT00:00:00"),
                 "descripcion": descripcion,
@@ -347,7 +413,7 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
 
         except Exception as e:
             logger.warning(f"Fila ignorada por error: {e}")
-            omitir(numero, "", "no se pudo leer la fila")
+            omitir(numero, descripcion, "no se pudo leer la fila")
             continue
 
     return movimientos

@@ -26,6 +26,7 @@ from app.services.categorias_ingreso import CATEGORIAS_INGRESO
 from app.services.ml_service import CATEGORIAS_VALIDAS as CATEGORIAS_GASTO
 from app.services.csv_service import (
     clasificar_movimientos,
+    contar_hojas_excel,
     detectar_columnas_csv,
     detectar_posibles_duplicados,
     detectar_transferencias_propias_en_lote,
@@ -143,6 +144,14 @@ async def preview_csv(
             detail="No se pudo leer el archivo. Verificá que sea un CSV o Excel válido.",
         )
 
+    if df.empty:
+        # Antes caía en "no se pudo detectar la estructura", que hace pensar
+        # que el formato está mal cuando en realidad no hay movimientos.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo no tiene movimientos: solo se encontró el encabezado.",
+        )
+
     mapeo = detectar_columnas_csv(df, db)
     if not mapeo:
         raise HTTPException(
@@ -177,11 +186,32 @@ async def preview_csv(
 
     preview = clasificar_movimientos(todos_marcados, db, current_user.id)
 
+    # Situaciones que no son errores, pero que el usuario tiene que ver antes
+    # de confirmar.
+    avisos = []
+    if extension == ".xlsx":
+        hojas = contar_hojas_excel(contenido_bytes)
+        if hojas > 1:
+            avisos.append(
+                f"El Excel tiene {hojas} hojas y solo se leyó la primera. "
+                "Si hay movimientos en las otras, guardalas como archivos separados."
+            )
+    if len(todos) >= 3 and all(m["tipo"] == "ingreso" for m in todos):
+        # Caso típico: el resumen de la tarjeta de crédito lista las compras
+        # en positivo. Importadas así, se sumarían como facturación e
+        # inflarían el cálculo del Monotributo.
+        avisos.append(
+            "Todos los movimientos se interpretaron como ingresos. Si es el resumen "
+            "de una tarjeta de crédito, las compras figuran en positivo pero son "
+            "gastos: revisalo antes de confirmar."
+        )
+
     return {
         "total_filas": len(todos),
         "preview": preview,
         "mapeo_detectado": mapeo,
         "filas_omitidas": filas_omitidas,
+        "avisos": avisos,
         "resumen": {
             "total": len(todos),
             "omitidas": len(filas_omitidas),

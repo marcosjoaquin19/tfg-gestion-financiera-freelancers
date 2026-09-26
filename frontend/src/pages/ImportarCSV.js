@@ -38,6 +38,8 @@ export default function ImportarCSV() {
   const [resumen, setResumen] = useState(null);
   // Filas del archivo que no se pudieron leer (sin fecha, importe ilegible…).
   const [filasOmitidas, setFilasOmitidas] = useState([]);
+  // Advertencias que no son errores (Excel con varias hojas, posible resumen de tarjeta).
+  const [avisos, setAvisos] = useState([]);
   const [mapeo, setMapeo] = useState(null);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef();
@@ -76,6 +78,7 @@ export default function ImportarCSV() {
       setTotalFilas(res.data.total_filas);
       setResumen(res.data.resumen);
       setFilasOmitidas(res.data.filas_omitidas || []);
+      setAvisos(res.data.avisos || []);
       setMapeo(res.data.mapeo_detectado);
       setPaso(PASO.PREVIEW);
     } catch (err) {
@@ -111,6 +114,7 @@ export default function ImportarCSV() {
     setPreview([]);
     setResumen(null);
     setFilasOmitidas([]);
+    setAvisos([]);
     setMapeo(null);
     setResultado(null);
     setErrorMsg('');
@@ -262,6 +266,15 @@ export default function ImportarCSV() {
               {resumen.transferencias_propias > 0 && (
                 <div>⇄ {resumen.transferencias_propias} {resumen.transferencias_propias === 1 ? 'movimiento parece' : 'movimientos parecen'} parte de una transferencia entre tus propias cuentas (no es facturación real) y se omitirá{resumen.transferencias_propias === 1 ? '' : 'n'} al confirmar.</div>
               )}
+            </div>
+          )}
+
+          {avisos.length > 0 && (
+            <div style={{
+              background: '#1c1a10', border: '1px solid #78562a', borderRadius: '8px',
+              padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#fbbf24',
+            }}>
+              {avisos.map((a) => <div key={a}>⚠ {a}</div>)}
             </div>
           )}
 

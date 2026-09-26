@@ -758,3 +758,102 @@ def test_confirmar_rechaza_monto_nan(client, auth_headers):
                            headers={**auth_headers, "Content-Type": "application/json"})
     assert response.status_code == 422
     assert client.get("/gastos/", headers=auth_headers).json() == []
+
+
+# ── Batería de archivos con fallos típicos (revisión M06, segunda ronda) ─────
+
+def test_preview_fila_total_al_final_se_informa_como_fecha_ilegible(client, auth_headers):
+    csv_bytes = b"Fecha;Concepto;Importe\n20/09/2026;Cafe;-850\nTotal;;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["total_filas"] == 1
+    assert data["filas_omitidas"][0]["motivo"] == "fecha ilegible: 'Total'"
+
+
+def test_preview_archivo_solo_con_encabezado(client, auth_headers):
+    response = _preview(client, auth_headers, b"Fecha;Concepto;Importe\n")
+    assert response.status_code == 400
+    assert "no tiene movimientos" in response.json()["detail"]
+
+
+def test_preview_csv_con_bom_de_excel(client, auth_headers):
+    csv_bytes = "﻿Fecha;Concepto;Importe\n20/09/2026;Cafe;-850\n".encode("utf-8")
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["mapeo_detectado"]["columna_fecha"] == "Fecha"
+
+
+def test_preview_fechas_mes_dia_se_leen_de_forma_coherente(client, auth_headers):
+    """Antes se mezclaban: 09/20 como 20-sep, pero 09/05 como 9-may."""
+    csv_bytes = b"Fecha;Concepto;Importe\n09/20/2026;Cafe;-850\n09/05/2026;Uber;-3200\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    fechas = sorted(m["fecha"][:10] for m in data["preview"])
+    assert fechas == ["2026-09-05", "2026-09-20"]
+
+
+def test_preview_fechas_ambiguas_se_leen_dia_mes(client, auth_headers):
+    csv_bytes = b"Fecha;Concepto;Importe\n03/04/2026;Cafe;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["preview"][0]["fecha"].startswith("2026-04-03")
+
+
+def test_preview_fechas_con_hora(client, auth_headers):
+    csv_bytes = b"Fecha;Concepto;Importe\n20/09/2026 14:35;Cafe;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["preview"][0]["fecha"].startswith("2026-09-20")
+
+
+def test_preview_no_usa_la_columna_de_fecha_como_descripcion(client, auth_headers):
+    csv_bytes = b"Fecha Movimiento;Detalle del movimiento;Importe\n20/09/2026;Cafe Martinez;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["mapeo_detectado"]["columna_descripcion"] == "Detalle del movimiento"
+    assert data["preview"][0]["descripcion"] == "Cafe Martinez"
+
+
+def test_preview_prefiere_la_descripcion_al_numero_de_comprobante(client, auth_headers):
+    csv_bytes = b"Fecha;Comprobante;Descripcion de la operacion;Importe\n20/09/2026;000123;Cafe Martinez;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["preview"][0]["descripcion"] == "Cafe Martinez"
+
+
+def test_preview_comprobante_sirve_si_no_hay_otra_descripcion(client, auth_headers):
+    csv_bytes = b"Fecha;Referencia;Importe\n20/09/2026;Cafe Martinez;-850\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert data["preview"][0]["descripcion"] == "Cafe Martinez"
+
+
+def test_preview_debito_y_credito_en_la_misma_fila(client, auth_headers):
+    csv_bytes = b"Fecha;Concepto;Debito;Credito\n20/09/2026;Raro;500;800\n21/09/2026;Cafe;850;\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert [m["descripcion"] for m in data["preview"]] == ["Cafe"]
+    assert data["filas_omitidas"][0]["motivo"] == "tiene débito y crédito en la misma fila"
+
+
+def test_preview_monto_fuera_de_rango_se_omite_en_el_preview(client, auth_headers):
+    """Antes pasaba al preview y después hacía fallar la importación entera."""
+    csv_bytes = b"Fecha;Concepto;Importe\n20/09/2026;Cafe;-850\n21/09/2026;Error;-99.999.999.999\n"
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert [m["descripcion"] for m in data["preview"]] == ["Cafe"]
+    assert data["filas_omitidas"][0]["motivo"].startswith("importe fuera de rango")
+
+
+def test_preview_avisa_si_todos_son_ingresos(client, auth_headers):
+    csv_bytes = (b"Fecha;Descripcion;Importe\n05/09/2026;RAPPI;12.500,00\n"
+                 b"08/09/2026;NETFLIX;8.999,00\n12/09/2026;YPF;45.000,00\n")
+    data = _preview(client, auth_headers, csv_bytes).json()
+    assert any("tarjeta de crédito" in a for a in data["avisos"])
+
+
+def test_preview_avisa_si_el_excel_tiene_varias_hojas(client, auth_headers):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.active.append(["Fecha", "Concepto", "Importe"])
+    wb.active.append(["20/09/2026", "Cafe", -850])
+    wb.create_sheet("Octubre")
+    contenido = io.BytesIO()
+    wb.save(contenido)
+    response = client.post(
+        "/importar/preview",
+        files={"archivo": ("dos.xlsx", io.BytesIO(contenido.getvalue()),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_headers,
+    )
+    assert any("2 hojas" in a for a in response.json()["avisos"])
