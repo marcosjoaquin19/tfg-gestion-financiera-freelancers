@@ -226,7 +226,7 @@ export default function ImportarCSV() {
                 opacity: !archivo ? 0.5 : 1,
               }}
             >
-              {analizando ? 'Analizando con IA...' : 'Analizar con IA'}
+              {analizando ? 'Analizando archivo...' : 'Analizar archivo'}
             </button>
           </div>
         </div>
