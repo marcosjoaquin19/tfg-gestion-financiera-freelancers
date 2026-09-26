@@ -13,7 +13,7 @@ que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
 """
 
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -22,6 +22,7 @@ from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.dependencies import get_current_user
 from app.services.duplicados_ingreso import _actualizar_marca_duplicado
+from app.services.duplicados_gasto import marcar_duplicado_si_corresponde
 from app.services.categorias_ingreso import CATEGORIAS_INGRESO
 from app.services.ml_service import CATEGORIAS_VALIDAS as CATEGORIAS_GASTO
 from app.services.csv_service import (
@@ -105,11 +106,35 @@ class ConfirmarRequest(BaseModel):
     mapeo: dict
 
 
+def _parece_resumen_de_tarjeta(movimientos: list[dict]) -> bool:
+    """Señales de que el archivo es un resumen de tarjeta leído como extracto.
+
+    - Todo salió como ingreso (las compras de la tarjeta figuran en positivo).
+    - O aparece la línea del pago del resumen: "SU PAGO EN PESOS" es la
+      fórmula de los resúmenes de tarjeta argentinos, y en negativo hace que
+      no todo sea ingreso, por lo que la primera señal sola no alcanzaba. Un
+      extracto bancario anota ese mismo pago como "PAGO TARJETA ...", sin "SU".
+    Es solo un aviso: si se equivoca, el usuario lo ignora.
+    """
+    ingresos = [m for m in movimientos if m["tipo"] == "ingreso"]
+    if len(movimientos) >= 3 and len(ingresos) == len(movimientos):
+        return True
+    return bool(ingresos) and any(
+        m["tipo"] == "gasto" and "SU PAGO" in m["descripcion"].upper()
+        for m in movimientos
+    )
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/preview")
 async def preview_csv(
     archivo: UploadFile = File(...),
+    compras_tarjeta: bool = Query(default=False),
+    # ?compras_tarjeta=true → el archivo es el resumen de una tarjeta de
+    # crédito: lo positivo son compras (gastos) y lo negativo se omite. Ver
+    # procesar_csv. La pantalla lo ofrece con el botón "Es un resumen de
+    # tarjeta", que vuelve a analizar el mismo archivo en este modo.
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -162,12 +187,16 @@ async def preview_csv(
     # Filas que no se pudieron leer (sin fecha, importe ilegible, etc.): se
     # informan en la respuesta para que el usuario sepa qué quedó afuera.
     filas_omitidas: list[dict] = []
-    todos = procesar_csv(df, mapeo, omitidas=filas_omitidas)
+    todos = procesar_csv(df, mapeo, omitidas=filas_omitidas, compras_tarjeta=compras_tarjeta)
     if not todos:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se encontraron movimientos válidos en el archivo.",
-        )
+        detalle = "No se encontraron movimientos válidos en el archivo."
+        if compras_tarjeta and filas_omitidas:
+            detalle = (
+                "Leído como resumen de tarjeta no quedó ninguna compra: todas las "
+                "líneas tienen monto negativo (pagos o devoluciones). Probablemente "
+                "sea un extracto bancario: analizalo en el modo normal."
+            )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detalle)
 
     # La detección de duplicados y la clasificación se aplican sobre el lote
     # COMPLETO, no solo sobre las 20 filas que el frontend muestra: el paso
@@ -196,18 +225,26 @@ async def preview_csv(
                 f"El Excel tiene {hojas} hojas y solo se leyó la primera. "
                 "Si hay movimientos en las otras, guardalas como archivos separados."
             )
-    if len(todos) >= 3 and all(m["tipo"] == "ingreso" for m in todos):
+    if compras_tarjeta:
+        avisos.append(
+            "Leído como resumen de tarjeta: cada compra se importa como gasto y "
+            "se le asignó una categoría. Los montos negativos (el pago del resumen "
+            "o devoluciones) quedan afuera, porque ese pago ya figura en el "
+            "extracto del banco."
+        )
+    elif _parece_resumen_de_tarjeta(todos):
         # Caso típico: el resumen de la tarjeta de crédito lista las compras
         # en positivo. Importadas así, se sumarían como facturación e
         # inflarían el cálculo del Monotributo.
         avisos.append(
-            "Todos los movimientos se interpretaron como ingresos. Si es el resumen "
+            "Los movimientos se interpretaron como ingresos. Si es el resumen "
             "de una tarjeta de crédito, las compras figuran en positivo pero son "
-            "gastos: revisalo antes de confirmar."
+            "gastos: usá el botón \"Es un resumen de tarjeta\" antes de confirmar."
         )
 
     return {
         "total_filas": len(todos),
+        "compras_tarjeta": compras_tarjeta,
         "preview": preview,
         "mapeo_detectado": mapeo,
         "filas_omitidas": filas_omitidas,
@@ -292,25 +329,29 @@ def confirmar_importacion(
             detail=f"Error al persistir la importación. La operación fue revertida y no se cargaron registros parciales. ({type(e).__name__})",
         )
 
-    # filtrar_no_duplicados ya descartó los movimientos que el archivo repetía
-    # respecto de lo que había en la base. Queda el caso del archivo que trae
-    # la misma línea dos veces adentro: ésas entran como nuevas, y acá se
-    # marcan para que aparezcan en "Solo duplicados" igual que una carga
-    # repetida hecha a mano. Se avisa, no se bloquea: dos cobros iguales el
-    # mismo día son posibles y la decisión es del usuario.
+    # filtrar_no_duplicados ya descartó lo que el archivo repetía letra por
+    # letra respecto de la base. Lo que sigue aplica a cada movimiento nuevo la
+    # MISMA regla que la carga manual, así la marca y el filtro "Solo
+    # duplicados" no dependen de por dónde entró el dato. Se avisa, no se
+    # bloquea: dos cobros o dos compras iguales pueden ser legítimos y la
+    # decisión es del usuario.
     #
-    # Los gastos no lo necesitan: el módulo de Auditoría tiene su propio
-    # detector de gastos duplicados (detectar_gastos_duplicados), que los
-    # ingresos no tienen.
-    ingresos_marcados = 0
-    if ingresos_nuevos:
-        hubo_cambios = False
-        for ingreso in ingresos_nuevos:
-            if _actualizar_marca_duplicado(db, ingreso):
-                hubo_cambios = True
-        if hubo_cambios:
-            db.commit()
-        ingresos_marcados = sum(1 for i in ingresos_nuevos if i.es_duplicado)
+    # Ingresos: mismo importe, mismo día y misma descripción (cubre la línea
+    # repetida dentro del propio archivo).
+    # Gastos: mismo monto y categoría a ±3 días, que además atrapa el caso
+    # más común: un pago anotado a mano y después importado desde el banco
+    # con otra descripción ("DEBITO HOSTING ...") y un día de diferencia.
+    hubo_cambios = False
+    for ingreso in ingresos_nuevos:
+        if _actualizar_marca_duplicado(db, ingreso):
+            hubo_cambios = True
+    for gasto in gastos_nuevos:
+        if marcar_duplicado_si_corresponde(db, gasto):
+            hubo_cambios = True
+    if hubo_cambios:
+        db.commit()
+    ingresos_marcados = sum(1 for i in ingresos_nuevos if i.es_duplicado)
+    gastos_marcados = sum(1 for g in gastos_nuevos if g.es_duplicado)
 
     return {
         "importados": len(ingresos_nuevos) + len(gastos_nuevos),
@@ -319,4 +360,5 @@ def confirmar_importacion(
         "omitidos_por_duplicado": omitidos_por_duplicado,
         "omitidos_por_transferencia": omitidos_por_transferencia,
         "ingresos_marcados_duplicados": ingresos_marcados,
+        "gastos_marcados_duplicados": gastos_marcados,
     }

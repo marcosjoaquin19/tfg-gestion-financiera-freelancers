@@ -11,8 +11,8 @@ Lo usan las dos vías por las que entra un ingreso —la carga manual
 para que la marca y el filtro "Solo duplicados" se comporten igual venga el
 dato de donde venga.
 
-Los gastos no pasan por acá: tienen su propia detección inmediata en su router
-y, además, el detector del módulo de Auditoría.
+Los gastos no pasan por acá: su regla (más amplia, a ±3 días) vive en
+duplicados_gasto.py y la comparten del mismo modo la carga manual y el importador.
 """
 
 # PATRÓN: Servicio de dominio — la regla vive en una sola capa y la comparten

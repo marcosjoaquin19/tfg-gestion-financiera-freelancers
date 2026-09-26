@@ -41,6 +41,9 @@ export default function ImportarCSV() {
   // Advertencias que no son errores (Excel con varias hojas, posible resumen de tarjeta).
   const [avisos, setAvisos] = useState([]);
   const [mapeo, setMapeo] = useState(null);
+  // true cuando el archivo se analizó como resumen de tarjeta de crédito:
+  // las compras (en positivo) se toman como gastos.
+  const [comprasTarjeta, setComprasTarjeta] = useState(false);
   const [resultado, setResultado] = useState(null);
   const inputRef = useRef();
   const navigate = useNavigate();
@@ -64,7 +67,7 @@ export default function ImportarCSV() {
     handleFile(e.dataTransfer.files[0]);
   }
 
-  async function handleAnalizar() {
+  async function handleAnalizar(modoTarjeta = false) {
     if (!archivo) return;
     setAnalizando(true);
     setErrorMsg('');
@@ -73,6 +76,7 @@ export default function ImportarCSV() {
       form.append('archivo', archivo);
       const res = await api.post('/importar/preview', form, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        params: modoTarjeta ? { compras_tarjeta: true } : undefined,
       });
       setPreview(res.data.preview);
       setTotalFilas(res.data.total_filas);
@@ -80,6 +84,7 @@ export default function ImportarCSV() {
       setFilasOmitidas(res.data.filas_omitidas || []);
       setAvisos(res.data.avisos || []);
       setMapeo(res.data.mapeo_detectado);
+      setComprasTarjeta(Boolean(res.data.compras_tarjeta));
       setPaso(PASO.PREVIEW);
     } catch (err) {
       setErrorMsg(extraerMensajeError(err, 'Error al analizar el archivo'));
@@ -116,6 +121,7 @@ export default function ImportarCSV() {
     setFilasOmitidas([]);
     setAvisos([]);
     setMapeo(null);
+    setComprasTarjeta(false);
     setResultado(null);
     setErrorMsg('');
   }
@@ -216,7 +222,7 @@ export default function ImportarCSV() {
             )}
 
             <button
-              onClick={handleAnalizar}
+              onClick={() => handleAnalizar(false)}
               disabled={!archivo || analizando}
               style={{
                 width: '100%', background: '#3b82f6', color: '#fff',
@@ -252,6 +258,27 @@ export default function ImportarCSV() {
                 (mostrando los primeros 20)
               </span>
             )}
+            {/* El resumen de una tarjeta lista las compras en positivo: sin este
+                botón entraban como ingresos e inflaban la facturación del
+                Monotributo. Vuelve a analizar el mismo archivo en el otro modo. */}
+            <button
+              onClick={() => handleAnalizar(!comprasTarjeta)}
+              disabled={analizando}
+              style={{
+                marginLeft: 'auto',
+                background: 'transparent', color: '#fbbf24',
+                border: '1px solid #78562a', borderRadius: '8px',
+                padding: '6px 14px', fontSize: '13px',
+                cursor: analizando ? 'not-allowed' : 'pointer',
+                opacity: analizando ? 0.7 : 1,
+              }}
+            >
+              {analizando
+                ? 'Analizando archivo...'
+                : comprasTarjeta
+                  ? 'No es un resumen de tarjeta: leerlo como extracto'
+                  : 'Es un resumen de tarjeta: importar las compras como gastos'}
+            </button>
           </div>
 
           {/* Aviso de movimientos que el backend va a omitir al confirmar */}
@@ -285,7 +312,7 @@ export default function ImportarCSV() {
               padding: '10px 14px', marginBottom: '16px', fontSize: '13px', color: '#fca5a5',
             }}>
               <div style={{ marginBottom: '6px' }}>
-                ✕ {filasOmitidas.length} {filasOmitidas.length === 1 ? 'fila del archivo no se pudo leer y no se importará' : 'filas del archivo no se pudieron leer y no se importarán'}:
+                ✕ {filasOmitidas.length} {filasOmitidas.length === 1 ? 'fila del archivo no se importará' : 'filas del archivo no se importarán'}:
               </div>
               {filasOmitidas.slice(0, 10).map((f) => (
                 <div key={f.fila} style={{ color: '#f87171', fontSize: '12px' }}>
@@ -358,12 +385,12 @@ export default function ImportarCSV() {
           {/* Resumen + botones */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
             <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-              <span style={{ color: '#4ade80' }}>{ingresosPrev.length} ingresos</span>
+              <span style={{ color: '#4ade80' }}>{ingresosPrev.length} ingreso{ingresosPrev.length === 1 ? '' : 's'}</span>
               {' · '}
-              <span style={{ color: '#f87171' }}>{gastosPrev.length} gastos</span>
+              <span style={{ color: '#f87171' }}>{gastosPrev.length} gasto{gastosPrev.length === 1 ? '' : 's'}</span>
               {' · Total neto: '}
               <span style={{ color: '#f8fafc', fontWeight: 600 }}>
-                ${fmt(totalIngresos - totalGastos)}
+                {totalIngresos - totalGastos < 0 ? '-' : ''}${fmt(Math.abs(totalIngresos - totalGastos))}
               </span>
             </p>
             <div style={{ display: 'flex', gap: '10px' }}>
@@ -414,9 +441,9 @@ export default function ImportarCSV() {
             <p style={{ margin: '0 0 28px 0', fontSize: '15px', color: '#94a3b8', lineHeight: 1.6 }}>
               Se importaron <strong style={{ color: '#f8fafc' }}>{resultado.importados} movimientos</strong>
               <br />
-              <span style={{ color: '#4ade80' }}>{resultado.ingresos_creados} ingresos</span>
+              <span style={{ color: '#4ade80' }}>{resultado.ingresos_creados} ingreso{resultado.ingresos_creados === 1 ? '' : 's'}</span>
               {' · '}
-              <span style={{ color: '#f87171' }}>{resultado.gastos_creados} gastos</span>
+              <span style={{ color: '#f87171' }}>{resultado.gastos_creados} gasto{resultado.gastos_creados === 1 ? '' : 's'}</span>
               {(resultado.omitidos_por_duplicado > 0 || resultado.omitidos_por_transferencia > 0) && (
                 <>
                   <br />
@@ -428,6 +455,22 @@ export default function ImportarCSV() {
                   </span>
                 </>
               )}
+              {(() => {
+                // Entraron, pero se parecen a otros ya cargados (por ejemplo, un
+                // pago anotado a mano que ahora vino en el extracto del banco).
+                const marcados = (resultado.ingresos_marcados_duplicados || 0)
+                  + (resultado.gastos_marcados_duplicados || 0);
+                if (marcados === 0) return null;
+                return (
+                  <>
+                    <br />
+                    <span style={{ fontSize: '13px', color: '#fbbf24' }}>
+                      ⚠ {marcados} {marcados === 1 ? 'movimiento importado parece repetido' : 'movimientos importados parecen repetidos'} de
+                      otros ya cargados: {marcados === 1 ? 'quedó marcado' : 'quedaron marcados'}. Revisalos con el filtro "Solo duplicados".
+                    </span>
+                  </>
+                );
+              })()}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>

@@ -16,7 +16,7 @@ Endpoints:
 """
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
@@ -27,73 +27,15 @@ from app.models.gasto import Gasto
 from app.schemas.gasto import GastoCreate, GastoResponse
 from app.dependencies import get_current_user
 from app.services.ia_service import clasificar_gasto
-from app.services.auditoria import VENTANA_DUPLICADOS_DIAS
+from app.services.duplicados_gasto import (
+    buscar_gastos_gemelos,
+    marcar_duplicado_si_corresponde,
+    revisar_huerfanos,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/gastos", tags=["Gastos"])
-
-
-def _buscar_gastos_gemelos(db: Session, gasto: Gasto) -> list[Gasto]:
-    """Otros gastos del mismo usuario con igual monto y categoría dentro de la
-    ventana de días. Es la misma regla que usa el detector de la Auditoría."""
-    fecha = gasto.fecha
-    fecha_naive = fecha.replace(tzinfo=None) if fecha.tzinfo else fecha
-    desde = fecha_naive - timedelta(days=VENTANA_DUPLICADOS_DIAS)
-    hasta = fecha_naive + timedelta(days=VENTANA_DUPLICADOS_DIAS)
-
-    candidatos = (
-        db.query(Gasto)
-        .filter(
-            Gasto.usuario_id == gasto.usuario_id,
-            Gasto.id != gasto.id,
-            Gasto.monto == gasto.monto,
-            Gasto.categoria == gasto.categoria,
-        )
-        .all()
-    )
-
-    return [
-        g for g in candidatos
-        if desde <= (g.fecha.replace(tzinfo=None) if g.fecha.tzinfo else g.fecha) <= hasta
-    ]
-
-
-def _marcar_duplicado_si_corresponde(db: Session, gasto: Gasto) -> bool:
-    """Detección inmediata de duplicados al crear o editar un gasto.
-
-    Si hay gemelos, marca AMBOS como duplicados al instante, así aparecen en
-    "Solo duplicados" sin ejecutar la auditoría a mano. Si no los hay (por
-    ejemplo, porque se le corrigió el importe), le retira la marca.
-    Devuelve si cambió algo.
-    """
-    gemelos = _buscar_gastos_gemelos(db, gasto)
-    hubo_cambios = False
-
-    nueva_marca = bool(gemelos)
-    if gasto.es_duplicado != nueva_marca:
-        gasto.es_duplicado = nueva_marca
-        hubo_cambios = True
-
-    for g in gemelos:
-        if not g.es_duplicado:
-            g.es_duplicado = True
-            hubo_cambios = True
-    return hubo_cambios
-
-
-def _revisar_huerfanos(db: Session, antiguos_gemelos: list[Gasto]) -> bool:
-    """Desmarca a los que se quedaron sin par tras editar o borrar un gasto.
-
-    Sin este paso, corregir el importe de un duplicado (o borrarlo) dejaba al
-    otro gasto advertido para siempre, avisando de un problema que ya no existe.
-    """
-    hubo_cambios = False
-    for anterior in antiguos_gemelos:
-        if anterior.es_duplicado and not _buscar_gastos_gemelos(db, anterior):
-            anterior.es_duplicado = False
-            hubo_cambios = True
-    return hubo_cambios
 
 
 def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
@@ -183,7 +125,7 @@ def crear_gasto(
 
     # Marca duplicados al instante (mismo monto+categoría dentro de la ventana),
     # para que se reflejen en "Solo duplicados" sin correr la auditoría a mano.
-    if _marcar_duplicado_si_corresponde(db, nuevo_gasto):
+    if marcar_duplicado_si_corresponde(db, nuevo_gasto):
         db.commit()
         db.refresh(nuevo_gasto)
 
@@ -303,7 +245,7 @@ def actualizar_gasto(
     # el usuario está corrigiendo una clasificación — esa es la señal más
     # valiosa para reentrenar.
     categoria_anterior = gasto.categoria
-    gemelos_anteriores = _buscar_gastos_gemelos(db, gasto)
+    gemelos_anteriores = buscar_gastos_gemelos(db, gasto)
 
     gasto.descripcion = datos.descripcion
     gasto.monto = datos.monto
@@ -319,8 +261,8 @@ def actualizar_gasto(
     db.refresh(gasto)
 
     # El cambio puede crear un par nuevo o deshacer el anterior.
-    _marcar_duplicado_si_corresponde(db, gasto)
-    _revisar_huerfanos(db, gemelos_anteriores)
+    marcar_duplicado_si_corresponde(db, gasto)
+    revisar_huerfanos(db, gemelos_anteriores)
 
     db.commit()
     db.refresh(gasto)
@@ -346,8 +288,8 @@ def eliminar_gasto(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gasto no encontrado")
 
     # Si era la mitad de un par duplicado, el otro gasto deja de serlo.
-    gemelos = _buscar_gastos_gemelos(db, gasto)
+    gemelos = buscar_gastos_gemelos(db, gasto)
     db.delete(gasto)
     db.flush()
-    _revisar_huerfanos(db, gemelos)
+    revisar_huerfanos(db, gemelos)
     db.commit()

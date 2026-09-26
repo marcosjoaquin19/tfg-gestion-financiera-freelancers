@@ -302,7 +302,12 @@ def _celda_vacia(valor) -> bool:
     return valor is None or (isinstance(valor, float) and pd.isna(valor)) or str(valor).strip() == ""
 
 
-def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) -> list[dict]:
+def procesar_csv(
+    df: pd.DataFrame,
+    mapeo: dict,
+    omitidas: list | None = None,
+    compras_tarjeta: bool = False,
+) -> list[dict]:
     """Convierte cada fila del DataFrame en un movimiento normalizado.
 
     Recibe el DataFrame ya leído (por leer_dataframe) más el mapeo de columnas
@@ -312,6 +317,13 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
     Si se pasa la lista `omitidas`, se le agrega una entrada por cada fila que
     no se pudo convertir ({"fila", "descripcion", "motivo"}), para mostrarle
     al usuario qué quedó afuera. Antes esas filas se descartaban en silencio.
+
+    compras_tarjeta: el resumen de una tarjeta de crédito usa el signo al
+    revés que un extracto bancario: las compras figuran en positivo (es lo
+    que se debe) y el pago del resumen o una devolución, en negativo. En este
+    modo lo positivo se toma como gasto y lo negativo se omite, informado: el
+    pago de la tarjeta ya figura como débito en el extracto del banco, y
+    contarlo acá sería registrar dos veces las mismas compras.
     """
     def omitir(numero, descripcion, motivo):
         if omitidas is not None:
@@ -403,6 +415,13 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
                 # hacía fallar la importación completa al confirmar.
                 omitir(numero, descripcion, "importe fuera de rango (máximo $10.000 millones)")
                 continue
+
+            if compras_tarjeta:
+                if tipo == "gasto":
+                    omitir(numero, descripcion,
+                           "monto negativo en un resumen de tarjeta (pago del resumen o devolución): no es una compra")
+                    continue
+                tipo = "gasto"
 
             movimientos.append({
                 "fecha": fecha.strftime("%Y-%m-%dT00:00:00"),

@@ -857,3 +857,304 @@ def test_preview_avisa_si_el_excel_tiene_varias_hojas(client, auth_headers):
         headers=auth_headers,
     )
     assert any("2 hojas" in a for a in response.json()["avisos"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gastos importados: misma regla de duplicados que la carga manual
+# (mismo monto y categoría a ±3 días). Se avisa, no se bloquea.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _gasto_manual(client, auth_headers, descripcion="Hosting servidor DigitalOcean",
+                  monto=23456.78, categoria="Infraestructura", fecha="2026-09-05T00:00:00"):
+    r = client.post("/gastos/", json={
+        "descripcion": descripcion, "monto": monto,
+        "categoria": categoria, "fecha": fecha,
+    }, headers=auth_headers)
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+def _importar(client, auth_headers, movimientos):
+    r = client.post("/importar/confirmar", json={"mapeo": {}, "movimientos": movimientos},
+                    headers=auth_headers)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _es_duplicado(client, auth_headers, gasto_id):
+    return client.get(f"/gastos/{gasto_id}", headers=auth_headers).json()["es_duplicado"]
+
+
+def test_gasto_anotado_a_mano_y_despues_importado_marca_los_dos(client, auth_headers):
+    # El caso real: el banco lo trae con otra descripción y un día después.
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-06T00:00:00", "DEBITO HOSTING DIGITALOCEAN", 23456.78, "Infraestructura"),
+    ])
+    assert data["gastos_creados"] == 1  # entra: se avisa, no se bloquea
+    assert data["gastos_marcados_duplicados"] == 1
+    assert _es_duplicado(client, auth_headers, manual) is True
+    duplicados = client.get("/gastos/?solo_duplicados=true", headers=auth_headers).json()
+    assert len(duplicados) == 2
+
+
+def test_gasto_importado_en_el_limite_de_la_ventana_se_marca(client, auth_headers):
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-08T00:00:00", "DEBITO HOSTING", 23456.78, "Infraestructura"),  # +3 días
+    ])
+    assert data["gastos_marcados_duplicados"] == 1
+    assert _es_duplicado(client, auth_headers, manual) is True
+
+
+def test_gasto_importado_fuera_de_la_ventana_no_se_marca(client, auth_headers):
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-09T00:00:00", "DEBITO HOSTING", 23456.78, "Infraestructura"),  # +4 días
+    ])
+    assert data["gastos_marcados_duplicados"] == 0
+    assert _es_duplicado(client, auth_headers, manual) is False
+
+
+def test_gasto_importado_con_otra_categoria_no_se_marca(client, auth_headers):
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-06T00:00:00", "DEBITO VARIOS", 23456.78, "Otros"),
+    ])
+    assert data["gastos_marcados_duplicados"] == 0
+    assert _es_duplicado(client, auth_headers, manual) is False
+
+
+def test_gasto_importado_con_un_centavo_de_diferencia_no_se_marca(client, auth_headers):
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-06T00:00:00", "DEBITO HOSTING", 23456.79, "Infraestructura"),
+    ])
+    assert data["gastos_marcados_duplicados"] == 0
+    assert _es_duplicado(client, auth_headers, manual) is False
+
+
+def test_gasto_importado_con_decimales_escritos_distinto_se_marca(client, auth_headers):
+    # 1234.5 y 1234.50 son el mismo importe.
+    manual = _gasto_manual(client, auth_headers, monto=1234.50, categoria="Software",
+                           descripcion="Licencia JetBrains")
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-05T00:00:00", "JETBRAINS", 1234.5, "Software"),
+    ])
+    assert data["gastos_marcados_duplicados"] == 1
+    assert _es_duplicado(client, auth_headers, manual) is True
+
+
+def test_suscripcion_mensual_importada_no_se_marca(client, auth_headers):
+    # Netflix el mismo día de cada mes: mismo monto y categoría, pero fuera de la ventana.
+    data = _importar(client, auth_headers, [
+        _gasto(f"2026-0{m}-15T00:00:00", "NETFLIX.COM", 8999, "Suscripciones") for m in (6, 7, 8, 9)
+    ])
+    assert data["gastos_creados"] == 4
+    assert data["gastos_marcados_duplicados"] == 0
+
+
+def test_misma_compra_dos_veces_en_el_archivo_entra_y_se_marca(client, auth_headers):
+    # Igual que si se cargaran a mano: las dos entran y quedan advertidas.
+    data = _importar(client, auth_headers, [
+        _gasto("2026-03-01T00:00:00", "Cafe Starbucks", 1500, "Alimentación"),
+        _gasto("2026-03-01T00:00:00", "Cafe Starbucks", 1500, "Alimentación"),
+    ])
+    assert data["gastos_creados"] == 2
+    assert data["gastos_marcados_duplicados"] == 2
+
+
+def test_gasto_de_otro_usuario_no_marca_al_importado(client, auth_headers):
+    client.post("/auth/register", json={"nombre": "Otra", "email": "otra@test.com",
+                                         "password": "password123"})
+    token = client.post("/auth/login", data={"username": "otra@test.com",
+                                             "password": "password123"}).json()["access_token"]
+    otra = {"Authorization": f"Bearer {token}"}
+    ajeno = _gasto_manual(client, otra)
+
+    data = _importar(client, auth_headers, [
+        _gasto("2026-09-05T00:00:00", "DEBITO HOSTING", 23456.78, "Infraestructura"),
+    ])
+    assert data["gastos_marcados_duplicados"] == 0
+    assert _es_duplicado(client, otra, ajeno) is False
+
+
+def test_borrar_el_gasto_importado_desmarca_al_manual(client, auth_headers):
+    manual = _gasto_manual(client, auth_headers)
+    _importar(client, auth_headers, [
+        _gasto("2026-09-06T00:00:00", "DEBITO HOSTING DIGITALOCEAN", 23456.78, "Infraestructura"),
+    ])
+    importado = [g for g in client.get("/gastos/", headers=auth_headers).json()
+                 if g["descripcion"] == "DEBITO HOSTING DIGITALOCEAN"][0]
+    assert client.delete(f"/gastos/{importado['id']}", headers=auth_headers).status_code == 204
+    assert _es_duplicado(client, auth_headers, manual) is False
+
+
+def test_mismo_extracto_importado_dos_veces_sigue_omitiendo(client, auth_headers):
+    # La red de seguridad anterior no cambia: lo idéntico se omite, no se marca.
+    movs = [_gasto("2026-09-06T00:00:00", "DEBITO HOSTING", 23456.78, "Infraestructura")]
+    _importar(client, auth_headers, movs)
+    data = _importar(client, auth_headers, movs)
+    assert data["gastos_creados"] == 0
+    assert data["omitidos_por_duplicado"] == 1
+    assert data["gastos_marcados_duplicados"] == 0
+
+
+def test_importar_ingresos_no_marca_gastos(client, auth_headers):
+    # Un ingreso del mismo monto no es gemelo de un gasto.
+    manual = _gasto_manual(client, auth_headers)
+    data = _importar(client, auth_headers, [
+        _ingreso("2026-09-05T00:00:00", "COBRO CLIENTE", 23456.78, "Otros"),
+    ])
+    assert data["gastos_marcados_duplicados"] == 0
+    assert _es_duplicado(client, auth_headers, manual) is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Resumen de tarjeta de crédito: las compras vienen en positivo.
+# ─────────────────────────────────────────────────────────────────────────────
+
+TARJETA = (b"Fecha;Descripcion;Importe\n"
+           b"02/09/2026;MERCADOLIBRE MONITOR LG;185.000,00\n"
+           b"08/09/2026;UBER TRIP;6.500,00\n"
+           b"15/09/2026;NETFLIX.COM;8.999,00\n")
+
+
+def _preview_tarjeta(client, auth_headers, contenido, nombre="resumen.csv"):
+    return client.post(
+        "/importar/preview?compras_tarjeta=true",
+        files={"archivo": (nombre, io.BytesIO(contenido), "text/csv")},
+        headers=auth_headers,
+    )
+
+
+def test_resumen_de_tarjeta_en_modo_normal_avisa_y_menciona_el_boton(client, auth_headers):
+    data = _preview(client, auth_headers, TARJETA).json()
+    assert data["compras_tarjeta"] is False
+    assert all(m["tipo"] == "ingreso" for m in data["preview"])
+    assert any("Es un resumen de tarjeta" in a for a in data["avisos"])
+
+
+def test_resumen_de_tarjeta_convierte_las_compras_en_gastos_con_categoria(client, auth_headers):
+    from app.services.categorias_gasto import CATEGORIAS_GASTO
+    r = _preview_tarjeta(client, auth_headers, TARJETA)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["compras_tarjeta"] is True
+    assert [m["tipo"] for m in data["preview"]] == ["gasto"] * 3
+    assert [m["monto"] for m in data["preview"]] == [185000.0, 6500.0, 8999.0]
+    assert all(m["categoria"] in CATEGORIAS_GASTO for m in data["preview"])
+    # El aviso de "todos son ingresos" ya no corresponde; queda el del modo tarjeta.
+    assert not any("se interpretaron como ingresos" in a for a in data["avisos"])
+    assert any("resumen de tarjeta" in a for a in data["avisos"])
+
+
+def test_resumen_de_tarjeta_omite_el_pago_y_las_devoluciones_informandolos(client, auth_headers):
+    contenido = TARJETA + b"10/09/2026;SU PAGO EN PESOS;-150.000,00\n12/09/2026;DEVOLUCION UBER;-6.500,00\n"
+    data = _preview_tarjeta(client, auth_headers, contenido).json()
+    assert [m["descripcion"] for m in data["preview"]] == [
+        "MERCADOLIBRE MONITOR LG", "UBER TRIP", "NETFLIX.COM"]
+    omitidas = {f["descripcion"]: f["motivo"] for f in data["filas_omitidas"]}
+    assert set(omitidas) == {"SU PAGO EN PESOS", "DEVOLUCION UBER"}
+    assert all("resumen de tarjeta" in m for m in omitidas.values())
+    assert data["resumen"]["omitidas"] == 2
+
+
+def test_extracto_bancario_leido_como_tarjeta_explica_por_que_no_quedo_nada(client, auth_headers):
+    extracto = b"Fecha;Descripcion;Importe\n02/09/2026;DEBITO HOSTING;-23.456,78\n03/09/2026;UBER;-6.500\n"
+    r = _preview_tarjeta(client, auth_headers, extracto)
+    assert r.status_code == 400
+    assert "modo normal" in r.json()["detail"]
+
+
+def test_modo_tarjeta_con_valor_invalido_da_422(client, auth_headers):
+    r = client.post(
+        "/importar/preview?compras_tarjeta=banana",
+        files={"archivo": ("r.csv", io.BytesIO(TARJETA), "text/csv")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 422
+
+
+def test_modo_tarjeta_con_columnas_debito_y_credito(client, auth_headers):
+    contenido = (b"Fecha;Concepto;Debito;Credito\n"
+                 b"02/09/2026;SU PAGO;150.000,00;\n"
+                 b"05/09/2026;SPOTIFY;;4.500,00\n")
+    data = _preview_tarjeta(client, auth_headers, contenido).json()
+    assert [(m["descripcion"], m["tipo"]) for m in data["preview"]] == [("SPOTIFY", "gasto")]
+    assert [f["descripcion"] for f in data["filas_omitidas"]] == ["SU PAGO"]
+
+
+def test_modo_tarjeta_confirmado_no_suma_facturacion(client, auth_headers):
+    data = _preview_tarjeta(client, auth_headers, TARJETA).json()
+    movimientos = [{k: m[k] for k in ("fecha", "descripcion", "monto", "tipo", "categoria")}
+                   for m in data["preview"]]
+    resultado = _importar(client, auth_headers, movimientos)
+    assert resultado["gastos_creados"] == 3
+    assert resultado["ingresos_creados"] == 0
+    assert client.get("/ingresos/", headers=auth_headers).json() == []
+
+
+def test_resumen_de_tarjeta_importado_dos_veces_se_omite(client, auth_headers):
+    data = _preview_tarjeta(client, auth_headers, TARJETA).json()
+    movimientos = [{k: m[k] for k in ("fecha", "descripcion", "monto", "tipo", "categoria")}
+                   for m in data["preview"]]
+    _importar(client, auth_headers, movimientos)
+    otra_vez = _preview_tarjeta(client, auth_headers, TARJETA).json()
+    assert otra_vez["resumen"]["posibles_duplicados"] == 3
+    assert _importar(client, auth_headers, movimientos)["gastos_creados"] == 0
+
+
+def test_modo_tarjeta_con_excel(client, auth_headers):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.active.append(["Fecha", "Descripcion", "Importe"])
+    wb.active.append(["02/09/2026", "UBER TRIP", 6500])
+    wb.active.append(["10/09/2026", "SU PAGO", -6500])
+    contenido = io.BytesIO()
+    wb.save(contenido)
+    r = client.post(
+        "/importar/preview?compras_tarjeta=true",
+        files={"archivo": ("resumen.xlsx", io.BytesIO(contenido.getvalue()),
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        headers=auth_headers,
+    )
+    data = r.json()
+    assert [(m["descripcion"], m["tipo"]) for m in data["preview"]] == [("UBER TRIP", "gasto")]
+    assert len(data["filas_omitidas"]) == 1
+
+
+def test_modo_tarjeta_no_se_saltea_las_validaciones_del_archivo(client, auth_headers):
+    r = client.post(
+        "/importar/preview?compras_tarjeta=true",
+        files={"archivo": ("r.txt", io.BytesIO(TARJETA), "text/plain")},
+        headers=auth_headers,
+    )
+    assert r.status_code == 400
+    r = _preview_tarjeta(client, auth_headers, b"")
+    assert r.status_code == 400
+
+
+def test_resumen_de_tarjeta_con_la_linea_su_pago_tambien_avisa(client, auth_headers):
+    # Un resumen real trae el pago en negativo: ya no es "todo ingreso", pero
+    # igual es una tarjeta y el usuario tiene que enterarse antes de confirmar.
+    contenido = TARJETA + b"20/09/2026;SU PAGO EN PESOS;-150.000,00\n"
+    data = _preview(client, auth_headers, contenido).json()
+    assert any("Es un resumen de tarjeta" in a for a in data["avisos"])
+
+
+def test_extracto_bancario_que_paga_la_tarjeta_no_avisa(client, auth_headers):
+    contenido = (b"Fecha;Descripcion;Importe\n"
+                 b"01/09/2026;TRANSFERENCIA CLIENTE ACME;500.000,00\n"
+                 b"10/09/2026;PAGO TARJETA VISA;-150.000,00\n"
+                 b"12/09/2026;DEBITO HOSTING;-23.456,78\n")
+    data = _preview(client, auth_headers, contenido).json()
+    assert not any("tarjeta" in a for a in data["avisos"])
+
+
+def test_extracto_con_solo_dos_cobros_no_avisa(client, auth_headers):
+    contenido = (b"Fecha;Descripcion;Importe\n"
+                 b"01/09/2026;TRANSFERENCIA CLIENTE ACME;500.000,00\n"
+                 b"15/09/2026;TRANSFERENCIA CLIENTE BETA;300.000,00\n")
+    data = _preview(client, auth_headers, contenido).json()
+    assert data["avisos"] == []
