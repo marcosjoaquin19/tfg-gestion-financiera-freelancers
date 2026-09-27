@@ -7,12 +7,24 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
+
+// Períodos que se pueden pedir en el reporte PDF: los últimos 12 meses hasta
+// el mes en curso, del más reciente al más viejo. El valor es "AAAA-MM".
+function periodosReporte(hoy) {
+  const lista = [];
+  for (let i = 0; i < 12; i += 1) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+    const valor = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    lista.push({ valor, etiqueta: `${MESES[d.getMonth()]} ${d.getFullYear()}${i === 0 ? ' (en curso)' : ''}` });
+  }
+  return lista;
+}
 
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -42,6 +54,9 @@ export default function Dashboard() {
   const mesActual = now.getMonth() + 1;
   const anioActual = now.getFullYear();
   const periodoLabel = `${MESES[now.getMonth()]} ${anioActual}`;
+  const periodos = periodosReporte(now);
+  // HU-13: el reporte es del mes cerrado, así que se propone el último.
+  const [periodoReporte, setPeriodoReporte] = useState(periodos[1].valor);
 
   useEffect(() => {
     async function fetchData() {
@@ -103,21 +118,32 @@ export default function Dashboard() {
   // así que lo pedimos como blob y forzamos la descarga creando un enlace temporal.
   async function descargarReportePDF() {
     setDescargando(true);
+    const [anioRep, mesRep] = periodoReporte.split('-').map(Number);
     try {
       const res = await api.get('/reportes/pdf', {
-        params: { mes: mesActual, anio: anioActual },
+        params: { mes: mesRep, anio: anioRep },
         responseType: 'blob',
       });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const enlace = document.createElement('a');
       enlace.href = url;
-      enlace.download = `reporte_${anioActual}-${String(mesActual).padStart(2, '0')}.pdf`;
+      enlace.download = `reporte_${periodoReporte}.pdf`;
       document.body.appendChild(enlace);
       enlace.click();
       enlace.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) {
-      alert('No se pudo generar el reporte. Intentá nuevamente en unos segundos.');
+      // La respuesta de error llega como blob: se lee para mostrar el motivo real.
+      let mensaje = 'No se pudo generar el reporte. Intentá nuevamente en unos segundos.';
+      if (e?.response?.data instanceof Blob) {
+        try {
+          const cuerpo = JSON.parse(await e.response.data.text());
+          if (typeof cuerpo.detail === 'string') mensaje = cuerpo.detail;
+        } catch (_) { /* se queda el mensaje genérico */ }
+      } else {
+        mensaje = extraerMensajeError(e, mensaje);
+      }
+      alert(mensaje);
     } finally {
       setDescargando(false);
     }
@@ -140,6 +166,18 @@ export default function Dashboard() {
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500, color: '#f8fafc' }}>Dashboard</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span style={{ fontSize: '13px', color: '#64748b' }}>{periodoLabel}</span>
+          <select
+            value={periodoReporte}
+            onChange={(e) => setPeriodoReporte(e.target.value)}
+            title="Período del reporte PDF"
+            aria-label="Período del reporte PDF"
+            style={{
+              background: '#0f1117', border: '1px solid #1e293b', color: '#e2e8f0',
+              borderRadius: '6px', padding: '7px 10px', fontSize: '13px', cursor: 'pointer',
+            }}
+          >
+            {periodos.map((p) => <option key={p.valor} value={p.valor}>{p.etiqueta}</option>)}
+          </select>
           <button
             onClick={descargarReportePDF}
             disabled={descargando}

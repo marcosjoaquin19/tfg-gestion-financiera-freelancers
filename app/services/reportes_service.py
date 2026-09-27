@@ -12,8 +12,11 @@ por línea cómo se construye cada sección durante la defensa.
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
 from io import BytesIO
-from datetime import datetime
+from calendar import monthrange
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from xml.sax.saxutils import escape
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
@@ -35,8 +38,7 @@ from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.factura import Factura, EstadoFactura
 from app.services.facturas_estado import marcar_vencidas
-from app.models.alerta_auditoria import AlertaAuditoria
-from app.models.categoria_monotributo import CategoriaMonotributo
+from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.services.formato import formato_pesos_ar
 
 
@@ -45,6 +47,37 @@ MESES_ES = {
     5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
 }
+
+ZONA_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+MAX_ALERTAS_DETALLE = 20
+
+ETIQUETA_ALERTA = {
+    TipoAlerta.GASTO_DUPLICADO: "Posible gasto duplicado",
+    TipoAlerta.ANOMALIA_ESTADISTICA: "Gasto inusualmente alto",
+    TipoAlerta.DISCREPANCIA_FACTURACION: "Factura vencida",
+    TipoAlerta.MONOTRIBUTO_IMPAGO: "Monotributo impago",
+    TipoAlerta.TRANSFERENCIA_PROPIA: "Transferencia entre cuentas propias",
+    TipoAlerta.RIESGO_RECATEGORIZACION: "Riesgo de recategorización",
+    TipoAlerta.FACTURA_IMPAGA: "Factura impaga",
+    TipoAlerta.COMISION_EXCESIVA: "Comisión excesiva",
+}
+
+
+def ahora_ar() -> datetime:
+    """Hora de Argentina para lo que ve el usuario (el servidor corre en UTC)."""
+    return datetime.now(ZONA_AR)
+
+
+def _texto(valor) -> str:
+    """Texto cargado por el usuario, listo para un Paragraph de ReportLab.
+
+    Paragraph interpreta "<" y "&" como marcas de formato: sin escapar, el
+    nombre "Pérez & Hijos <SRL>" salía como "Pérez & Hijos" y el cliente
+    "A&B <Consultores>" como "A&B; ". En un documento para el contador el
+    texto tiene que salir exactamente como se cargó.
+    """
+    return escape(str(valor or ""))
 
 
 # ── Recolección de datos ─────────────────────────────────────────────────────
@@ -125,42 +158,70 @@ def _facturacion_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
     }
 
 
-def _pago_monotributo(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
-    # No reuso monotributo_service.verificar_pago_monotributo porque ese siempre
-    # consulta el mes corriente. Acá necesitamos un mes/año arbitrario para que
-    # el reporte de cualquier período sea coherente.
+def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int, hoy: date) -> dict:
+    """Estado fiscal evaluado con la escala que regía en el período.
+
+    No se reusa monotributo_service.verificar_pago_monotributo porque ese
+    consulta siempre el mes corriente con la escala vigente. Para un mes
+    anterior a un cambio de escala (por ejemplo, mayo de 2026, antes del
+    ajuste del 1/8/2026) la cuota y el tope tienen que ser los de ese momento.
+    """
+    from app.services.monotributo_service import TOLERANCIA_CUOTA, escala_vigente_en
+
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario or not usuario.categoria_monotributo:
         return {"tiene_categoria": False}
 
-    cat_letra = usuario.categoria_monotributo.upper()
-    datos_cat = db.query(CategoriaMonotributo).filter(
-        CategoriaMonotributo.letra == cat_letra,
-        CategoriaMonotributo.activa == True,
-    ).first()
-
+    letra = usuario.categoria_monotributo.upper()
+    inicio = date(anio, mes, 1)
+    datos_cat = escala_vigente_en(db, inicio).get(letra)
     if datos_cat is None:
-        return {"tiene_categoria": False}
+        return {"tiene_categoria": True, "categoria": letra, "sin_escala": True}
 
+    cuota = Decimal(datos_cat.cuota_mensual)
     gastos_mes = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.categoria == "Monotributo",
         extract("month", Gasto.fecha) == mes,
         extract("year", Gasto.fecha) == anio,
     ).all()
-
     # Misma regla que monotributo_service.verificar_pago_monotributo: la cuota
-    # cuenta como pagada solo si algún gasto del mes la cubre (tolerancia 1%).
-    from app.services.monotributo_service import TOLERANCIA_CUOTA
-    umbral = float(datos_cat.cuota_mensual) * TOLERANCIA_CUOTA
-    pagado = any(float(g.monto) >= umbral for g in gastos_mes)
+    # está pagada si algún registro del mes la cubre (tolerancia 1 %). Si hay
+    # registros que no alcanzan, es un pago parcial y se informa el mayor.
+    umbral = cuota * Decimal(str(TOLERANCIA_CUOTA))
+    cubre = [g for g in gastos_mes if Decimal(g.monto) >= umbral]
+    if cubre:
+        estado_cuota, registrado = "pagada", max(Decimal(g.monto) for g in cubre)
+    elif gastos_mes:
+        estado_cuota, registrado = "parcial", max(Decimal(g.monto) for g in gastos_mes)
+    else:
+        estado_cuota, registrado = "sin_registrar", None
+
+    # Facturado del año hasta el cierre del período (o hasta hoy, si el
+    # período está en curso), contra el tope de la escala de ese período.
+    fin_periodo = date(anio, mes, monthrange(anio, mes)[1])
+    corte = min(fin_periodo, hoy)
+    desde = datetime(anio, 1, 1, tzinfo=timezone.utc)
+    hasta = datetime(corte.year, corte.month, corte.day, tzinfo=timezone.utc) + timedelta(days=1)
+    facturado = Decimal(sum(i.monto for i in db.query(Ingreso).filter(
+        Ingreso.usuario_id == usuario_id,
+        Ingreso.fecha >= desde,
+        Ingreso.fecha < hasta,
+    ).all()))
+    limite = Decimal(datos_cat.limite_anual)
 
     return {
         "tiene_categoria": True,
-        "categoria": cat_letra,
-        "limite_anual": float(datos_cat.limite_anual),
-        "cuota_mensual": float(datos_cat.cuota_mensual),
-        "pagado": pagado,
+        "categoria": letra,
+        "vigencia": datos_cat.fecha_vigencia,
+        "limite_anual": limite,
+        "cuota_mensual": cuota,
+        "estado_cuota": estado_cuota,
+        "registrado": registrado,
+        "facturado_anio": facturado,
+        "porcentaje_tope": float(facturado / limite * 100) if limite > 0 else 0.0,
+        "corte": corte,
+        "corte_es_fin_de_mes": corte == fin_periodo,
     }
 
 
@@ -186,16 +247,19 @@ def _fmt_pesos(valor) -> str:
 
 
 def _fmt_porcentaje(valor: float) -> str:
-    return f"{valor:.1f}%"
+    # Coma decimal, como los importes: "24,5 %".
+    return f"{valor:.1f}".replace(".", ",") + " %"
 
 
 def _variacion(actual: Decimal, anterior: Decimal) -> str:
     # Si no hay base para comparar, no inventamos una variación.
     if anterior is None or anterior == 0:
         return "—"
-    delta = float((actual - anterior) / anterior * 100)
-    signo = "+" if delta >= 0 else ""
-    return f"{signo}{delta:.1f}%"
+    # Se divide por el valor absoluto: con un balance anterior negativo, pasar
+    # de −$100 a +$100 es una mejora (+200 %), no "−200 %".
+    delta = float((actual - anterior) / abs(anterior) * 100)
+    signo = "+" if delta >= 0 else "−"
+    return f"{signo}{_fmt_porcentaje(abs(delta))}"
 
 
 # ── Construcción del documento ───────────────────────────────────────────────
@@ -231,6 +295,24 @@ def _estilos():
         leading=10,
     ))
     base.add(ParagraphStyle(
+        name="Nota",
+        parent=base["Normal"],
+        fontSize=8,
+        leading=10,
+        textColor=colors.grey,
+        spaceBefore=4,
+    ))
+    base.add(ParagraphStyle(
+        name="Aviso",
+        parent=base["Normal"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#8a5a00"),
+        backColor=colors.HexColor("#fff4d6"),
+        borderPadding=6,
+        spaceAfter=12,
+    ))
+    base.add(ParagraphStyle(
         name="Pie",
         parent=base["Normal"],
         fontSize=8,
@@ -262,15 +344,22 @@ def _tabla_estandar(datos: list[list], col_widths: list = None) -> Table:
     return tabla
 
 
-def _seccion_encabezado(usuario: Usuario, mes: int, anio: int, estilos) -> list:
+def _seccion_encabezado(usuario: Usuario, mes: int, anio: int, generado: datetime, en_curso: bool, estilos) -> list:
     titulo = Paragraph("FreelanceControl — Reporte mensual", estilos["Titulo"])
     sub = Paragraph(
-        f"{usuario.nombre} &nbsp;·&nbsp; "
+        f"{_texto(usuario.nombre)} &nbsp;·&nbsp; "
         f"Período: {MESES_ES[mes]} {anio} &nbsp;·&nbsp; "
-        f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}",
+        f"Generado: {generado.strftime('%d/%m/%Y %H:%M')} (hora de Argentina)",
         estilos["Subtitulo"],
     )
-    return [titulo, sub]
+    partes = [titulo, sub]
+    if en_curso:
+        partes.append(Paragraph(
+            f"<b>Período en curso:</b> datos parciales al {generado.strftime('%d/%m/%Y')}. "
+            f"El reporte del mes completo se genera una vez cerrado el período.",
+            estilos["Aviso"],
+        ))
+    return partes
 
 
 def _seccion_resumen_ejecutivo(actual: dict, previo: dict, estilos) -> list:
@@ -279,7 +368,7 @@ def _seccion_resumen_ejecutivo(actual: dict, previo: dict, estilos) -> list:
     # La comparativa contra el mes anterior es lo más informativo del resumen,
     # por eso va en una columna propia y no como nota al pie.
     filas = [
-        ["Indicador", "Mes actual", "vs mes anterior"],
+        ["Indicador", "Período", "vs mes anterior"],
         ["Total ingresos", _fmt_pesos(actual["total_ingresos"]),
          _variacion(actual["total_ingresos"], previo["total_ingresos"])],
         ["Total gastos", _fmt_pesos(actual["total_gastos"]),
@@ -292,26 +381,50 @@ def _seccion_resumen_ejecutivo(actual: dict, previo: dict, estilos) -> list:
     return [encabezado, tabla]
 
 
-def _seccion_monotributo(pago: dict, estilos) -> list:
+def _seccion_monotributo(fiscal: dict, estilos) -> list:
     encabezado = Paragraph("Estado fiscal — Monotributo", estilos["Seccion"])
 
-    if not pago.get("tiene_categoria"):
+    if not fiscal.get("tiene_categoria"):
+        nota = Paragraph("El usuario no tiene cargada una categoría de Monotributo.", estilos["Normal"])
+        return [encabezado, nota]
+
+    if fiscal.get("sin_escala"):
         nota = Paragraph(
-            "El usuario no tiene cargada una categoría de Monotributo.",
+            f"Categoría declarada: {fiscal['categoria']}. No hay una escala de categorías cargada para "
+            f"este período, por lo que no se evalúan la cuota ni el tope.",
             estilos["Normal"],
         )
         return [encabezado, nota]
 
-    estado_pago = "Pagada" if pago["pagado"] else "Sin registrar"
+    if fiscal["estado_cuota"] == "pagada":
+        cuota_periodo = f"Pagada ({_fmt_pesos(fiscal['registrado'])})"
+    elif fiscal["estado_cuota"] == "parcial":
+        cuota_periodo = f"Parcial: {_fmt_pesos(fiscal['registrado'])} de {_fmt_pesos(fiscal['cuota_mensual'])}"
+    else:
+        cuota_periodo = "Sin registrar"
+
+    etiqueta_facturado = (
+        "Facturado en el año al cierre del período" if fiscal["corte_es_fin_de_mes"]
+        else f"Facturado en el año al {fiscal['corte'].strftime('%d/%m/%Y')}"
+    )
     filas = [
         ["Concepto", "Valor"],
-        ["Categoría actual", pago["categoria"]],
-        ["Límite anual de la categoría", _fmt_pesos(pago["limite_anual"])],
-        ["Cuota mensual", _fmt_pesos(pago["cuota_mensual"])],
-        ["Cuota del período", estado_pago],
+        ["Categoría declarada (actual)", fiscal["categoria"]],
+        ["Escala aplicada", f"vigente desde el {fiscal['vigencia'].strftime('%d/%m/%Y')}"],
+        ["Tope anual de la categoría", _fmt_pesos(fiscal["limite_anual"])],
+        ["Cuota mensual", _fmt_pesos(fiscal["cuota_mensual"])],
+        ["Cuota del período", cuota_periodo],
+        [etiqueta_facturado,
+         f"{_fmt_pesos(fiscal['facturado_anio'])} ({_fmt_porcentaje(fiscal['porcentaje_tope'])} del tope)"],
     ]
-    tabla = _tabla_estandar(filas, col_widths=[8 * cm, 8 * cm])
-    return [encabezado, tabla]
+    tabla = _tabla_estandar(filas, col_widths=[7 * cm, 10 * cm])
+    tabla.setStyle(TableStyle([("ALIGN", (0, 1), (0, -1), "LEFT")]))
+    nota = Paragraph(
+        "La cuota y el tope corresponden a la escala que regía en el período. La categoría es la "
+        "declarada hoy en la aplicación.",
+        estilos["Nota"],
+    )
+    return [encabezado, tabla, nota]
 
 
 def _seccion_categorias(rows: list[dict], estilos) -> list:
@@ -354,28 +467,32 @@ def _seccion_facturacion(fact: dict, estilos) -> list:
 
 
 def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
-    encabezado = Paragraph("Auditoría — alertas pendientes", estilos["Seccion"])
+    encabezado = Paragraph("Auditoría — alertas pendientes al generar el reporte", estilos["Seccion"])
 
     if not alertas:
         return [encabezado, Paragraph("Sin alertas pendientes al momento de generar el reporte.", estilos["Normal"])]
 
+    def etiqueta(tipo):
+        return ETIQUETA_ALERTA.get(tipo, tipo.value.replace("_", " ").capitalize())
+
     # Conteo por tipo para el bloque resumen.
-    from collections import Counter
-    conteo = Counter(a.tipo.value for a in alertas)
+    conteo: dict = {}
+    for a in alertas:
+        conteo[etiqueta(a.tipo)] = conteo.get(etiqueta(a.tipo), 0) + 1
     resumen_lineas = [["Tipo", "Cantidad"]] + [[t, str(c)] for t, c in conteo.items()]
     tabla_resumen = _tabla_estandar(resumen_lineas, col_widths=[10 * cm, 4 * cm])
+    tabla_resumen.setStyle(TableStyle([("ALIGN", (0, 1), (0, -1), "LEFT")]))
 
     # Listado detallado: las descripciones son visibles porque el PDF es para
     # el dueño de los datos. La política de no exponer texto libre aplica solo
     # a transmisiones a servicios externos.
     detalle_lineas = [["Tipo", "Detalle", "Monto"]]
-    for a in alertas[:20]:  # cap visual razonable: si hay más, se ve en la app.
+    for a in alertas[:MAX_ALERTAS_DETALLE]:
         # Paragraph (no string plano) para que ReportLab haga wrap dentro de
         # la columna: un string largo desborda la celda y pisa la de Monto.
-        descripcion = a.descripcion or ""
         detalle_lineas.append([
-            a.tipo.value,
-            Paragraph(descripcion, estilos["Celda"]),
+            Paragraph(_texto(etiqueta(a.tipo)), estilos["Celda"]),
+            Paragraph(_texto(a.descripcion), estilos["Celda"]),
             _fmt_pesos(a.monto_involucrado) if a.monto_involucrado else "—",
         ])
     tabla_detalle = _tabla_estandar(detalle_lineas, col_widths=[4 * cm, 9 * cm, 3 * cm])
@@ -384,7 +501,15 @@ def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
         ("FONTSIZE", (0, 0), (-1, -1), 8),
     ]))
 
-    return [encabezado, tabla_resumen, Spacer(1, 0.3 * cm), tabla_detalle]
+    partes = [encabezado, tabla_resumen, Spacer(1, 0.3 * cm), tabla_detalle]
+    restantes = len(alertas) - MAX_ALERTAS_DETALLE
+    if restantes > 0:
+        partes.append(Paragraph(
+            f"Y {restantes} alerta{'s' if restantes != 1 else ''} más: el detalle completo está en la "
+            f"sección Auditoría de la aplicación.",
+            estilos["Nota"],
+        ))
+    return partes
 
 
 def _seccion_pie(estilos) -> list:
@@ -420,11 +545,15 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
     else:
         mes_prev, anio_prev = mes - 1, anio
 
+    generado = ahora_ar()
+    hoy = generado.date()
+    en_curso = (anio, mes) == (hoy.year, hoy.month)
+
     actual = _totales_mes(db, usuario_id, mes, anio)
     previo = _totales_mes(db, usuario_id, mes_prev, anio_prev)
     cats = _gastos_por_categoria(db, usuario_id, mes, anio)
     fact = _facturacion_mes(db, usuario_id, mes, anio)
-    pago = _pago_monotributo(db, usuario_id, mes, anio)
+    fiscal = _estado_fiscal_periodo(db, usuario_id, mes, anio, hoy)
     alertas = _alertas_pendientes(db, usuario_id)
 
     # SimpleDocTemplate escribe a un buffer en memoria; después devolvemos
@@ -444,9 +573,9 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
     estilos = _estilos()
 
     historia = []
-    historia += _seccion_encabezado(usuario, mes, anio, estilos)
+    historia += _seccion_encabezado(usuario, mes, anio, generado, en_curso, estilos)
     historia += _seccion_resumen_ejecutivo(actual, previo, estilos)
-    historia += _seccion_monotributo(pago, estilos)
+    historia += _seccion_monotributo(fiscal, estilos)
     historia += _seccion_categorias(cats, estilos)
     historia += _seccion_facturacion(fact, estilos)
     historia += _seccion_auditoria(alertas, estilos)

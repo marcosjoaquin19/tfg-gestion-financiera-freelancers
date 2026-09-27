@@ -11,7 +11,7 @@ monotributo y también el de auditoría (para la alerta de monotributo impago).
 import logging
 from datetime import datetime, timezone
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import extract
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
@@ -32,11 +32,35 @@ CATEGORIAS_ORDEN = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
 
 
 def get_categoria(db: Session, letra: str) -> CategoriaMonotributo | None:
+    """Categoría de la escala VIGENTE (la activa). Para evaluar un período
+    pasado se usa escala_vigente_en()."""
     return (
         db.query(CategoriaMonotributo)
         .filter(CategoriaMonotributo.letra == letra.upper(), CategoriaMonotributo.activa == True)
+        .order_by(CategoriaMonotributo.fecha_vigencia.desc())
         .first()
     )
+
+
+def escala_vigente_en(db: Session, fecha, actividad: str = "servicios") -> dict[str, CategoriaMonotributo]:
+    """Escala que regía en `fecha`: la de fecha de vigencia más reciente que no
+    sea posterior a esa fecha, como {letra: categoría}. Vacía si para esa
+    fecha no hay ninguna escala cargada (no se inventa una)."""
+    vigencia = (
+        db.query(func.max(CategoriaMonotributo.fecha_vigencia))
+        .filter(
+            CategoriaMonotributo.actividad == actividad,
+            CategoriaMonotributo.fecha_vigencia <= fecha,
+        )
+        .scalar()
+    )
+    if vigencia is None:
+        return {}
+    filas = db.query(CategoriaMonotributo).filter(
+        CategoriaMonotributo.actividad == actividad,
+        CategoriaMonotributo.fecha_vigencia == vigencia,
+    ).all()
+    return {f.letra: f for f in filas}
 
 
 def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:

@@ -293,14 +293,14 @@ class TipoAlerta(str, Enum):
 | Columna | Tipo | Restricciones |
 |---|---|---|
 | id | Integer | PK |
-| letra | String(2) | UNIQUE, index, NOT NULL |
+| letra | String(2) | index, NOT NULL (único junto con actividad + fecha_vigencia) |
 | limite_anual | Numeric(15,2) | NOT NULL |
 | cuota_mensual | Numeric(12,2) | NOT NULL |
 | actividad | String(20) | NOT NULL, default="servicios" |
 | fecha_vigencia | Date | NOT NULL |
 | activa | Boolean | NOT NULL, default=True |
 
-**Datos seed:** Categorías A–K (servicios), vigencia 2026-02-01, límites desde $10M hasta $108M anuales.
+**Datos seed:** catálogo versionado (migración 0012). Escala vigente de febrero a julio de 2026 (Tabla 18, histórica, `activa=false`, límites de $10,3M a $108,4M) y escala vigente desde el 1/8/2026 (Tabla 19, `activa=true`, de $12,0M a $126,6M). El estado fiscal usa la activa; el reporte PDF de cada mes usa la que regía en ese mes.
 
 ---
 
