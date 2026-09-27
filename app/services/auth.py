@@ -30,6 +30,13 @@ from app.models.usuario import Usuario
 import os
 # para leer las variables de entorno (SECRET_KEY, etc.)
 
+import logging
+logging.getLogger("passlib").setLevel(logging.ERROR)
+# passlib 1.7 busca bcrypt.__about__, que las versiones nuevas de bcrypt ya no
+# traen, y lo avisa con un traceback "(trapped) error reading bcrypt version".
+# El hash funciona igual: se silencia para que el aviso no parezca un error
+# al correr los seeds o al leer los logs.
+
 
 # -------------------------------------------------------------------
 # CONFIGURACIÓN DE BCRYPT

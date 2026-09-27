@@ -27,7 +27,7 @@ const SIDEBAR_SECTIONS = [
     ],
   },
   {
-    title: 'INTELIGENCIA IA',
+    title: 'INTELIGENCIA ARTIFICIAL',
     items: [
       { label: 'Clasificador',    route: '/clasificador' },
       { label: 'Estado ML',       route: '/clasificador' },

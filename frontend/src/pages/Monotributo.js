@@ -21,6 +21,11 @@ function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// Porcentajes con coma decimal, como el resto de la app ("84,4").
+function fmtPct(n) {
+  return Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 1 });
+}
+
 const ESTADO_COLORS = {
   verde:    { fondo: '#0d1f0d', borde: '#1a4d1a', color: '#4ade80' },
   amarillo: { fondo: '#1f1a0d', borde: '#4d3d1a', color: '#fbbf24' },
@@ -303,7 +308,7 @@ export default function Monotributo() {
             {' facturado de '}
             <strong>${fmt(estado.limite_anual)}</strong>
             {' anuales '}
-            <span style={{ color: '#64748b' }}>({estado.porcentaje_usado}%)</span>
+            <span style={{ color: '#64748b' }}>({fmtPct(estado.porcentaje_usado)}%)</span>
           </p>
         </div>
 
@@ -326,7 +331,7 @@ export default function Monotributo() {
           </p>
           <p style={{ margin: 0, fontSize: '13px', color: '#e2e8f0' }}>Proyección anual</p>
           <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
-            {estado.porcentaje_proyectado}% del límite al cierre del año
+            {fmtPct(estado.porcentaje_proyectado)}% del límite al cierre del año
             {estado.meses_estimados_con_promedio > 0 &&
               ` · ${estado.meses_estimados_con_promedio} ${estado.meses_estimados_con_promedio === 1 ? 'mes estimado' : 'meses estimados'} con el promedio proyectado`}
           </p>
@@ -351,7 +356,7 @@ export default function Monotributo() {
             ) : (
               <>
                 <p style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 600, color: colores.color }}>Este año no lo superarías</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Pero quedás cerca: {estado.porcentaje_proyectado}% del límite</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Pero quedás cerca: {fmtPct(estado.porcentaje_proyectado)}% del límite</p>
               </>
             );
             return (
@@ -382,7 +387,7 @@ export default function Monotributo() {
             ) : estado.mes_limite ? (
               <>A este ritmo de facturación superarías el límite de <strong>Categoría {estado.categoria_actual}</strong> en <strong>{estado.mes_limite}</strong>.</>
             ) : (
-              <>Tu proyección anual llega al <strong>{estado.porcentaje_proyectado}%</strong> del límite de <strong>Categoría {estado.categoria_actual}</strong>: este año no lo superarías, pero estás cerca.</>
+              <>Tu proyección anual llega al <strong>{fmtPct(estado.porcentaje_proyectado)}%</strong> del límite de <strong>Categoría {estado.categoria_actual}</strong>: este año no lo superarías, pero estás cerca.</>
             )}
             {estado.excede_regimen ? (
               <>

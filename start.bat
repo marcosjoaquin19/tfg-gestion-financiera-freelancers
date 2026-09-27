@@ -21,6 +21,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM La SECRET_KEY se arma con numeros al azar en cada equipo: la API no
+REM arranca con una clave fija o publica (ni con menos de 32 caracteres).
 if not exist .env (
   echo -^> Generando archivo .env ...
   (
@@ -28,7 +30,7 @@ if not exist .env (
     echo POSTGRES_USER=marcos
     echo POSTGRES_PASSWORD=marcos123
     echo POSTGRES_DB=tfg_freelancers
-    echo SECRET_KEY=clave_demo_freelancecontrol_cambiar_si_se_usa_en_serio
+    echo SECRET_KEY=freelancecontrol_local_%RANDOM%%RANDOM%%RANDOM%%RANDOM%_%RANDOM%%RANDOM%%RANDOM%%RANDOM%_%RANDOM%%RANDOM%%RANDOM%%RANDOM%
     echo ALGORITHM=HS256
     echo ACCESS_TOKEN_EXPIRE_MINUTES=10080
     echo GROQ_API_KEY=

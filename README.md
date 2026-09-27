@@ -3,7 +3,8 @@
 Aplicación web para que un trabajador independiente (monotributista en Argentina)
 lleve el control de sus **ingresos, gastos y facturas**, reciba **alertas de
 auditoría**, **proyecte sus finanzas**, controle su **categoría de Monotributo**
-y obtenga un **resumen y recomendaciones** asistidos por IA. Incluye un
+y obtenga un **resumen del mes asistido por IA** y **recomendaciones** calculadas
+con reglas sobre sus propios datos. Incluye un
 **clasificador de gastos** basado en aprendizaje automático (NLP) que corre 100 %
 de forma local.
 
