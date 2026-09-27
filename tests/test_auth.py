@@ -56,7 +56,7 @@ def test_login_password_incorrecto(client, usuario_registrado):
     })
     assert response.status_code == 401
     # el mensaje no debe revelar si el email existe o no
-    assert response.json()["detail"] == "Email o password incorrectos"
+    assert response.json()["detail"] == "Email o contraseña incorrectos"
 
 
 def test_login_email_inexistente(client):
@@ -65,7 +65,7 @@ def test_login_email_inexistente(client):
         "password": "password123"
     })
     assert response.status_code == 401
-    assert response.json()["detail"] == "Email o password incorrectos"
+    assert response.json()["detail"] == "Email o contraseña incorrectos"
 
 
 def test_register_nombre_demasiado_largo(client):

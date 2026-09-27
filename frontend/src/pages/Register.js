@@ -140,14 +140,17 @@ export default function Register() {
       <div style={styles.card}>
         <div style={styles.header}>
           <div style={styles.dot} />
-          <h1 style={styles.title}>Gestión Financiera</h1>
+          <h1 style={styles.title}>FreelanceControl</h1>
         </div>
+        <p style={{ margin: '-4px 0 14px 18px', fontSize: '12px', color: '#475569' }}>Gestión financiera para monotributistas</p>
         <p style={styles.subtitle}>Creá tu cuenta</p>
 
         <form onSubmit={handleSubmit}>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Nombre</label>
+            <label htmlFor="registro-nombre" style={styles.label}>Nombre</label>
             <input
+              id="registro-nombre"
+              autoComplete="name"
               type="text"
               placeholder="Tu nombre"
               value={nombre}
@@ -159,8 +162,10 @@ export default function Register() {
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Email</label>
+            <label htmlFor="registro-email" style={styles.label}>Email</label>
             <input
+              id="registro-email"
+              autoComplete="email"
               type="email"
               placeholder="tu@email.com"
               value={email}
@@ -172,8 +177,10 @@ export default function Register() {
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Contraseña</label>
+            <label htmlFor="registro-password" style={styles.label}>Contraseña</label>
             <input
+              id="registro-password"
+              autoComplete="new-password"
               type="password"
               placeholder="••••••••"
               value={password}
@@ -185,7 +192,7 @@ export default function Register() {
             />
           </div>
 
-          {error && <p style={styles.error}>{error}</p>}
+          {error && <p role="alert" style={styles.error}>{error}</p>}
 
           <button type="submit" style={styles.button} disabled={loading}>
             {loading ? 'Creando cuenta...' : 'Crear cuenta'}

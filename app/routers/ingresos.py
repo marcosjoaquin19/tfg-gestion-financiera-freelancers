@@ -12,7 +12,8 @@ disparar un cambio de categoría de Monotributo que no corresponde.
 
 Endpoints:
   POST   /ingresos/      → registra un ingreso nuevo.
-  GET    /ingresos/      → lista con filtros (categoría, paginación).
+  GET    /ingresos/      → lista con filtros (categoría, mes y año, paginación).
+  GET    /ingresos/meses → meses con ingresos, para el selector de la pantalla.
   GET    /ingresos/{id}  → devuelve un ingreso.
   PUT    /ingresos/{id}  → edita un ingreso.
   DELETE /ingresos/{id}  → elimina un ingreso.
@@ -21,12 +22,15 @@ Endpoints:
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 # Query → para parámetros opcionales de query string, ej: ?categoria=Desarrollo&limite=20
 
+from datetime import datetime, timezone
+
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
-from app.schemas.ingreso import IngresoCreate, IngresoResponse
+from app.schemas.ingreso import IngresoCreate, IngresoResponse, MesConIngresos
 from app.dependencies import get_current_user
 from app.services.duplicados_ingreso import (
     _actualizar_marca_duplicado,
@@ -96,6 +100,10 @@ def listar_ingresos(
     solo_duplicados: bool = Query(default=False),
     # ?solo_duplicados=true → devuelve únicamente los marcados como repetidos,
     # el mismo filtro que ofrece el listado de gastos
+    mes: int | None = Query(default=None, ge=1, le=12),
+    anio: int | None = Query(default=None, ge=2000, le=2100),
+    # ?mes=9&anio=2026 → solo los ingresos de ese mes, como en gastos: la
+    # pantalla lista mes por mes y ninguna consulta se acerca al tope de 200.
     limite: int = Query(default=50, ge=1, le=200),
     # ?limite=20 → cuántos resultados devolver, entre 1 y 200
     offset: int = Query(default=0, ge=0),
@@ -103,8 +111,21 @@ def listar_ingresos(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    if (mes is None) != (anio is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Para filtrar por mes hay que indicar el mes y el año juntos",
+        )
+
     query = db.query(Ingreso).filter(Ingreso.usuario_id == current_user.id)
     # filtramos siempre por usuario → cada uno solo ve sus propios ingresos
+
+    if mes is not None:
+        # Rango [día 1 del mes, día 1 del mes siguiente), en UTC, que es como
+        # se guardan y se muestran las fechas.
+        desde = datetime(anio, mes, 1, tzinfo=timezone.utc)
+        hasta = datetime(anio + (mes == 12), mes % 12 + 1, 1, tzinfo=timezone.utc)
+        query = query.filter(Ingreso.fecha >= desde, Ingreso.fecha < hasta)
 
     if categoria:
         query = query.filter(Ingreso.categoria == categoria)
@@ -117,6 +138,32 @@ def listar_ingresos(
     # order_by fecha descendente → los más recientes primero
 
     return ingresos
+
+
+# -------------------------------------------------------------------
+# GET /ingresos/meses
+# Meses con ingresos (para el selector de la pantalla). Va antes de
+# /{ingreso_id} para que "meses" no se lea como un id.
+# -------------------------------------------------------------------
+@router.get("/meses", response_model=list[MesConIngresos])
+def listar_meses_con_ingresos(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    anio = extract("year", Ingreso.fecha)
+    mes = extract("month", Ingreso.fecha)
+    filas = (
+        db.query(anio.label("anio"), mes.label("mes"),
+                 func.count(Ingreso.id), func.sum(Ingreso.monto))
+        .filter(Ingreso.usuario_id == current_user.id)
+        .group_by(anio, mes)
+        .order_by(anio.desc(), mes.desc())
+        .all()
+    )
+    return [
+        MesConIngresos(anio=int(a), mes=int(m), cantidad=c, total=float(t or 0))
+        for a, m, c, t in filas
+    ]
 
 
 # -------------------------------------------------------------------

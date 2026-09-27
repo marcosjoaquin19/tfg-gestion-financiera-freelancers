@@ -37,26 +37,38 @@ const SIDEBAR_SECTIONS = [
   },
 ];
 
+// Botón (no un div): así el menú se recorre con Tab y se activa con Enter,
+// y los lectores de pantalla lo anuncian como navegación.
 function SidebarItem({ label, active, onClick }) {
   const [hover, setHover] = useState(false);
+  const [foco, setFoco] = useState(false);
+  const resaltado = hover || foco;
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setFoco(true)}
+      onBlur={() => setFoco(false)}
+      aria-current={active ? 'page' : undefined}
       style={{
+        display: 'block', width: '100%', textAlign: 'left',
+        border: 'none', fontFamily: 'inherit',
         padding: '8px 16px',
         fontSize: '13px',
         cursor: 'pointer',
         borderLeft: active ? '2px solid #3b82f6' : '2px solid transparent',
-        color: active ? '#93c5fd' : hover ? '#e2e8f0' : '#64748b',
-        background: active ? '#0f1e35' : hover ? '#1e293b' : 'transparent',
+        color: active ? '#93c5fd' : resaltado ? '#e2e8f0' : '#64748b',
+        background: active ? '#0f1e35' : resaltado ? '#1e293b' : 'transparent',
+        outline: foco ? '1px solid #3b82f6' : 'none',
+        outlineOffset: '-1px',
         transition: 'all 0.1s',
         userSelect: 'none',
       }}
     >
       {label}
-    </div>
+    </button>
   );
 }
 
@@ -82,9 +94,10 @@ export default function Layout({ children, activeSection }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} />
-          <p style={{ margin: 0, fontSize: '15px', fontWeight: 500, color: '#f8fafc' }}>
-            Gestión Financiera
+          <p style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
+            FreelanceControl
           </p>
+          <span style={{ fontSize: '12px', color: '#475569' }}>Gestión financiera para monotributistas</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span style={{ fontSize: '13px', color: '#64748b' }}>{userEmail}</span>
@@ -105,7 +118,7 @@ export default function Layout({ children, activeSection }) {
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* Sidebar */}
-        <div style={{
+        <nav aria-label="Menú principal" style={{
           width: '200px', minWidth: '200px',
           background: '#161b27', borderRight: '1px solid #1e293b',
           overflowY: 'auto', padding: '16px 0',
@@ -129,12 +142,12 @@ export default function Layout({ children, activeSection }) {
               ))}
             </div>
           ))}
-        </div>
+        </nav>
 
         {/* Main */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {children}
-        </div>
+        </main>
       </div>
     </div>
   );

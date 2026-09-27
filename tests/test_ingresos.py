@@ -285,3 +285,44 @@ def test_crear_ingreso_monto_nan_no_se_guarda(client, auth_headers):
     )
     assert response.status_code == 422
     assert client.get("/ingresos/", headers=auth_headers).json() == []
+
+
+# ── Listado mes por mes (como en gastos) ──────────────────────────────────────
+
+def _ingreso_en(client, headers, fecha, monto=1000):
+    r = client.post("/ingresos/", json={"descripcion": "Cobro", "monto": monto, "categoria": "Servicios",
+                                        "fecha": f"{fecha}T12:00:00"}, headers=headers)
+    assert r.status_code == 201, r.text
+
+
+def test_filtra_ingresos_por_mes(client, auth_headers):
+    _ingreso_en(client, auth_headers, "2026-07-31")
+    _ingreso_en(client, auth_headers, "2026-08-01", 2000)
+    _ingreso_en(client, auth_headers, "2026-08-31", 3000)
+    _ingreso_en(client, auth_headers, "2026-09-01")
+    data = client.get("/ingresos/?mes=8&anio=2026", headers=auth_headers).json()
+    assert sorted(i["monto"] for i in data) == [2000, 3000]
+
+
+def test_mes_sin_anio_se_rechaza(client, auth_headers):
+    r = client.get("/ingresos/?mes=8", headers=auth_headers)
+    assert r.status_code == 422
+    assert r.json()["detail"] == "Para filtrar por mes hay que indicar el mes y el año juntos"
+
+
+def test_meses_con_ingresos(client, auth_headers):
+    _ingreso_en(client, auth_headers, "2026-08-05", 2000)
+    _ingreso_en(client, auth_headers, "2026-08-20", 3000)
+    _ingreso_en(client, auth_headers, "2026-06-10", 500)
+    data = client.get("/ingresos/meses", headers=auth_headers).json()
+    assert data == [
+        {"anio": 2026, "mes": 8, "cantidad": 2, "total": 5000.0},
+        {"anio": 2026, "mes": 6, "cantidad": 1, "total": 500.0},
+    ]
+
+
+def test_meses_no_incluye_ingresos_de_otro_usuario(client, auth_headers):
+    _ingreso_en(client, auth_headers, "2026-08-05")
+    client.post("/auth/register", json={"nombre": "Otra", "email": "otra_meses@test.com", "password": "Prueba1234"})
+    token = client.post("/auth/login", data={"username": "otra_meses@test.com", "password": "Prueba1234"}).json()["access_token"]
+    assert client.get("/ingresos/meses", headers={"Authorization": f"Bearer {token}"}).json() == []

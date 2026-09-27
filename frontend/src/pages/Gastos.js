@@ -542,7 +542,7 @@ export default function Gastos() {
               }}
             >
               <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span title={gasto.descripcion} style={{ fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {gasto.descripcion}
                 </span>
                 {gasto.es_duplicado && (

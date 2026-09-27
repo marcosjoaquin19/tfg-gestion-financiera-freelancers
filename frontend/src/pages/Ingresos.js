@@ -8,6 +8,10 @@
  * repetida del mismo cobro, y ofrece el filtro "Solo duplicados" para
  * revisarlos: un ingreso contado dos veces infla la facturación anual que
  * mira el semáforo del Monotributo.
+ *
+ * Igual que Gastos, la lista se muestra mes por mes (por defecto, el mes en
+ * curso): así la consulta nunca choca con el tope de 200 filas de la API y los
+ * ingresos más viejos no desaparecen de la lista sin aviso.
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
@@ -18,6 +22,28 @@ const CATEGORIAS = [
   'Consultoría', 'Marketing Digital', 'Redacción y Contenido',
   'Soporte y Mantenimiento', 'Capacitación', 'Servicios', 'Otros',
 ];
+
+const MESES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+// Máximo de filas que devuelve la API por consulta (ver routers/ingresos.py).
+const LIMITE_API = 200;
+const TODOS = 'todos';
+
+// Clave de período "AAAA-MM", la misma que usa el selector.
+function clavePeriodo(anio, mes) {
+  return `${anio}-${String(mes).padStart(2, '0')}`;
+}
+
+function nombrePeriodo(clave) {
+  const [anio, mes] = clave.split('-').map(Number);
+  return `${MESES[mes - 1]} ${anio}`;
+}
+
+const hoy = new Date();
+const PERIODO_ACTUAL = clavePeriodo(hoy.getFullYear(), hoy.getMonth() + 1);
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -73,6 +99,10 @@ function DeleteBtn({ onDelete }) {
 export default function Ingresos() {
   const [ingresos, setIngresos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
+  // Mes que se está mirando ("AAAA-MM" o TODOS) y meses que tienen ingresos.
+  const [periodo, setPeriodo] = useState(PERIODO_ACTUAL);
+  const [meses, setMeses] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState('');
@@ -91,19 +121,31 @@ export default function Ingresos() {
     descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO(),
   });
 
-  async function fetchIngresos() {
+  async function fetchIngresos(periodoElegido = periodo) {
     setLoading(true);
+    setErrorCarga('');
+    const params = { limite: LIMITE_API };
+    if (periodoElegido !== TODOS) {
+      const [anio, mes] = periodoElegido.split('-').map(Number);
+      params.anio = anio;
+      params.mes = mes;
+    }
     try {
-      const res = await api.get('/ingresos/', { params: { limite: 200 } });
-      setIngresos(res.data);
-    } catch (_) {
+      const [resIngresos, resMeses] = await Promise.all([
+        api.get('/ingresos/', { params }),
+        api.get('/ingresos/meses'),
+      ]);
+      setIngresos(resIngresos.data);
+      setMeses(resMeses.data);
+    } catch (err) {
       setIngresos([]);
+      setErrorCarga(extraerMensajeError(err, 'No se pudieron cargar los ingresos'));
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { fetchIngresos(); }, []);
+  useEffect(() => { fetchIngresos(periodo); }, [periodo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleFormChange(e) {
     if (e.target.name === 'monto') setFormError('');
@@ -158,7 +200,14 @@ export default function Ingresos() {
       );
       setShowForm(false);
       setForm({ descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO() });
-      await fetchIngresos();
+      // Si el ingreso es de otro mes, saltamos a ese mes para que se vea
+      // recién cargado en lugar de pensar que no se guardó.
+      const periodoDelIngreso = form.fecha.slice(0, 7);
+      if (periodo !== TODOS && periodoDelIngreso !== periodo) {
+        setPeriodo(periodoDelIngreso);
+      } else {
+        await fetchIngresos();
+      }
     } catch (err) {
       const detail = err.response?.data?.detail;
       if (Array.isArray(detail)) {
@@ -175,7 +224,9 @@ export default function Ingresos() {
     if (!window.confirm('¿Eliminar este ingreso?')) return;
     try {
       await api.delete(`/ingresos/${id}`);
-      setIngresos((prev) => prev.filter((i) => i.id !== id));
+      // Recargamos: borrar puede cambiar la marca de duplicado de otro
+      // ingreso y el conteo del selector de meses.
+      await fetchIngresos();
     } catch (err) {
       window.alert(extraerMensajeError(err, 'No se pudo eliminar el ingreso'));
     }
@@ -214,6 +265,22 @@ export default function Ingresos() {
     // Desempate final: fecha exacta, más reciente primero.
     return new Date(b.fecha) - new Date(a.fecha);
   });
+
+  // Opciones del selector: el mes en curso siempre (aunque todavía no tenga
+  // ingresos, porque es donde se carga lo nuevo) y después los meses con datos.
+  const opcionesPeriodo = meses.map((m) => ({
+    clave: clavePeriodo(m.anio, m.mes), cantidad: m.cantidad,
+  }));
+  if (!opcionesPeriodo.some((o) => o.clave === PERIODO_ACTUAL)) {
+    opcionesPeriodo.unshift({ clave: PERIODO_ACTUAL, cantidad: 0 });
+  }
+  if (periodo !== TODOS && !opcionesPeriodo.some((o) => o.clave === periodo)) {
+    opcionesPeriodo.push({ clave: periodo, cantidad: 0 });
+  }
+  opcionesPeriodo.sort((a, b) => b.clave.localeCompare(a.clave));
+
+  const totalPeriodo = ingresos.reduce((s, i) => s + Number(i.monto || 0), 0);
+  const tituloPeriodo = periodo === TODOS ? 'Todos los meses' : nombrePeriodo(periodo);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -318,8 +385,21 @@ export default function Ingresos() {
       )}
 
       {/* Filtros */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <select
+          aria-label="Mes"
+          value={periodo} onChange={(e) => setPeriodo(e.target.value)}
+          style={{ ...inputStyle, width: 'auto', minWidth: '200px', cursor: 'pointer' }}
+        >
+          {opcionesPeriodo.map((o) => (
+            <option key={o.clave} value={o.clave}>
+              {nombrePeriodo(o.clave)} ({o.cantidad})
+            </option>
+          ))}
+          <option value={TODOS}>Todos los meses</option>
+        </select>
+        <select
+          aria-label="Categoría"
           value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}
           style={{ ...inputStyle, width: 'auto', minWidth: '180px', cursor: 'pointer' }}
         >
@@ -352,6 +432,23 @@ export default function Ingresos() {
         </div>
       )}
 
+      {/* Resumen del período elegido */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '15px', fontWeight: 500, color: '#e2e8f0' }}>{tituloPeriodo}</span>
+        <span style={{ fontSize: '13px', color: '#64748b' }}>
+          {ingresos.length} {ingresos.length === 1 ? 'ingreso' : 'ingresos'} · Total{' '}
+          <strong style={{ color: '#4ade80' }}>{fmtMonto(totalPeriodo)}</strong>
+        </span>
+      </div>
+      {periodo === TODOS && ingresos.length >= LIMITE_API && (
+        <p style={{ fontSize: '12px', color: '#fbbf24', margin: '0 0 10px 0' }}>
+          Se muestran los {LIMITE_API} ingresos más recientes. Elegí un mes para ver los anteriores.
+        </p>
+      )}
+      {errorCarga && (
+        <p role="alert" style={{ fontSize: '13px', color: '#f87171', margin: '0 0 10px 0' }}>{errorCarga}</p>
+      )}
+
       {/* Tabla */}
       <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
         {/* Header */}
@@ -374,7 +471,7 @@ export default function Ingresos() {
           </div>
         ) : ingresosOrdenados.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: '#475569', fontSize: '14px' }}>
-            No hay ingresos registrados
+            {periodo !== TODOS ? `No hay ingresos registrados en ${tituloPeriodo}` : 'No hay ingresos registrados'}
           </div>
         ) : (
           ingresosOrdenados.map((ingreso, idx) => (
@@ -387,7 +484,7 @@ export default function Ingresos() {
               }}
             >
               <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span title={ingreso.descripcion} style={{ fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {ingreso.descripcion}
                 </span>
                 {ingreso.es_duplicado && (

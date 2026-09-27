@@ -35,7 +35,7 @@ def ejecutar_auditoria_endpoint(
     conteo = ejecutar_auditoria(db, usuario_id=current_user.id)
     total = sum(conteo.values())
     return {
-        "mensaje": f"Auditoría completada. {total} alertas generadas.",
+        "mensaje": f"Auditoría completada. {total} {'alerta generada' if total == 1 else 'alertas generadas'}.",
         "detalle": conteo,
     }
 

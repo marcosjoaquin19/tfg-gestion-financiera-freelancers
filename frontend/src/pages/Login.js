@@ -71,6 +71,15 @@ const styles = {
     cursor: 'pointer',
     marginTop: '8px',
   },
+  aviso: {
+    background: '#1f1a0d',
+    border: '1px solid #4d3d1a',
+    color: '#fbbf24',
+    borderRadius: '8px',
+    padding: '10px 12px',
+    fontSize: '13px',
+    margin: '0 0 16px 0',
+  },
   error: {
     color: '#f87171',
     fontSize: '13px',
@@ -105,6 +114,13 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Si se llegó acá porque la API respondió 401 (ver api.js), se explica por
+  // qué. La marca se lee una sola vez y se borra.
+  const [sesionExpirada] = useState(() => {
+    const marca = sessionStorage.getItem('sesionExpirada') === '1';
+    sessionStorage.removeItem('sesionExpirada');
+    return marca;
+  });
   const navigate = useNavigate();
 
   // Envía las credenciales al backend y maneja el resultado del login.
@@ -138,14 +154,23 @@ export default function Login() {
       <div style={styles.card}>
         <div style={styles.header}>
           <div style={styles.dot} />
-          <h1 style={styles.title}>Gestión Financiera</h1>
+          <h1 style={styles.title}>FreelanceControl</h1>
         </div>
+        <p style={{ margin: '-4px 0 14px 18px', fontSize: '12px', color: '#475569' }}>Gestión financiera para monotributistas</p>
         <p style={styles.subtitle}>Ingresá a tu cuenta</p>
+
+        {sesionExpirada && (
+          <p role="status" style={styles.aviso}>
+            Tu sesión expiró. Ingresá de nuevo para continuar.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Email</label>
+            <label htmlFor="login-email" style={styles.label}>Email</label>
             <input
+              id="login-email"
+              autoComplete="email"
               type="email"
               placeholder="tu@email.com"
               value={email}
@@ -157,8 +182,10 @@ export default function Login() {
             />
           </div>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Contraseña</label>
+            <label htmlFor="login-password" style={styles.label}>Contraseña</label>
             <input
+              id="login-password"
+              autoComplete="current-password"
               type="password"
               placeholder="••••••••"
               value={password}
@@ -170,7 +197,7 @@ export default function Login() {
             />
           </div>
 
-          {error && <p style={styles.error}>{error}</p>}
+          {error && <p role="alert" style={styles.error}>{error}</p>}
 
           <button type="submit" style={styles.button} disabled={loading}>
             {loading ? 'Ingresando...' : 'Ingresar'}

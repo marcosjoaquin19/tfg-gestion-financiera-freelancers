@@ -477,10 +477,10 @@ export default function Facturas() {
                     borderBottom: (idx < facturasFiltradas.length - 1 || isPagando) ? '1px solid #1e293b' : 'none',
                   }}
                 >
-                  <div style={{ padding: '12px 16px', fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div title={factura.cliente_nombre} style={{ padding: '12px 16px', fontSize: '14px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {factura.cliente_nombre}
                   </div>
-                  <div style={{ padding: '12px 16px', fontSize: '13px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div title={factura.descripcion} style={{ padding: '12px 16px', fontSize: '13px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {factura.descripcion}
                   </div>
                   <div style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
@@ -498,7 +498,9 @@ export default function Facturas() {
                     </span>
                   </div>
                   <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    {factura.estado === 'pendiente' && (
+                    {/* Pendiente o vencida: una vencida se puede cobrar tarde
+                        (la API permite vencida → pagada). */}
+                    {(factura.estado === 'pendiente' || factura.estado === 'vencida') && (
                       <button
                         onClick={() => { setPagandoId(isPagando ? null : factura.id); setFechaPago(todayISO()); }}
                         style={{

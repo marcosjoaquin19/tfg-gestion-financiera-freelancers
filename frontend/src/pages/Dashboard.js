@@ -26,14 +26,28 @@ function periodosReporte(hoy) {
   return lista;
 }
 
+// Ancho de la ventana, para elegir cuántas tarjetas van por fila.
+function useAnchoVentana() {
+  const [ancho, setAncho] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const alCambiar = () => setAncho(window.innerWidth);
+    window.addEventListener('resize', alCambiar);
+    return () => window.removeEventListener('resize', alCambiar);
+  }, []);
+  return ancho;
+}
+
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function MetricCard({ value, label, color, pct }) {
   return (
-    <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
-      <p style={{ fontSize: '24px', fontWeight: 600, margin: '0 0 4px 0', color }}>${fmt(value)}</p>
+    <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px', minWidth: 0 }}>
+      {/* El tamaño se adapta al ancho para que un monto largo no se corte. */}
+      <p style={{ fontSize: 'clamp(18px, 1.9vw, 24px)', fontWeight: 600, margin: '0 0 4px 0', color, overflowWrap: 'anywhere' }}>
+        ${fmt(value)}
+      </p>
       <p style={{ fontSize: '13px', color: '#e2e8f0', margin: '0 0 10px 0' }}>{label}</p>
       <div style={{ height: '3px', background: '#1e293b', borderRadius: '2px', overflow: 'hidden' }}>
         <div style={{ height: '3px', width: `${Math.min(pct, 100)}%`, background: color, borderRadius: '2px' }} />
@@ -44,11 +58,18 @@ function MetricCard({ value, label, color, pct }) {
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
+  // Movimientos del mes en curso (para los totales) y los últimos 5 de cada
+  // tipo (para la lista). Se piden filtrados a la API: antes se bajaban los
+  // últimos 200 y se filtraba acá, y pasado ese número el total quedaba corto.
   const [ingresos, setIngresos] = useState([]);
   const [gastos, setGastos] = useState([]);
+  const [ultimos, setUltimos] = useState([]);
   const [proyecciones, setProyecciones] = useState([]);
   const [recomendaciones, setRecomendaciones] = useState(null);
   const [descargando, setDescargando] = useState(false);
+  // 4 tarjetas por fila en pantallas anchas; 2×2 en las angostas (por ejemplo,
+  // un proyector de 1024 px), en lugar de 3 y una suelta.
+  const columnasMetricas = useAnchoVentana() >= 1180 ? 4 : 2;
 
   const now = new Date();
   const mesActual = now.getMonth() + 1;
@@ -61,53 +82,46 @@ export default function Dashboard() {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
-      const [ingRes, gasRes, proyRes, recRes] = await Promise.allSettled([
-        api.get('/ingresos/', { params: { limite: 200 } }),
-        api.get('/gastos/', { params: { limite: 200 } }),
+      const delMes = { mes: mesActual, anio: anioActual, limite: 200 };
+      const [ingRes, gasRes, ultIngRes, ultGasRes, proyRes, recRes] = await Promise.allSettled([
+        api.get('/ingresos/', { params: delMes }),
+        api.get('/gastos/', { params: delMes }),
+        api.get('/ingresos/', { params: { limite: 5 } }),
+        api.get('/gastos/', { params: { limite: 5 } }),
         api.get('/proyecciones/', { params: { limite: 30 } }),
         api.get('/recomendaciones/'),
       ]);
       if (ingRes.status === 'fulfilled') setIngresos(ingRes.value.data);
       if (gasRes.status === 'fulfilled') setGastos(gasRes.value.data);
+      setUltimos([
+        ...(ultIngRes.status === 'fulfilled' ? ultIngRes.value.data : []).map((i) => ({ ...i, tipo: 'ingreso' })),
+        ...(ultGasRes.status === 'fulfilled' ? ultGasRes.value.data : []).map((g) => ({ ...g, tipo: 'gasto' })),
+      ]);
       if (proyRes.status === 'fulfilled') setProyecciones(proyRes.value.data);
       if (recRes.status === 'fulfilled') setRecomendaciones(recRes.value.data);
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [mesActual, anioActual]);
 
-  // Las fechas llegan en UTC ("...T00:00:00Z"): se comparan con getters UTC
-  // para que un movimiento del día 1 a medianoche no caiga en el mes anterior.
-  const ingresosMes = ingresos.filter((i) => {
-    const d = new Date(i.fecha);
-    return d.getUTCMonth() + 1 === mesActual && d.getUTCFullYear() === anioActual;
-  });
-  const gastosMes = gastos.filter((g) => {
-    const d = new Date(g.fecha);
-    return d.getUTCMonth() + 1 === mesActual && d.getUTCFullYear() === anioActual;
-  });
-
-  const totalIngresos = ingresosMes.reduce((s, i) => s + parseFloat(i.monto || 0), 0);
-  const totalGastos = gastosMes.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
+  const totalIngresos = ingresos.reduce((s, i) => s + parseFloat(i.monto || 0), 0);
+  const totalGastos = gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
   const balance = totalIngresos - totalGastos;
 
-  const hoy = new Date();
-  const en30 = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000);
-  const proyNext30 = proyecciones.filter((p) => {
+  // Proyección del mes SIGUIENTE exacto. Antes se buscaba "dentro de los
+  // próximos 30 días", y el día 1 de cada mes la proyección del mes que viene
+  // quedaba afuera: la tarjeta mostraba $0. Las proyecciones llegan como el
+  // 1° del mes en UTC, así que se comparan con getters UTC.
+  const siguiente = new Date(anioActual, mesActual, 1);   // mesActual es 1-12: esto es el mes que viene
+  const proySiguiente = proyecciones.find((p) => {
     const d = new Date(p.fecha_proyeccion);
-    return d >= hoy && d <= en30;
+    return d.getUTCFullYear() === siguiente.getFullYear() && d.getUTCMonth() === siguiente.getMonth();
   });
-  const proyPromedio =
-    proyNext30.length > 0
-      ? proyNext30.reduce((s, p) => s + parseFloat(p.monto_proyectado || 0), 0) / proyNext30.length
-      : 0;
+  const proyPromedio = proySiguiente ? parseFloat(proySiguiente.monto_proyectado || 0) : 0;
 
   const maxVal = Math.max(totalIngresos, totalGastos, Math.abs(balance), proyPromedio, 1);
 
-  const movimientos = [
-    ...ingresos.map((i) => ({ ...i, tipo: 'ingreso' })),
-    ...gastos.map((g) => ({ ...g, tipo: 'gasto' })),
-  ]
+  const movimientos = [...ultimos]
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
     .slice(0, 5);
 
@@ -195,7 +209,7 @@ export default function Dashboard() {
       </div>
 
       {/* Métricas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columnasMetricas}, minmax(0, 1fr))`, gap: '12px', marginBottom: '16px' }}>
         <MetricCard value={totalIngresos} label="Ingresos del mes"    color="#3b82f6" pct={(totalIngresos / maxVal) * 100} />
         <MetricCard value={totalGastos}   label="Gastos del mes"      color="#f87171" pct={(totalGastos / maxVal) * 100} />
         <MetricCard value={balance}       label="Balance neto"        color={balance >= 0 ? '#4ade80' : '#f87171'} pct={(Math.abs(balance) / maxVal) * 100} />
@@ -203,7 +217,7 @@ export default function Dashboard() {
       </div>
 
       {/* Dos columnas */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '12px' }}>
 
         {/* Últimos movimientos */}
         <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
@@ -222,7 +236,7 @@ export default function Dashboard() {
                     borderBottom: idx < movimientos.length - 1 ? '1px solid #1e293b' : 'none',
                   }}
                 >
-                  <span style={{ fontSize: '13px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>
+                  <span title={m.descripcion} style={{ fontSize: '13px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>
                     {m.descripcion}
                   </span>
                   <span style={{
@@ -246,11 +260,12 @@ export default function Dashboard() {
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} />
               <p style={{ margin: 0, fontSize: '13px', fontWeight: 500, color: '#93c5fd' }}>Recomendación IA</p>
             </div>
-            <span style={{ fontSize: '11px', background: '#1e3a5f', color: '#3b82f6', borderRadius: '4px', padding: '2px 8px', fontWeight: 600 }}>IA</span>
           </div>
           <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0' }}>{primeraRec.replace(/\$ /g, '$\u00a0')}</p>
           <span style={{ display: 'inline-block', fontSize: '11px', background: '#1e3a5f', color: '#93c5fd', borderRadius: '4px', padding: '2px 10px' }}>
-            {genConIA ? 'generado con IA' : 'generado sin IA'}
+            {/* Misma leyenda que la pantalla de Recomendaciones: se calcula con
+                reglas sobre los datos del usuario, sin servicios externos. */}
+            {genConIA ? 'generado con IA' : 'basado en tus datos'}
           </span>
         </div>
       </div>

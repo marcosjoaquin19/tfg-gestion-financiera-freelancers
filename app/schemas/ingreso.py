@@ -84,3 +84,11 @@ class IngresoResponse(BaseModel):
     class Config:
         from_attributes = True
         # permite leer desde objetos SQLAlchemy además de diccionarios
+
+
+class MesConIngresos(BaseModel):
+    # Un mes con ingresos, para el selector de la pantalla (GET /ingresos/meses).
+    anio: int
+    mes: int
+    cantidad: int
+    total: float

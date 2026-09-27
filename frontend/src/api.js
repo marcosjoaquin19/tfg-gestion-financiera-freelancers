@@ -38,6 +38,10 @@ api.interceptors.response.use(
     const esAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
     if (error.response?.status === 401 && !esAuthEndpoint) {
       localStorage.removeItem('token');
+      localStorage.removeItem('userEmail');
+      // La pantalla de login lee esta marca para explicar por qué se volvió
+      // ahí ("tu sesión expiró"), en lugar de aparecer sin aviso.
+      sessionStorage.setItem('sesionExpirada', '1');
       window.location.href = '/login';
     }
     return Promise.reject(error);

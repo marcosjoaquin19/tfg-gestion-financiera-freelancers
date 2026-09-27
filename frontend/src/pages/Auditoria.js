@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import AvisoAlcance from '../components/AvisoAlcance';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -59,6 +59,9 @@ export default function Auditoria() {
   const [loading, setLoading] = useState(true);
   const [ejecutando, setEjecutando] = useState(false);
   const [mensaje, setMensaje] = useState('');
+  // Error de una acción (resolver, reabrir, eliminar, descartar, limpiar) o de
+  // la carga: se muestra en pantalla en lugar de quedar en silencio.
+  const [error, setError] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   // Por defecto ocultamos las resueltas (pantalla limpia, sin lista infinita).
   const [mostrarResueltas, setMostrarResueltas] = useState(false);
@@ -70,8 +73,9 @@ export default function Auditoria() {
       // su etiqueta "Resuelta" y el filtro "Solo pendientes" tenga sentido.
       const res = await api.get('/alertas/', { params: { limite: 200, solo_pendientes: false } });
       setAlertas(res.data);
-    } catch (_) {
+    } catch (err) {
       setAlertas([]);
+      setError(extraerMensajeError(err, 'No se pudieron cargar las alertas'));
     } finally {
       setLoading(false);
     }
@@ -82,11 +86,12 @@ export default function Auditoria() {
   async function handleEjecutar() {
     setEjecutando(true);
     setMensaje('');
+    setError('');
     try {
       const res = await api.post('/alertas/ejecutar-auditoria');
       const detalle = res.data?.detalle ?? {};
       const total = Object.values(detalle).reduce((acc, v) => acc + v, 0);
-      setMensaje(`Auditoría completada: ${total} alertas generadas`);
+      setMensaje(`Auditoría completada: ${total} ${total === 1 ? 'alerta generada' : 'alertas generadas'}`);
       await fetchAlertas();
     } catch (_) {
       setMensaje('Error al ejecutar la auditoría');
@@ -99,7 +104,10 @@ export default function Auditoria() {
     try {
       await api.patch(`/alertas/${id}/resolver`, { resuelta: true });
       setAlertas((prev) => prev.map((a) => a.id === id ? { ...a, resuelta: true } : a));
-    } catch (_) {}
+      setError('');
+    } catch (err) {
+      setError(extraerMensajeError(err, 'No se pudo marcar la alerta como resuelta'));
+    }
   }
 
   // Resuelve de raíz un gasto duplicado: elimina el gasto repetido y marca la
@@ -108,8 +116,11 @@ export default function Auditoria() {
     if (!window.confirm('Se eliminará el gasto repetido y la alerta quedará resuelta. ¿Continuar?')) return;
     try {
       await api.delete(`/alertas/${id}/gasto-duplicado`);
+      setError('');
       await fetchAlertas();
-    } catch (_) {}
+    } catch (err) {
+      setError(extraerMensajeError(err, 'No se pudo eliminar el gasto duplicado'));
+    }
   }
 
   // Descarta una transferencia entre cuentas propias: elimina las dos patas
@@ -118,8 +129,11 @@ export default function Auditoria() {
     if (!window.confirm('Se eliminarán el ingreso y el gasto de esta transferencia (no es facturación real) y la alerta quedará resuelta. ¿Continuar?')) return;
     try {
       await api.delete(`/alertas/${id}/transferencia-propia`);
+      setError('');
       await fetchAlertas();
-    } catch (_) {}
+    } catch (err) {
+      setError(extraerMensajeError(err, 'No se pudo descartar la transferencia'));
+    }
   }
 
   // Reabre una alerta resuelta (vuelve a quedar pendiente).
@@ -127,7 +141,10 @@ export default function Auditoria() {
     try {
       await api.patch(`/alertas/${id}/resolver`, { resuelta: false });
       setAlertas((prev) => prev.map((a) => a.id === id ? { ...a, resuelta: false } : a));
-    } catch (_) {}
+      setError('');
+    } catch (err) {
+      setError(extraerMensajeError(err, 'No se pudo reabrir la alerta'));
+    }
   }
 
   // Borra del historial todas las alertas resueltas.
@@ -135,8 +152,11 @@ export default function Auditoria() {
     if (!window.confirm('Esto borra del historial todas las alertas resueltas. Si algún problema sigue existiendo, volverá a aparecer en la próxima auditoría. ¿Continuar?')) return;
     try {
       await api.delete('/alertas/resueltas');
+      setError('');
       await fetchAlertas();
-    } catch (_) {}
+    } catch (err) {
+      setError(extraerMensajeError(err, 'No se pudo limpiar el historial'));
+    }
   }
 
   let alertasFiltradas = alertas;
@@ -184,6 +204,23 @@ export default function Auditoria() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div role="alert" style={{
+          background: '#1f0d0d', border: '1px solid #4d1a1a', borderLeft: '3px solid #f87171',
+          borderRadius: '8px', padding: '12px 16px', marginBottom: '16px',
+          color: '#fca5a5', fontSize: '13px', display: 'flex', justifyContent: 'space-between', gap: '12px',
+        }}>
+          <span>{error}</span>
+          <button
+            onClick={() => setError('')}
+            aria-label="Cerrar aviso"
+            style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '15px', lineHeight: 1 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Resumen */}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columnasResumen}, 1fr)`, gap: '12px', marginBottom: '16px' }}>

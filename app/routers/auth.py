@@ -103,7 +103,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not usuario:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o password incorrectos",
+            detail="Email o contraseña incorrectos",
             # intencionalmente no decimos si el email no existe o el password es incorrecto
             # dar esa info ayudaría a un atacante a enumerar usuarios válidos
         )
@@ -112,7 +112,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not password_valido:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o password incorrectos",
+            detail="Email o contraseña incorrectos",
         )
 
     if not usuario.es_activo:

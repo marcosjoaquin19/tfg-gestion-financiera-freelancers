@@ -158,15 +158,20 @@ export default function ImportarCSV() {
                 display: 'inline-flex', alignItems: 'center', gap: '6px',
               }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
-                Importador Universal IA
+                Detección local de columnas
               </span>
             </div>
 
             <h1 style={{ margin: '0 0 10px 0', fontSize: '20px', fontWeight: 600, color: '#f8fafc' }}>
-              Importá tus movimientos bancarios
+              Importá los movimientos de tu banco o billetera
             </h1>
+            {/* Lo que dice la tesis (HU-07): extractos del banco o de la
+                billetera virtual, columnas interpretadas localmente (sin IA).
+                Se nombran solo los formatos probados (docs/extractos_ejemplo). */}
             <p style={{ margin: '0 0 28px 0', fontSize: '14px', color: '#64748b', lineHeight: 1.6 }}>
-              Compatible con cualquier banco argentino: Galicia, Santander, Nación, BBVA, Mercado Pago, Naranja X y más.
+              Subí el extracto de tu cuenta bancaria o billetera virtual en CSV o Excel: el sistema detecta
+              localmente las columnas de fecha, descripción e importe y te muestra una vista previa antes de
+              guardar. Probado con extractos de Galicia, Santander, Brubank y Mercado Pago.
             </p>
 
             {/* Zona drop */}
