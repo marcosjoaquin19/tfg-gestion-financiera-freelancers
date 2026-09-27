@@ -56,6 +56,9 @@ def client(db, monkeypatch):
     # En tests no queremos esa conexión, así que neutralizamos el hook.
     from app.routers import gastos as gastos_router
     monkeypatch.setattr(gastos_router, "_reentrenar_en_background", lambda *a, **k: None)
+    # Lo mismo con el reentrenamiento que dispara una corrección del Clasificador.
+    from app.routers import ml as ml_router
+    monkeypatch.setattr(ml_router, "_reentrenar_en_segundo_plano", lambda *a, **k: None)
 
     with TestClient(app) as c:
         yield c

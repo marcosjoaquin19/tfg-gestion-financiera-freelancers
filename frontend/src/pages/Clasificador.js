@@ -221,9 +221,15 @@ export default function Clasificador() {
         descripcion: descripcion.trim(),
         categoria_correcta: categoriaCorrecta,
       });
-      setMsgCorreccion({ texto: '¡Modelo actualizado con tu corrección!', error: false });
+      setMsgCorreccion({
+        texto: 'Corrección guardada: desde ahora esa descripción se clasifica así. El modelo se reentrena en segundo plano.',
+        error: false,
+      });
       setCorrigiendoCategoria(false);
+      // El reentrenamiento corre después de la respuesta (HU-05): se vuelve a
+      // leer el estado un momento después para mostrar el modelo actualizado.
       await cargarEstado();
+      setTimeout(cargarEstado, 2000);
     } catch (err) {
       setMsgCorreccion({ texto: extraerMensajeError(err, 'Error al guardar la corrección.'), error: true });
     }

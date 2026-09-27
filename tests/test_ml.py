@@ -145,8 +145,23 @@ def test_corregir_categoria_valida(client, auth_headers):
     )
     assert response.status_code == 200
     data = response.json()
-    assert "nuevo_estado" in data
+    assert "estado_modelo" in data
     assert data["mensaje"]
+    # HU-05: responde sin esperar a que termine el reentrenamiento.
+    assert data["reentrenamiento"] == "en_segundo_plano"
+
+
+def test_corregir_agenda_el_reentrenamiento_sin_esperarlo(client, auth_headers, monkeypatch):
+    from app.routers import ml as ml_router
+    agendados = []
+    monkeypatch.setattr(ml_router, "_reentrenar_en_segundo_plano", lambda usuario_id: agendados.append(usuario_id))
+    response = client.post(
+        "/ml/corregir",
+        json={"descripcion": "Pago hosting mensual", "categoria_correcta": "Infraestructura"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert len(agendados) == 1
 
 
 def test_correccion_persiste_y_se_usa_en_reentrenamiento(client, auth_headers, db):
