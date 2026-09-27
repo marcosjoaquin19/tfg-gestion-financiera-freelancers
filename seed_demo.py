@@ -18,7 +18,6 @@ from app.models.proyeccion import Proyeccion
 from app.models.alerta_auditoria import AlertaAuditoria
 from app.models.cache_clasificacion import CacheClasificacion
 from app.models.modelo_clasificador import ModeloClasificador
-from app.models.categoria_monotributo import CategoriaMonotributo
 
 EMAIL = "demo@freelancecontrol.com"
 PASSWORD = "demo1234"
@@ -209,16 +208,14 @@ def crear_facturas(db, usuario):
 
 
 def asegurar_categorias_monotributo(db):
-    # El estado de Monotributo del demo depende de que la tabla de categorías
-    # esté poblada. Si está vacía (BD recién creada, downgrade, etc.) el
-    # endpoint devuelve sin_categoria y el semáforo no se ve en la defensa.
-    # Reutilizamos el seed de categorías para dejar el demo reproducible de
-    # un solo comando.
+    # El estado de Monotributo del demo depende de que la escala VIGENTE esté
+    # cargada. No alcanza con mirar si la tabla tiene filas: en una base
+    # recién creada la migración 0012 ya inserta la escala de febrero 2026
+    # como histórica (activa = false) y, sin la vigente, el endpoint devuelve
+    # sin_categoria y el semáforo no se ve. seed_categorias es idempotente
+    # (inserta o actualiza cada escala), así que se ejecuta siempre.
     from seed_categorias_monotributo import seed_categorias
-    if db.query(CategoriaMonotributo).count() == 0:
-        seed_categorias(db=db)
-    else:
-        print("Categorías Monotributo ya presentes.")
+    seed_categorias(db=db)
 
 
 def main():
