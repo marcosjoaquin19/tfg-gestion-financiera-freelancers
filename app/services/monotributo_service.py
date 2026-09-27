@@ -1,13 +1,16 @@
 """
 Servicio de Monotributo — cálculos fiscales del monotributo argentino.
 
-Contiene la lógica fiscal: calcular la facturación de los últimos 12 meses,
-compararla contra el límite de la categoría del usuario, estimar el riesgo de
-recategorización y verificar si pagó la cuota del mes. Lo usa el router de
+Contiene la lógica fiscal: calcular la facturación del año en curso más la
+proyección hasta el cierre del ejercicio (HU-10), compararla contra el límite
+de la categoría del usuario, estimar el riesgo de recategorización y verificar
+si pagó la cuota del mes. Lo usa el router de
 monotributo y también el de auditoría (para la alerta de monotributo impago).
 """
 
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import extract
 from sqlalchemy.orm import Session
 from app.models.usuario import Usuario
@@ -15,6 +18,9 @@ from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.proyeccion import Proyeccion
 from app.models.categoria_monotributo import CategoriaMonotributo
+from app.services.prophet_service import ahora_utc, asegurar_proyecciones_vigentes, inicio_mes_en_curso
+
+logger = logging.getLogger(__name__)
 
 MESES_ES = {
     1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
@@ -34,6 +40,17 @@ def get_categoria(db: Session, letra: str) -> CategoriaMonotributo | None:
 
 
 def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
+    """Estado fiscal del año en curso (HU-10).
+
+    Acumulado real del año (hasta hoy) + proyección hasta el cierre del
+    ejercicio, comparado contra el tope de la categoría:
+      - la proyección se regenera sola si quedó vieja (ver
+        asegurar_proyecciones_vigentes);
+      - el mes en curso suma lo que sea mayor entre lo ya cobrado y lo que se
+        espera para un mes (criterio conservador: el mes no terminó);
+      - los meses hasta diciembre que el horizonte de 6 meses no alcanza
+        (enero a junio) se completan con el promedio proyectado.
+    """
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario or not usuario.categoria_monotributo:
         return None
@@ -46,51 +63,111 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     limite_anual = float(datos_cat.limite_anual)
     cuota_mensual = float(datos_cat.cuota_mensual)
 
-    now = datetime.now()
-    anio_actual = now.year
+    # Proyección al día con los ingresos actuales. Si Prophet fallara, el
+    # estado fiscal se calcula igual con lo que haya guardado.
+    try:
+        asegurar_proyecciones_vigentes(db, usuario_id)
+    except Exception:
+        logger.exception("No se pudo regenerar la proyección del usuario %s", usuario_id)
+        db.rollback()
 
-    # Facturado real del año
-    resultado = db.query(Ingreso).filter(
+    ahora = ahora_utc()
+    mes_actual = inicio_mes_en_curso()                      # 1° del mes, sin zona
+    inicio_anio = datetime(mes_actual.year, 1, 1, tzinfo=timezone.utc)
+
+    # Facturado real: ingresos del año con fecha hasta hoy. Un cobro cargado
+    # con fecha futura todavía no es facturación.
+    ingresos_anio = db.query(Ingreso).filter(
         Ingreso.usuario_id == usuario_id,
-        extract("year", Ingreso.fecha) == anio_actual,
+        Ingreso.fecha >= inicio_anio,
+        Ingreso.fecha <= ahora,
     ).all()
-    facturado_anual = float(sum(i.monto for i in resultado))
-
+    facturado_anual = round(float(sum(i.monto for i in ingresos_anio)), 2)
+    facturado_mes_en_curso = float(sum(
+        i.monto for i in ingresos_anio
+        if (i.fecha.year, i.fecha.month) == (mes_actual.year, mes_actual.month)
+    ))
     porcentaje_usado = round((facturado_anual / limite_anual * 100), 1) if limite_anual > 0 else 0.0
 
-    # Proyección desde hoy hasta fin de año usando Prophet
-    fin_de_anio = datetime(anio_actual, 12, 31)
-    proyecciones = db.query(Proyeccion).filter(
-        Proyeccion.usuario_id == usuario_id,
-        Proyeccion.fecha_proyeccion >= now,
-        Proyeccion.fecha_proyeccion <= fin_de_anio,
-    ).all()
+    # Proyección de los meses que faltan hasta diciembre.
+    proyecciones = db.query(Proyeccion).filter(Proyeccion.usuario_id == usuario_id).all()
+    por_mes = {
+        (p.fecha_proyeccion.year, p.fecha_proyeccion.month): float(p.monto_proyectado)
+        for p in proyecciones
+        if (p.fecha_proyeccion.year, p.fecha_proyeccion.month) > (mes_actual.year, mes_actual.month)
+    }
+    promedio_proyectado = sum(por_mes.values()) / len(por_mes) if por_mes else 0.0
 
-    total_proyectado_restante = float(sum(p.monto_proyectado for p in proyecciones)) if proyecciones else 0.0
+    mes_siguiente = mes_actual + relativedelta(months=1)
+    esperado_un_mes = por_mes.get((mes_siguiente.year, mes_siguiente.month), promedio_proyectado)
+    ajuste_mes_en_curso = max(0.0, esperado_un_mes - facturado_mes_en_curso)
+
+    restantes = []
+    meses_estimados_con_promedio = 0
+    mes = mes_siguiente
+    while mes.year == mes_actual.year:
+        clave = (mes.year, mes.month)
+        if clave in por_mes:
+            restantes.append((mes, por_mes[clave]))
+        else:
+            restantes.append((mes, promedio_proyectado))
+            meses_estimados_con_promedio += 1
+        mes += relativedelta(months=1)
+
+    total_proyectado_restante = ajuste_mes_en_curso + sum(monto for _, monto in restantes)
     proyeccion_anual = round(facturado_anual + total_proyectado_restante, 2)
+    porcentaje_proyectado = round(proyeccion_anual / limite_anual * 100, 1) if limite_anual > 0 else 0.0
 
-    pct_proyectado = (proyeccion_anual / limite_anual * 100) if limite_anual > 0 else 0.0
-    if pct_proyectado < 70:
+    # Semáforo (HU-10): verde por debajo del 70 %, amarillo entre 70 % y 90 %,
+    # rojo por encima del 90 %. Se multiplica antes de dividir y se redondea a
+    # 6 decimales para que el 90 % exacto no dé 90,00000000000001 (y rojo).
+    pct = round(proyeccion_anual * 100 / limite_anual, 6) if limite_anual > 0 else 0.0
+    if pct < 70:
         estado = "verde"
-    elif pct_proyectado < 90:
+    elif pct <= 90:
         estado = "amarillo"
     else:
         estado = "rojo"
 
-    # Meses hasta superar el límite anual.
-    # Las proyecciones se generan con frecuencia mensual (una fila por mes,
-    # ver prophet_service), así que el ingreso mensual promedio es el total
-    # proyectado dividido la cantidad de meses proyectados.
+    # ¿En qué mes de ESTE año se cruzaría el tope? El modelo es anual: si no
+    # se cruza antes de diciembre, no hay fecha que informar.
+    limite_superado = facturado_anual > limite_anual
     meses_para_limite = None
-    if proyecciones and total_proyectado_restante > 0:
-        ingreso_mensual = total_proyectado_restante / len(proyecciones)
-        restante = limite_anual - facturado_anual
-        if ingreso_mensual > 0 and restante > 0:
-            meses_para_limite = max(0, round(restante / ingreso_mensual, 1))
+    mes_limite = None
+    if limite_superado:
+        meses_para_limite = 0
+    else:
+        acumulado = facturado_anual
+        secuencia = [(mes_actual, ajuste_mes_en_curso)] + restantes
+        for indice, (mes, monto) in enumerate(secuencia):
+            acumulado += monto
+            if acumulado > limite_anual:
+                meses_para_limite = indice          # 0 = este mes
+                mes_limite = f"{MESES_ES[mes.month]} {mes.year}"
+                break
 
-    # Categoría siguiente
+    # Categoría inmediata superior (informativa) y, si la proyección supera el
+    # tope, la primera categoría que efectivamente la cubre. Si ni la más alta
+    # alcanza, hay riesgo de exclusión del régimen.
     idx = CATEGORIAS_ORDEN.index(cat)
     categoria_siguiente = CATEGORIAS_ORDEN[idx + 1] if idx + 1 < len(CATEGORIAS_ORDEN) else None
+    categoria_sugerida = None
+    excede_regimen = False
+    if proyeccion_anual > limite_anual:
+        escala = (
+            db.query(CategoriaMonotributo)
+            .filter(
+                CategoriaMonotributo.activa == True,
+                CategoriaMonotributo.actividad == datos_cat.actividad,
+            )
+            .order_by(CategoriaMonotributo.limite_anual.asc())
+            .all()
+        )
+        cubre = next((c for c in escala if float(c.limite_anual) >= proyeccion_anual), None)
+        if cubre is not None:
+            categoria_sugerida = cubre.letra
+        else:
+            excede_regimen = True
 
     return {
         "categoria_actual": cat,
@@ -98,10 +175,16 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
         "cuota_mensual": cuota_mensual,
         "facturado_anual": facturado_anual,
         "porcentaje_usado": porcentaje_usado,
+        "limite_superado": limite_superado,
         "proyeccion_anual": proyeccion_anual,
+        "porcentaje_proyectado": porcentaje_proyectado,
+        "meses_estimados_con_promedio": meses_estimados_con_promedio,
         "estado": estado,
         "meses_para_limite": meses_para_limite,
+        "mes_limite": mes_limite,
         "categoria_siguiente": categoria_siguiente,
+        "categoria_sugerida": categoria_sugerida,
+        "excede_regimen": excede_regimen,
     }
 
 

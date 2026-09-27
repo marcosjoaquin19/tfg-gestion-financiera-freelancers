@@ -12,6 +12,7 @@ Solo se entrena con meses cerrados y siempre se proyecta desde el mes que viene.
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
 from datetime import datetime, timezone
+import hashlib
 import statistics
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
@@ -46,11 +47,29 @@ METODO_MES_EN_CURSO = "mes_en_curso"
 METODO_SIN_DATOS = "sin_datos"
 
 
+def ahora_utc() -> datetime:
+    """Reloj único de proyecciones y monotributo (UTC, como las fechas guardadas)."""
+    return datetime.now(timezone.utc)
+
+
 def inicio_mes_en_curso() -> datetime:
     """Primer día del mes actual (UTC), sin zona: el mismo criterio con el que
     se agrupan los ingresos (las fechas se guardan en UTC)."""
-    ahora = datetime.now(timezone.utc)
+    ahora = ahora_utc()
     return datetime(ahora.year, ahora.month, 1)
+
+
+def firma_ingresos(ingresos) -> str:
+    """Huella de los datos de los que depende la proyección.
+
+    Cambia si se agrega, borra o edita un ingreso (id, monto o mes) y también
+    cuando empieza un mes nuevo, porque cambian los meses cerrados. Así se
+    detecta una proyección vieja sin comparar resultados.
+    """
+    h = hashlib.sha1(inicio_mes_en_curso().strftime("%Y-%m").encode())
+    for ingreso in sorted(ingresos, key=lambda i: i.id):
+        h.update(f"|{ingreso.id}:{float(ingreso.monto):.2f}:{ingreso.fecha.year}-{ingreso.fecha.month}".encode())
+    return h.hexdigest()
 
 
 def _clave_mes(fecha: datetime) -> datetime:
@@ -181,6 +200,10 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = HORIZONTE
     else:
         nuevas = _proyecciones_media_movil(usuario_id, [], periodos, METODO_SIN_DATOS)
 
+    firma = firma_ingresos(ingresos)
+    for p in nuevas:
+        p.firma = firma
+
     db.query(Proyeccion).filter(Proyeccion.usuario_id == usuario_id).delete()
     db.add_all(nuevas)
     db.commit()
@@ -188,3 +211,19 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = HORIZONTE
         db.refresh(p)
 
     return nuevas
+
+
+def asegurar_proyecciones_vigentes(db: Session, usuario_id: int) -> list[Proyeccion]:
+    """Devuelve las proyecciones guardadas si siguen correspondiendo a los
+    ingresos actuales; si no existen o quedaron viejas, las regenera.
+
+    La usa el estado fiscal: sin esto, el semáforo sumaba una proyección
+    calculada antes de la última importación (o ninguna, si el usuario nunca
+    abrió Proyecciones).
+    """
+    actuales = db.query(Proyeccion).filter(Proyeccion.usuario_id == usuario_id).all()
+    ingresos = db.query(Ingreso).filter(Ingreso.usuario_id == usuario_id).all()
+    firma = firma_ingresos(ingresos)
+    if actuales and all(p.firma == firma for p in actuales):
+        return actuales
+    return generar_proyecciones(db, usuario_id)

@@ -38,6 +38,11 @@ class Proyeccion(Base):
     # Se guarda para que la pantalla lo declare. NULL en filas anteriores a la
     # migración 0010.
 
+    firma = Column(String(40), nullable=True)
+    # huella de los ingresos con los que se calculó (ver
+    # prophet_service.firma_ingresos): si no coincide con la actual, la
+    # proyección quedó vieja y el estado fiscal la regenera. Migración 0011.
+
     fecha_generacion = Column(DateTime(timezone=True), server_default=func.now())
     # cuando se generó esta proyección
 

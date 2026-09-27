@@ -123,10 +123,13 @@ def facturacion_12_meses(
     que evita un seq scan sobre toda la tabla `ingresos` y mantiene la
     consulta en O(log n) aunque la plataforma escale a muchos usuarios.
     """
-    desde = datetime.now() - timedelta(days=365)
+    hasta = datetime.now()
+    desde = hasta - timedelta(days=365)
     total = db.query(func.coalesce(func.sum(Ingreso.monto), 0)).filter(
         Ingreso.usuario_id == current_user.id,
         Ingreso.fecha >= desde,
+        # un cobro con fecha futura todavía no es facturación
+        Ingreso.fecha <= hasta,
     ).scalar()
     total = float(total or 0)
 
@@ -144,6 +147,6 @@ def facturacion_12_meses(
     return {
         "facturacion_12_meses": total,
         "desde": desde.date().isoformat(),
-        "hasta": datetime.now().date().isoformat(),
+        "hasta": hasta.date().isoformat(),
         "categoria": info_categoria,
     }

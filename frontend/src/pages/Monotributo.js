@@ -2,9 +2,10 @@
  * Pantalla Monotributo — control fiscal.
  *
  * Muestra la situación del usuario frente al monotributo argentino: su
- * facturación de los últimos 12 meses, el porcentaje del límite anual consumido,
- * el riesgo de recategorización y el estado del pago mensual. Permite también
- * elegir/actualizar la categoría (endpoints de /monotributo).
+ * facturación del año en curso, el porcentaje del límite anual consumido, la
+ * proyección hasta diciembre con el semáforo de riesgo (HU-10) y el estado del
+ * pago mensual. Permite también elegir/actualizar la categoría (endpoints de
+ * /monotributo).
  */
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -166,6 +167,15 @@ export default function Monotributo() {
   const catSiguienteInfo = estado.categoria_siguiente
     ? categorias[estado.categoria_siguiente]
     : null;
+  const catSugeridaInfo = estado.categoria_sugerida
+    ? categorias[estado.categoria_sugerida]
+    : null;
+  const catMaxima = Object.values(categorias).reduce(
+    (max, c) => (!max || c.limite_anual > max.limite_anual ? c : max), null,
+  );
+  const mensajeEstado = estado.limite_superado
+    ? '⚠️ Ya superaste el límite anual de tu categoría'
+    : ESTADO_MSG[estado.estado];
 
   return (
     <Layout activeSection="Monotributo">
@@ -298,7 +308,7 @@ export default function Monotributo() {
         </div>
 
         <p style={{ margin: 0, fontSize: '13px', color: colores.color, fontWeight: 500 }}>
-          {ESTADO_MSG[estado.estado]}
+          {mensajeEstado}
         </p>
       </div>
 
@@ -315,26 +325,43 @@ export default function Monotributo() {
             ${fmt(estado.proyeccion_anual)}
           </p>
           <p style={{ margin: 0, fontSize: '13px', color: '#e2e8f0' }}>Proyección anual</p>
+          <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+            {estado.porcentaje_proyectado}% del límite al cierre del año
+            {estado.meses_estimados_con_promedio > 0 &&
+              ` · ${estado.meses_estimados_con_promedio} ${estado.meses_estimados_con_promedio === 1 ? 'mes estimado' : 'meses estimados'} con el promedio proyectado`}
+          </p>
         </div>
         <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px' }}>
           {(() => {
+            // El modelo es anual (HU-10): solo se informa un mes si el tope se
+            // cruza antes de diciembre. "Sin fecha" no significa "sin riesgo"
+            // si ya se superó o si el semáforo está en amarillo o rojo.
             const m = estado.meses_para_limite;
-            if (m === null || m > 24) return (
+            if (estado.limite_superado) return (
               <>
-                <p style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 600, color: '#4ade80' }}>✓ Sin riesgo este año</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Tu facturación está lejos del límite</p>
+                <p style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 600, color: '#f87171' }}>⚠️ Límite superado</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Lo facturado este año ya pasó el tope</p>
               </>
             );
-            if (m <= 12) return (
+            if (m === null) return estado.estado === 'verde' ? (
               <>
-                <p style={{ margin: '0 0 4px 0', fontSize: '22px', fontWeight: 600, color: '#f87171' }}>⚠️ {m} meses</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Considerá recategorizarte</p>
+                <p style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 600, color: '#4ade80' }}>✓ Sin riesgo este año</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Tu proyección no llega al límite</p>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 4px 0', fontSize: '18px', fontWeight: 600, color: colores.color }}>Este año no lo superarías</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Pero quedás cerca: {estado.porcentaje_proyectado}% del límite</p>
               </>
             );
             return (
               <>
-                <p style={{ margin: '0 0 4px 0', fontSize: '22px', fontWeight: 600, color: '#fbbf24' }}>~{m} meses</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>Monitoreá tu facturación</p>
+                <p style={{ margin: '0 0 4px 0', fontSize: '22px', fontWeight: 600, color: '#f87171' }}>
+                  ⚠️ {m === 0 ? 'Este mes' : estado.mes_limite}
+                </p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                  {m === 0 ? 'Al ritmo proyectado lo superás este mes' : `En ${m} ${m === 1 ? 'mes' : 'meses'} al ritmo proyectado`}
+                </p>
               </>
             );
           })()}
@@ -343,26 +370,39 @@ export default function Monotributo() {
       </div>
 
       {/* ── Alerta recategorización ── */}
-      {(estado.estado === 'amarillo' || estado.estado === 'rojo') && (
+      {(estado.estado === 'amarillo' || estado.estado === 'rojo' || estado.limite_superado) && (
         <div style={{
           background: colores.fondo, border: `1px solid ${colores.borde}`,
           borderLeft: `3px solid ${colores.color}`,
           borderRadius: '8px', padding: '16px', marginBottom: '16px',
         }}>
           <p style={{ margin: 0, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.6 }}>
-            A este ritmo de facturación, superarías el límite de{' '}
-            <strong>Categoría {estado.categoria_actual}</strong>
-            {estado.meses_para_limite !== null
-              ? ` en aproximadamente ${estado.meses_para_limite} meses`
-              : ' antes de lo esperado'}.
-            {catSiguienteInfo && (
-              <>
-                {' '}La siguiente categoría es{' '}
-                <strong style={{ color: colores.color }}>Categoría {estado.categoria_siguiente}</strong>
-                {' '}con una cuota mensual de{' '}
-                <strong>${fmt(catSiguienteInfo.cuota_mensual)}</strong>.
-              </>
+            {estado.limite_superado ? (
+              <>Lo que facturaste este año ya superó el límite de <strong>Categoría {estado.categoria_actual}</strong>.</>
+            ) : estado.mes_limite ? (
+              <>A este ritmo de facturación superarías el límite de <strong>Categoría {estado.categoria_actual}</strong> en <strong>{estado.mes_limite}</strong>.</>
+            ) : (
+              <>Tu proyección anual llega al <strong>{estado.porcentaje_proyectado}%</strong> del límite de <strong>Categoría {estado.categoria_actual}</strong>: este año no lo superarías, pero estás cerca.</>
             )}
+            {estado.excede_regimen ? (
+              <>
+                {' '}Tu proyección anual (<strong>${fmt(estado.proyeccion_anual)}</strong>) supera incluso el tope de la categoría más alta
+                {catMaxima && <> (<strong>Categoría {catMaxima.letra}</strong>, ${fmt(catMaxima.limite_anual)})</>}:{' '}
+                <strong style={{ color: '#f87171' }}>hay riesgo de exclusión del régimen de Monotributo.</strong>
+              </>
+            ) : catSugeridaInfo ? (
+              <>
+                {' '}Para cubrir tu proyección anual de <strong>${fmt(estado.proyeccion_anual)}</strong> necesitarías la{' '}
+                <strong style={{ color: colores.color }}>Categoría {estado.categoria_sugerida}</strong>
+                {' '}(tope ${fmt(catSugeridaInfo.limite_anual)}, cuota mensual ${fmt(catSugeridaInfo.cuota_mensual)}).
+              </>
+            ) : catSiguienteInfo ? (
+              <>
+                {' '}Si tu facturación sigue creciendo, la siguiente es la{' '}
+                <strong style={{ color: colores.color }}>Categoría {estado.categoria_siguiente}</strong>
+                {' '}con una cuota mensual de <strong>${fmt(catSiguienteInfo.cuota_mensual)}</strong>.
+              </>
+            ) : null}
             {' '}Te recomendamos consultar con tu contador antes de que se acerque la fecha de recategorización{' '}
             <strong>(febrero y agosto de cada año)</strong>.
           </p>
