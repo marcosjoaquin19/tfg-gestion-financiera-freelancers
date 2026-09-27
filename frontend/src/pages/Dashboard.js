@@ -254,12 +254,14 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recomendación IA */}
+        {/* Recomendación destacada: la primera por urgencia. Sale de reglas
+            sobre los datos del usuario (recomendaciones_service), no de un
+            modelo de lenguaje: por eso el título no dice "IA". */}
         <div style={{ background: '#0f1e35', border: '1px solid #1e3a5f', borderRadius: '8px', padding: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6' }} />
-              <p style={{ margin: 0, fontSize: '13px', fontWeight: 500, color: '#93c5fd' }}>Recomendación IA</p>
+              <p style={{ margin: 0, fontSize: '13px', fontWeight: 500, color: '#93c5fd' }}>Recomendación</p>
             </div>
           </div>
           <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0' }}>{primeraRec.replace(/\$ /g, '$\u00a0')}</p>

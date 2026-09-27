@@ -50,7 +50,7 @@ export default function Recomendaciones() {
     <Layout activeSection="Recomendaciones">
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500, color: '#f8fafc' }}>Recomendaciones IA</h1>
+        <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 500, color: '#f8fafc' }}>Recomendaciones</h1>
         <button
           onClick={fetchRecomendaciones}
           disabled={cargando}
