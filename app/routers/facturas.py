@@ -23,7 +23,7 @@ from app.models.usuario import Usuario
 from app.models.factura import Factura, EstadoFactura
 from app.schemas.factura import FacturaCreate, FacturaUpdate, FacturaEstadoUpdate, FacturaResponse
 from app.dependencies import get_current_user
-from app.services.facturas_estado import marcar_vencidas
+from app.services.facturas_estado import marcar_vencidas, ya_vencio
 
 
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
@@ -50,7 +50,7 @@ def _en_utc(fecha: datetime) -> datetime:
 
 
 def _ya_vencio(factura: Factura) -> bool:
-    return _en_utc(factura.fecha_vencimiento) < datetime.now(timezone.utc)
+    return ya_vencio(_en_utc(factura.fecha_vencimiento))
 
 
 # Helper interno: busca una factura del usuario o corta con un error 404.

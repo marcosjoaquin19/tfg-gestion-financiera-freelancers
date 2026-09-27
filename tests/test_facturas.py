@@ -266,3 +266,19 @@ def test_marcar_vencidas_no_toca_pagadas(client, auth_headers, db):
     usuario_id = db.query(Usuario).first().id
     assert marcar_vencidas(db, usuario_id) == 0
     assert client.get(f"/facturas/{fid}", headers=auth_headers).json()["estado"] == "pagada"
+
+
+def test_factura_que_vence_hoy_sigue_pendiente(client, auth_headers, monkeypatch):
+    # Regresión: el vencimiento se comparaba contra la hora actual en UTC, así
+    # que una factura que vence hoy ya figuraba vencida (y desde las 21 h de
+    # Argentina, también la que vence mañana). Vence cuando su fecha fue superada.
+    from datetime import date
+    from app.services import facturas_estado
+    monkeypatch.setattr(facturas_estado, "hoy_ar", lambda: date(2026, 9, 27))
+    for vencimiento in ("2026-09-26", "2026-09-27", "2026-09-28"):
+        client.post("/facturas/", json={
+            **FACTURA_BASE, "cliente_nombre": vencimiento,
+            "fecha_emision": "2026-09-01T00:00:00", "fecha_vencimiento": f"{vencimiento}T00:00:00",
+        }, headers=auth_headers)
+    estados = {f["cliente_nombre"]: f["estado"] for f in client.get("/facturas/", headers=auth_headers).json()}
+    assert estados == {"2026-09-26": "vencida", "2026-09-27": "pendiente", "2026-09-28": "pendiente"}

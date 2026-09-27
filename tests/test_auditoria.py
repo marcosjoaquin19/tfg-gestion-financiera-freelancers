@@ -398,3 +398,19 @@ def test_resolver_monotributo_de_un_mes_no_silencia_el_siguiente(client, auth_he
     resp = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert resp.json()["detalle"]["monotributo_impago"] == 1
     assert "Octubre" in _pendientes(client, auth_headers, "monotributo_impago")[0]["descripcion"]
+
+
+def test_factura_que_vence_hoy_no_es_discrepancia(client, auth_headers, monkeypatch):
+    # Vence hoy: todavía se puede cobrar, no hay alerta. Venció ayer: sí.
+    from datetime import date
+    from app.services import facturas_estado
+    monkeypatch.setattr(facturas_estado, "hoy_ar", lambda: date(2026, 9, 27))
+    client.post("/facturas/", json={**FACTURA_BASE, "fecha_emision": "2026-09-01T00:00:00",
+                                    "fecha_vencimiento": "2026-09-27T00:00:00"}, headers=auth_headers)
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.json()["detalle"]["discrepancias"] == 0
+
+    client.post("/facturas/", json={**FACTURA_BASE, "fecha_emision": "2026-09-01T00:00:00",
+                                    "fecha_vencimiento": "2026-09-26T00:00:00"}, headers=auth_headers)
+    response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert response.json()["detalle"]["discrepancias"] == 1

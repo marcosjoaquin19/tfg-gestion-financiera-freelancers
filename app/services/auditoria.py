@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.models.gasto import Gasto
 from app.models.ingreso import Ingreso
 from app.models.factura import Factura, EstadoFactura
-from app.services.facturas_estado import marcar_vencidas
+from app.services.facturas_estado import inicio_de_hoy, marcar_vencidas
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.services.monotributo_service import verificar_pago_monotributo
 from app.services.formato import formato_pesos_ar
@@ -173,7 +173,6 @@ def detectar_anomalias_estadisticas(db: Session, usuario_id: int) -> list[tuple[
 # Detecta facturas que vencieron sin ser cobradas
 # -------------------------------------------------------------------
 def detectar_discrepancias_facturacion(db: Session, usuario_id: int) -> list[Factura]:
-    ahora = datetime.now(timezone.utc)
     marcar_vencidas(db, usuario_id)
 
     facturas_vencidas = (
@@ -184,7 +183,7 @@ def detectar_discrepancias_facturacion(db: Session, usuario_id: int) -> list[Fac
             # se mantienen los dos estados en el filtro por robustez: en
             # ambos casos la factura sigue sin cobrarse.
             Factura.estado.in_([EstadoFactura.PENDIENTE, EstadoFactura.VENCIDA]),
-            Factura.fecha_vencimiento < ahora,
+            Factura.fecha_vencimiento < inicio_de_hoy(),
         )
         .all()
     )
