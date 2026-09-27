@@ -341,14 +341,16 @@ detectores a medida que aparecen:
 
 > "Esta es la pantalla que responde la pregunta que dio origen al trabajo.
 >
-> Arriba, la categoría del usuario y su facturación de los últimos doce meses
-> contra el límite anual de esa categoría — un límite **móvil**, no calendario.
-> El semáforo cambia de verde a amarillo y a rojo según el porcentaje consumido.
+> Arriba, la categoría del usuario y lo que facturó en el año contra el límite
+> anual de esa categoría. Pero el semáforo no mira solo lo que ya pasó: mira
+> **cómo cerraría el año**. Suma lo facturado hasta hoy y la proyección de
+> ingresos hasta diciembre, y compara eso con el tope: verde por debajo del
+> 70 %, amarillo hasta el 90 %, rojo por encima.
 >
 > Y acá está la parte predictiva, que es lo que ninguna de las herramientas
 > relevadas hace: **el sistema cruza la proyección de ingresos con el límite de
-> la categoría y estima en cuántos meses lo superaría a este ritmo.** No espera
-> a que pase: lo anticipa."
+> la categoría y estima en qué mes lo superaría a este ritmo**, y qué categoría
+> cubriría esa proyección. No espera a que pase: lo anticipa."
 
 **Mostrá también:**
 
@@ -369,11 +371,12 @@ detectores a medida que aparecen:
 > "Un dato que me parece que valida el diseño. En la matriz de riesgos del
 > trabajo identifiqué el riesgo R2: que ARCA actualizara la escala durante o
 > después del desarrollo. **Se materializó**: el 1 de agosto de 2026 se publicó
-> una escala nueva, con un ajuste del 16,8 % sobre los topes y las cuotas.
+> una escala nueva, con un ajuste del 16,85 % sobre los topes y las cuotas.
 > Incorporarla fue cargar los valores nuevos en el catálogo. **No tuve que tocar
 > una sola línea de código de la aplicación.** La acción preventiva que había
 > definido funcionó, y lo puedo demostrar: las dos escalas están versionadas en
-> el proyecto."
+> el proyecto y en la base, y un reporte de mayo se sigue evaluando con la
+> escala de febrero, que era la que regía."
 
 ---
 
@@ -395,15 +398,20 @@ detectores a medida que aparecen:
 > real; la azul, la proyección; y las punteadas, el escenario pesimista y el
 > optimista — el intervalo de confianza.
 >
+> El punto hueco es el mes en curso: todavía no terminó, así que se muestra
+> aparte y no entra en el cálculo.
+>
 > Lo que quiero destacar no es que ande, sino **qué pasa cuando no puede andar**.
-> Prophet necesita un mínimo de historial: al menos diez ingresos y, sobre todo,
-> **al menos dos meses distintos**, porque ajusta sobre totales mensuales y con
-> una sola fila el ajuste falla directamente.
+> Prophet necesita un mínimo de historial: al menos diez ingresos en meses ya
+> cerrados y **al menos tres meses cerrados**, porque ajusta una tendencia sobre
+> totales mensuales, y con dos meses esa 'tendencia' es una recta que pasa por
+> dos puntos y se dispara sin control.
 >
 > Un usuario nuevo que carga todos sus movimientos el mismo día cae justo en ese
 > caso. Podría haber bloqueado la pantalla con un 'datos insuficientes'. Decidí
-> lo contrario: **el sistema cambia de estrategia** y proyecta con una media
-> móvil, con un rango de más/menos un desvío estándar. El usuario siempre ve una
+> lo contrario: **el sistema cambia de estrategia** y proyecta con la media
+> móvil de los totales de sus últimos tres meses, con un rango de más/menos un
+> desvío estándar, y la pantalla dice con qué método se calculó. El usuario siempre ve una
 > proyección, y la calidad mejora sola cuando acumula historial. Bloquear la
 > pantalla castigaría justamente al usuario nuevo, que es el que más necesita
 > entender para qué sirve la herramienta."
@@ -494,7 +502,7 @@ Es un gesto de treinta segundos que vale mucho.**
 
 #### Patrón 1 — Strategy, en el clasificador
 
-**Abrí:** `app/services/ml_service.py:728`
+**Abrí:** `app/services/ml_service.py:726`
 
 ```python
 def _elegir_algoritmo(n_ejemplos: int) -> str:
@@ -540,7 +548,7 @@ def _elegir_algoritmo(n_ejemplos: int) -> str:
 
 #### Patrón 3 — Cache-Aside + Chain of Responsibility, en la clasificación
 
-**Abrí:** `app/services/ia_service.py:276`
+**Abrí:** `app/services/ia_service.py:409`
 
 > "Clasificar un gasto es una cadena de tres eslabones, en este orden:
 >
@@ -613,7 +621,7 @@ def _elegir_algoritmo(n_ejemplos: int) -> str:
 > **IDEA FUERZA:** mostrá un problema que te costó y cómo lo resolviste. Es lo
 > que más credibilidad da, y suele adelantarse a una pregunta del tribunal.
 
-**Abrí:** `app/services/ml_service.py:826` (`_confianza_svm`)
+**Abrí:** `app/services/ml_service.py:830` (`_confianza_svm`)
 
 > "Si me preguntan qué fue lo más difícil, no fue entrenar el modelo. Fue
 > **medir cuánta confianza tenerle**.
@@ -703,6 +711,8 @@ segundos de silencio con algo roto en pantalla es lo peor que puede pasar.
 |---|---|
 | La tesis dice **Llama 3.3 70B** y el sistema usa otro modelo | "Correcto. El proveedor dio de baja ese modelo después del cierre del documento. Cambiar de modelo fue **cambiar una variable de entorno**: el código lee el nombre del modelo de la configuración, no lo tiene fijo. Es el mismo principio que la escala de ARCA — lo que cambia por afuera no debería obligar a tocar código." |
 | La escala de Monotributo es la de **agosto 2026** | "Sí, es el riesgo R2 de la matriz de riesgos, que se materializó. Las dos escalas están versionadas en el proyecto y la carga fue solo de datos." |
+| La tesis dice que Groq genera **resúmenes y recomendaciones**, y las recomendaciones no usan Groq | "Correcto, y fue a propósito. En las pruebas pasé las recomendaciones a reglas locales: cada una tiene que poder explicarse con el dato que la originó, dar siempre lo mismo con los mismos datos y no depender de un modelo para las cifras. La HU-12 se cumple completa. La tesis pone un techo —la IA externa queda **restringida** a esas dos funciones—: se usa en menos, nunca en más, y sale menos información." |
+| ARCA mira los **últimos 12 meses** y el semáforo mira el año calendario | "El semáforo sigue la HU-10: ingresos del año en curso más la proyección hasta el cierre del ejercicio. La facturación de los últimos 12 meses también se calcula, en su propio endpoint, como complemento." |
 
 ### Dos frases para memorizar literalmente
 
@@ -724,7 +734,7 @@ que el tribunal va a estar esperando:
 | Dataset de evaluación | **600 ejemplos**, 50 por categoría, 5-fold |
 | Mejor / peor categoría (F1) | Monotributo **0,96** / Marketing **0,58** |
 | Categorías | **12** |
-| Pruebas automatizadas | **115** |
+| Pruebas automatizadas | **386** backend + 8 de pantalla |
 | Historias de usuario | **17** |
 | Sprints / duración | **8 sprints** / 4 meses |
 | Pantallas | **13** |

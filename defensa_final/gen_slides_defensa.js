@@ -350,7 +350,7 @@ const demo = [
   ["1", "Clasificador de gastos", "Sugerencia automática, umbral de confianza y aprendizaje por corrección", MINT],
   ["2", "Importación bancaria", "Nueve formatos de homebanking, detección heurística local", TEAL_L],
   ["3", "Auditoría automatizada", "Cinco detectores sobre los registros del usuario", TEAL_L],
-  ["4", "Estado fiscal", "Facturación móvil de 12 meses contra el límite de la categoría", AMARILLO],
+  ["4", "Estado fiscal", "Año en curso + proyección hasta diciembre contra el límite de la categoría", AMARILLO],
   ["5", "Proyección de ingresos", "Seis meses con intervalo de confianza y arranque en frío", TEAL_L],
   ["6", "Reporte PDF", "Documento mensual consolidado para el contador", MINT],
 ];
@@ -412,7 +412,7 @@ capas.forEach((c, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:9.35, y:2.25, w:3.25, h:4.05, fill:{color:NAVY}, rectRadius:0.1 });
 s.addText("STACK CLAVE", { x:9.6, y:2.47, w:2.8, h:0.4, fontFace:FB, fontSize:12, bold:true, color:MINT, charSpacing:2 });
 ["scikit-learn — TF-IDF + SVM", "Prophet — series temporales", "ReportLab — PDF programático",
- "Groq — solo datos agregados", "Docker Compose", "pytest — 115 pruebas"].forEach((t, i) => {
+ "Groq — solo datos agregados", "Docker Compose", "pytest — 386 pruebas"].forEach((t, i) => {
   s.addText("›", { x:9.6, y:3.0 + i * 0.52, w:0.3, h:0.4, fontFace:FB, fontSize:15, color:MINT, bold:true });
   s.addText(t, { x:9.9, y:3.0 + i * 0.52, w:2.6, h:0.45, fontFace:FB, fontSize:11.5, color:ICE, valign:"middle" });
 });
@@ -428,7 +428,7 @@ title(s, "Un router no calcula nada", WHITE);
 const back = [
   ["routers/", "12 archivos", "HTTP: rutas, códigos de estado y permisos", TEAL_L],
   ["schemas/", "6 archivos", "DTO: validación de entrada y salida con Pydantic", TEAL_L],
-  ["services/", "9 archivos", "LÓGICA DE NEGOCIO — el corazón del trabajo", MINT],
+  ["services/", "15 archivos", "LÓGICA DE NEGOCIO — el corazón del trabajo", MINT],
   ["models/", "9 archivos", "ORM: mapeo objeto-relacional con SQLAlchemy", TEAL_L],
 ];
 back.forEach((b, i) => {
@@ -447,7 +447,7 @@ back.forEach((b, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:8.85, y:2.1, w:3.75, h:3.9, fill:{color:NAVY2},
   line:{color:TEAL, width:1}, rectRadius:0.1 });
 s.addText("QUÉ ME DIO", { x:9.15, y:2.32, w:3.2, h:0.35, fontFace:FB, fontSize:11.5, bold:true, color:MINT, charSpacing:2 });
-[["Testeabilidad", "115 pruebas contra SQLite en memoria, sin levantar HTTP. 35 segundos."],
+[["Testeabilidad", "386 pruebas contra SQLite en memoria, sin levantar HTTP. Unos 2 minutos."],
  ["Reutilización", "La regla de la cuota la usan el módulo fiscal y la auditoría."],
  ["Un solo lugar", "El formato de moneda lo comparten las alertas y el PDF."]].forEach((v, i) => {
   const y = 2.8 + i * 1.05;
@@ -475,7 +475,8 @@ const filas = [
   ["Importación CSV / Excel",     "importar",        "csv_service",          "ingreso + gasto"],
   ["Monotributo",                 "monotributo",     "monotributo_service",  "categoria_monotributo"],
   ["Clasificador (playground)",   "ml",              "ml_service",           "modelo_clasificador"],
-  ["Resumen y recomendaciones",   "resumen",         "ia_service",           "—"],
+  ["Resumen IA",                  "resumen",         "ia_service",           "—"],
+  ["Recomendaciones",             "recomendaciones", "recomendaciones_service", "—"],
   ["Reporte PDF",                 "reportes",        "reportes_service",     "—"],
 ];
 s.addTable(
@@ -489,10 +490,10 @@ s.addTable(
     options: { color: j === 0 ? INK : TEXTO, fontFace: j === 0 ? FB : FM,
                fill: { color: i % 2 ? "EDF2F7" : WHITE } },
   })))),
-  { x:0.7, y:2.15, w:11.9, colW:[3.6, 2.4, 3.0, 2.9], rowH:0.36,
+  { x:0.7, y:2.15, w:11.9, colW:[3.4, 2.4, 3.3, 2.8], rowH:0.34,
     fontFace:FB, fontSize:12, border:{ type:"solid", color:BORDE, pt:0.5 }, valign:"middle" }
 );
-s.addText("6.140 líneas de backend  ·  4.609 de frontend  ·  115 pruebas  ·  9 tablas  ·  13 pantallas", {
+s.addText("8.063 líneas de backend  ·  5.344 de frontend  ·  386 pruebas  ·  9 tablas  ·  13 pantallas", {
   x:0.7, y:6.65, w:11.9, h:0.45, fontFace:FB, fontSize:13, bold:true, color:TEAL, align:"center" });
 footer(s);
 
@@ -547,7 +548,7 @@ bloque(s, "Bloque 5 · 27:00");
 title(s, "Dos algoritmos, dos escenarios");
 // Se parte el return en varias líneas: en una sola no entra en el ancho
 // de la caja y LibreOffice lo corta a mitad del literal.
-codigo(s, 0.7, 2.1, 6.3, 2.15, "app/services/ml_service.py:728", [
+codigo(s, 0.7, 2.1, 6.3, 2.15, "app/services/ml_service.py:726", [
   'def _elegir_algoritmo(n_ejemplos: int) -> str:',
   '    if n_ejemplos >= 100:',
   '        return "svm"',
@@ -640,7 +641,7 @@ s.addText("Si el usuario ya me dijo que «Adobe Photoshop» es Software, volver 
   x:9.85, y:2.85, w:2.5, h:1.5, fontFace:FB, fontSize:12, color:ICE });
 s.addText("Y cuando el modelo duda, lo dice. Prefiero un sistema que diga «no sé» a uno que invente una categoría.", {
   x:9.85, y:4.5, w:2.5, h:1.4, fontFace:FB, fontSize:12, color:ICE });
-s.addText("ia_service.py:276", { x:9.85, y:6.05, w:2.5, h:0.3, fontFace:FM, fontSize:10, color:TEAL_L });
+s.addText("ia_service.py:409", { x:9.85, y:6.05, w:2.5, h:0.3, fontFace:FM, fontSize:10, color:TEAL_L });
 s.addText("La comparación usa una forma canónica: sin tildes, sin mayúsculas y sin espacios de más.", {
   x:0.7, y:6.6, w:8.6, h:0.4, fontFace:FB, fontSize:12, italic:true, color:TEAL });
 footer(s);
@@ -722,7 +723,7 @@ s.addText("Cambiar la pregunta: en vez de «¿qué probabilidad tiene esta clase
 s.addText("✓  El umbral de revisión manual empezó a funcionar.", { x:7.05, y:3.85, w:5.3, h:0.3,
   fontFace:FB, fontSize:12, bold:true, color:MINT });
 
-codigo(s, 0.7, 4.45, 11.9, 1.5, "app/services/ml_service.py:826  ·  _confianza_svm()", [
+codigo(s, 0.7, 4.45, 11.9, 1.5, "app/services/ml_service.py:830  ·  _confianza_svm()", [
   "brecha    = scores[top1] - scores[top2]",
   "confianza = 1 - exp(-brecha)        # monótona y acotada en [0, 1)",
 ]);
@@ -825,7 +826,7 @@ s = slide(true);
 s.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.28, h:7.5, fill:{color:MINT} });
 s.addText("FreelanceControl", { x:0.85, y:2.35, w:11.7, h:1.2, fontFace:FH, fontSize:50, bold:true, color:WHITE });
 s.addText("Gracias.", { x:0.9, y:3.6, w:11.0, h:0.8, fontFace:FH, fontSize:30, color:MINT });
-const cierre = [["76 %", "exactitud"], ["115", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
+const cierre = [["76 %", "exactitud"], ["386", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
 cierre.forEach((c, i) => {
   const x = 0.9 + i * 1.95;
   s.addText(c[0], { x, y:4.8, w:1.8, h:0.55, fontFace:FH, fontSize:26, bold:true, color:WHITE });
@@ -858,7 +859,7 @@ det.forEach((d, i) => {
   s.addText(d[0], { x:1.65, y, w:3.7, h:0.82, fontFace:FH, fontSize:14.5, bold:true, color:INK, valign:"middle" });
   s.addText(d[1], { x:5.4, y, w:7.0, h:0.82, fontFace:FB, fontSize:11.5, color:TEXTO, valign:"middle" });
 });
-s.addText("Idempotencia: cada condición tiene una huella estable (tipo + monto). Una alerta que el usuario marcó como resuelta no se regenera en la corrida siguiente.", {
+s.addText("Idempotencia: cada condición tiene una huella estable (el registro que la originó). Una alerta que el usuario marcó como resuelta no se regenera en la corrida siguiente.", {
   x:0.7, y:6.72, w:11.9, h:0.4, fontFace:FB, fontSize:12, italic:true, color:TEAL, align:"center" });
 footer(s);
 
@@ -888,17 +889,17 @@ const idx = [
   ["Conexión a la base", "database.py:38"],
   ["Protección de rutas", "dependencies.py:40"],
   ["Hash de contraseñas", "services/auth.py"],
-  ["Elección de algoritmo", "ml_service.py:728"],
-  ["Modelo entrenado en BD", "ml_service.py:713"],
-  ["Confianza del SVM", "ml_service.py:826"],
-  ["Arranque en frío", "prophet_service.py:91"],
+  ["Elección de algoritmo", "ml_service.py:726"],
+  ["Modelo entrenado en BD", "ml_service.py:711"],
+  ["Confianza del SVM", "ml_service.py:830"],
+  ["Arranque en frío", "prophet_service.py:179"],
   ["Formatos de banco", "csv_service.py:41"],
-  ["Transferencias propias", "csv_service.py:581"],
-  ["Cadena de clasificación", "ia_service.py:276"],
-  ["Creación de alertas", "auditoria.py:48"],
-  ["Idempotencia de alertas", "auditoria.py:66"],
-  ["Armado del PDF", "reportes_service.py:406"],
-  ["Cálculo fiscal", "monotributo_service.py:36"],
+  ["Transferencias propias", "csv_service.py:738"],
+  ["Cadena de clasificación", "ia_service.py:409"],
+  ["Creación de alertas", "auditoria.py:59"],
+  ["Idempotencia de alertas", "auditoria.py:77"],
+  ["Armado del PDF", "reportes_service.py:535"],
+  ["Cálculo fiscal", "monotributo_service.py:66"],
   ["Token en el frontend", "api.js:23"],
   ["Rutas privadas", "App.js:31"],
 ];
@@ -907,7 +908,7 @@ idx.forEach((r, i) => {
   const x = 0.7 + col * 6.1, y = 2.05 + row * 0.585;
   s.addShape(pptx.ShapeType.roundRect, { x, y, w:5.8, h:0.5, fill:{color:NAVY2}, rectRadius:0.05 });
   s.addText(r[0], { x:x+0.25, y, w:2.75, h:0.5, fontFace:FB, fontSize:12, color:ICE, valign:"middle" });
-  // La columna de rutas va más ancha: "monotributo_service.py:36" no entraba.
+  // La columna de rutas va más ancha: "monotributo_service.py:66" no entraba.
   s.addText(r[1], { x:x+3.0, y, w:2.65, h:0.5, fontFace:FM, fontSize:10.5, color:MINT, valign:"middle" });
 });
 s.addText('Desarrollo completo en defensa_final/02_ARQUITECTURA_Y_PATRONES.md  ·  grep -rn "PATRÓN:" app frontend/src', {

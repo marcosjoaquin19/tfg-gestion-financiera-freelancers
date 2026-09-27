@@ -48,8 +48,8 @@ capas (layered architecture)** de cuatro niveles.
 un servicio y devuelve el resultado. Esto trajo tres beneficios concretos y
 verificables en este proyecto:
 
-1. **Testeabilidad.** Los 115 tests prueban los servicios directamente contra una
-   base SQLite en memoria, sin levantar HTTP. La suite corre en 35 segundos.
+1. **Testeabilidad.** Los 386 tests prueban los servicios directamente contra una
+   base SQLite en memoria, sin levantar HTTP. La suite corre en unos 2 minutos.
 2. **Reutilización real.** `monotributo_service.verificar_pago_monotributo()` lo
    usan el router de monotributo *y* el servicio de auditoría. Si la regla
    fiscal estuviera dentro del endpoint, habría que duplicarla.
@@ -70,28 +70,33 @@ de ML: necesitaba estar aislada y testeable, no acoplada al ciclo de request.
 | ¿Cómo se conecta a la base? | [app/database.py:38](../app/database.py) | Factory · Singleton · Unit of Work |
 | ¿Cómo protegés las rutas privadas? | [app/dependencies.py:40](../app/dependencies.py) | Inyección de dependencias · Guard |
 | ¿Dónde se hashean las contraseñas? | [app/services/auth.py](../app/services/auth.py) | Facade de seguridad |
-| ¿Dónde está el índice de módulos? | [app/main.py:78](../app/main.py) | Front Controller / registro de routers |
-| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:728](../app/services/ml_service.py) | **Strategy** |
-| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:699](../app/services/ml_service.py) | **Pipeline** |
-| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:713](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
-| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:794](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
-| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:826](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
-| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:91](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
+| ¿Dónde está el índice de módulos? | [app/main.py:129](../app/main.py) | Front Controller / registro de routers |
+| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:726](../app/services/ml_service.py) | **Strategy** |
+| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:697](../app/services/ml_service.py) | **Pipeline** |
+| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:711](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
+| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:792](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
+| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:830](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
+| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:179](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
 | ¿Cómo soportás 9 bancos distintos? | [app/services/csv_service.py:41](../app/services/csv_service.py) | **Adapter** / capa anticorrupción |
-| ¿Dónde detectás el formato del archivo? | [app/services/csv_service.py:197](../app/services/csv_service.py) | Adapter (heurística local) |
-| ¿Cómo evitás contar transferencias propias? | [app/services/csv_service.py:581](../app/services/csv_service.py) | Regla de dominio |
-| ¿Qué pasa si el usuario ya corrigió esa categoría? | [app/services/ia_service.py:276](../app/services/ia_service.py) | **Cache-Aside** + Chain of Responsibility |
-| ¿Y si se cae la API de IA? | [app/services/ia_service.py:49](../app/services/ia_service.py) | Fallback determinístico |
-| ¿Cómo se crean las alertas? | [app/services/auditoria.py:48](../app/services/auditoria.py) | **Factory Method** |
-| ¿Repite alertas que ya resolví? | [app/services/auditoria.py:66](../app/services/auditoria.py) | Idempotencia por huella |
-| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:222](../app/services/auditoria.py) | **Strategy** de reglas |
-| ¿Cómo detectás montos atípicos? | [app/services/auditoria.py:110](../app/services/auditoria.py) | Desvío estándar sobre 6 meses |
-| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:406](../app/services/reportes_service.py) | **Builder** |
-| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:457](../app/services/reportes_service.py) | **Template Method** |
-| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:36](../app/services/monotributo_service.py) | Servicio de dominio |
+| ¿Dónde detectás el formato del archivo? | [app/services/csv_service.py:243](../app/services/csv_service.py) | Adapter (heurística local) |
+| ¿Cómo evitás contar transferencias propias? | [app/services/csv_service.py:738](../app/services/csv_service.py) | Regla de dominio |
+| ¿Qué pasa si el usuario ya corrigió esa categoría? | [app/services/ia_service.py:409](../app/services/ia_service.py) | **Cache-Aside** + Chain of Responsibility |
+| ¿Y si se cae la API de IA? | [app/services/ia_service.py:360](../app/services/ia_service.py) | Fallback determinístico |
+| ¿Cómo se crean las alertas? | [app/services/auditoria.py:59](../app/services/auditoria.py) | **Factory Method** |
+| ¿Repite alertas que ya resolví? | [app/services/auditoria.py:77](../app/services/auditoria.py) | Idempotencia por huella |
+| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:249](../app/services/auditoria.py) | **Strategy** de reglas |
+| ¿Cómo detectás montos atípicos? | [app/services/auditoria.py:136](../app/services/auditoria.py) | Desvío estándar sobre 6 meses |
+| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:535](../app/services/reportes_service.py) | **Builder** |
+| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:590](../app/services/reportes_service.py) | **Template Method** |
+| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:66](../app/services/monotributo_service.py) | Servicio de dominio |
 | ¿Cómo maneja el frontend el token? | [frontend/src/api.js:23](../frontend/src/api.js) | **Interceptor** · Singleton |
 | ¿Qué pasa si expira la sesión? | [frontend/src/api.js:32](../frontend/src/api.js) | Interceptor de respuesta |
 | ¿Cómo bloqueás pantallas sin login? | [frontend/src/App.js:31](../frontend/src/App.js) | **Guard** / Protected Route |
+| ¿De dónde sale cada recomendación? | [app/services/recomendaciones_service.py:443](../app/services/recomendaciones_service.py) | Reglas con su dato de origen (HU-12) |
+| ¿Qué viaja a Groq y cómo controlás lo que vuelve? | [app/services/ia_service.py:172](../app/services/ia_service.py) · [:289](../app/services/ia_service.py) | Minimización de datos + verificación de cifras |
+| ¿Cómo sabés que la proyección no quedó vieja? | [app/services/prophet_service.py:216](../app/services/prophet_service.py) | Firma de los ingresos |
+| ¿Qué escala usa un mes pasado? | [app/services/monotributo_service.py:45](../app/services/monotributo_service.py) | Catálogo versionado por fecha de vigencia |
+| ¿Qué pasa si falta la clave de firma? | [app/services/auth.py:57](../app/services/auth.py) | Fail-fast al arrancar |
 | ¿Dónde está el descargo de responsabilidad? | [frontend/src/components/AvisoAlcance.js](../frontend/src/components/AvisoAlcance.js) | Single Source of Truth |
 
 ---
@@ -103,7 +108,7 @@ alternativa descarté**. Este es el guion de la respuesta oral.
 
 ### 3.1 · Strategy — selección de algoritmo de clasificación
 
-**Dónde:** `app/services/ml_service.py:728` (`_elegir_algoritmo`) y `:699`
+**Dónde:** `app/services/ml_service.py:726` (`_elegir_algoritmo`) y `:699`
 (`_crear_pipeline`).
 
 ```python
@@ -137,15 +142,21 @@ está documentada en el docstring de `clasificar_gasto()`.
 
 ### 3.2 · Strategy + degradación elegante — proyecciones
 
-**Dónde:** `app/services/prophet_service.py:91` (`generar_proyecciones`).
+**Dónde:** `app/services/prophet_service.py:179` (`generar_proyecciones`).
 
-**Qué resuelve.** Prophet necesita al menos 10 ingresos y **dos meses distintos**
-de historial: ajusta una tendencia sobre totales mensuales, y con una sola fila
-el `fit` falla. Un usuario nuevo que carga todo junto rompería la pantalla.
+**Qué resuelve.** Prophet ajusta una tendencia sobre los totales de los **meses
+cerrados** (el mes en curso no terminó y bajaría la serie). Se usa con al menos
+10 ingresos en meses cerrados **y** 3 meses cerrados: con dos meses la
+"tendencia" es la recta que pasa por dos puntos y se extrapola sin control.
+Un usuario nuevo que carga todo junto rompería la pantalla.
 
 **Por qué así.** En vez de mostrar un error, el sistema cambia de estrategia:
-proyecta la media móvil con un rango de ±1 desvío estándar. El usuario siempre
-ve una proyección; la calidad mejora sola cuando hay más historial.
+con menos historial proyecta la **media móvil de los totales mensuales de los
+últimos 3 meses cerrados**, con un rango de ±1 desvío estándar; si solo hay
+ingresos del mes en curso, los toma como estimación provisoria. Cada
+proyección guarda el método con que se calculó y la pantalla lo muestra. El
+usuario siempre ve una proyección; la calidad mejora sola cuando hay más
+historial.
 
 **Alternativa descartada:** exigir un mínimo de datos y bloquear la pantalla.
 Se descartó porque castiga justamente al usuario nuevo, que es el que más
@@ -176,7 +187,7 @@ explicarle qué columna es cuál, ya perdí.
 
 ### 3.4 · Cache-Aside + Chain of Responsibility — clasificación de un gasto
 
-**Dónde:** `app/services/ia_service.py:276` (`clasificar_gasto`).
+**Dónde:** `app/services/ia_service.py:409` (`clasificar_gasto`).
 
 **Cadena de resolución:**
 
@@ -202,8 +213,8 @@ aprenda ese caso puntual; la corrección explícita sí lo garantiza.
 
 ### 3.5 · Factory Method + idempotencia — auditoría
 
-**Dónde:** `app/services/auditoria.py:48` (`_crear_alerta`), `:66`
-(`_huella_alerta`), `:222` (`ejecutar_auditoria`).
+**Dónde:** `app/services/auditoria.py:59` (`_crear_alerta`), `:77`
+(`_huella_alerta`), `:249` (`ejecutar_auditoria`).
 
 **Qué resuelve.** Hay cinco detectores (duplicados, montos atípicos, facturas
 impagas, monotributo sin pagar, transferencias entre cuentas propias). Cada uno
@@ -214,13 +225,18 @@ corre todas y persiste los resultados.
 `AlertaAuditoria`. Si mañana la alerta necesita un campo nuevo, se agrega ahí y
 los cinco detectores lo heredan.
 
-**Idempotencia:** `_huella_alerta()` devuelve `(tipo, monto)` como identidad
-estable de una condición. Si el usuario ya marcó una alerta como resuelta, la
+**Idempotencia:** `_huella_alerta()` devuelve la identidad estable de una
+condición concreta. Si el usuario ya marcó una alerta como resuelta, la
 siguiente corrida **no la regenera**. Sin esto, la auditoría sería ruido: el
 usuario resuelve, vuelve a correr y aparece todo de nuevo.
 
-> Se usa `(tipo, monto)` y no la descripción porque algunas descripciones varían
-> entre corridas — incluyen promedios y desvíos recalculados.
+> La huella es el registro que originó la alerta: para una anomalía, el gasto
+> señalado (su descripción cambia entre corridas porque incluye el promedio y
+> el desvío recalculados); para el resto, los registros referenciados más la
+> descripción, que ya nombra fechas, categoría, cliente o mes. Al principio era
+> `(tipo, monto)`, y resolver un duplicado de $5.000 silenciaba cualquier otro
+> duplicado de $5.000, o el monotributo de un mes silenciaba los siguientes
+> (la cuota es la misma). Se detectó y corrigió en el repaso previo a la defensa.
 
 **Alternativa descartada:** una jerarquía de clases `DetectorBase` con herencia.
 Se descartó por sobreingeniería: cinco funciones con la misma firma ya dan el
@@ -228,7 +244,7 @@ polimorfismo necesario en Python, sin el peso de una jerarquía.
 
 ### 3.6 · Builder + Template Method — reporte PDF
 
-**Dónde:** `app/services/reportes_service.py:406` (`generar_pdf_mensual`), `:457`
+**Dónde:** `app/services/reportes_service.py:535` (`generar_pdf_mensual`), `:457`
 (`_pie_pagina`).
 
 **Builder:** cada `_seccion_*()` devuelve una lista de elementos (encabezado,
@@ -312,7 +328,7 @@ haberlos **usado deliberadamente** y saber qué problema resuelve cada uno.
 `app/services/formato.py`.
 
 Dos casos del mismo principio: un enunciado que debe ser idéntico en varios
-lugares vive en **un** lugar. El descargo de alcance aparece en cinco pantallas
+lugares vive en **un** lugar. El descargo de alcance aparece en seis pantallas
 y en el PDF; el formato de pesos, en las alertas y en el reporte. Si cambia, se
 cambia una vez.
 
@@ -322,7 +338,7 @@ cambia una vez.
 
 ### 4.1 · Confianza del SVM — por qué no softmax
 
-**Dónde:** `app/services/ml_service.py:826` (`_confianza_svm`).
+**Dónde:** `app/services/ml_service.py:830` (`_confianza_svm`).
 
 LinearSVC no devuelve probabilidades, devuelve distancias al hiperplano
 (`decision_function`). Aplicar softmax sobre esas distancias **no funciona**
@@ -353,20 +369,23 @@ aplicación funciona igual.
 **Dónde:** `seed_categorias_monotributo.py`.
 
 Los valores de ARCA cambian por inflación (la escala vigente es la de agosto
-2026, +16,8 % sobre la de junio). Cada escala publicada se conserva como una
-constante fechada y `ESCALA_VIGENTE` toma la más reciente: cargar una escala
-nueva es agregar una constante, sin tocar la aplicación.
+2026, +16,85 % sobre la de febrero). Cada escala publicada se conserva como una
+constante fechada en `ESCALAS`: cargar una escala nueva es agregar una
+constante, sin tocar la aplicación.
 
-**Limitación conocida y asumida** (está documentada en el archivo): la tabla
-tiene un índice único sobre `letra`, así que solo puede alojar una escala a la
-vez. Guardar el histórico en base requeriría un unique compuesto
-(`letra + actividad + fecha_vigencia`) y cambiar las consultas de
-`monotributo_service`. Se documentó en vez de ocultarse.
+**Histórico en la base** (migración 0012): la tabla tiene un único compuesto
+`letra + actividad + fecha_vigencia`, así que guarda todas las escalas. La más
+reciente queda activa para el estado fiscal, y
+`monotributo_service.escala_vigente_en(fecha)` devuelve la que regía en
+cualquier mes: el reporte PDF de mayo evalúa la cuota y el tope con la escala
+de febrero, no con la de agosto. Al principio la tabla tenía un índice único
+sobre `letra` y solo alojaba una escala; se resolvió en el repaso previo a la
+defensa.
 
 ### 4.4 · Límite de responsabilidad del sistema
 
-**Dónde:** `frontend/src/components/AvisoAlcance.js` (5 pantallas) y
-`app/services/reportes_service.py:388` (pie del PDF).
+**Dónde:** `frontend/src/components/AvisoAlcance.js` (6 pantallas) y
+`app/services/reportes_service.py:515` (pie del PDF).
 
 > *FreelanceControl informa, proyecta y alerta sobre la base de los datos que
 > usted carga. No constituye asesoramiento contable, fiscal ni financiero, y no
@@ -381,10 +400,13 @@ El descargo está **en el producto**, no solo en la documentación:
 | Recomendaciones | Reglas sobre sus propios datos, carácter orientativo |
 | Resumen IA | Redactado por un modelo de lenguaje; verificar cifras |
 | Auditoría | Señala posibles inconsistencias, no dictamina error |
+| Dashboard | La proyección es una estimación y la recomendación, orientativa |
 | **PDF** | Además: verificar contra documentación respaldatoria |
 
 Va también en el PDF porque el reporte es el artefacto que **sale** de la
-aplicación y circula fuera de ella: tiene que llevar el límite consigo.
+aplicación y circula fuera de ella: tiene que llevar el límite consigo. Ahí usa
+la frase exacta del criterio de la HU-13: *"no reemplaza el asesoramiento de un
+contador matriculado"* (un test la busca en el PDF generado).
 
 ---
 
@@ -402,8 +424,8 @@ aplicación y circula fuera de ella: tiene que llevar el límite consigo.
 | Monotributo | `monotributo.py` | `monotributo_service.py` | `categoria_monotributo.py` |
 | Clasificador (playground) | `ml.py` | `ml_service.py` | `modelo_clasificador.py` + `cache_clasificacion.py` |
 | Resumen IA | `resumen.py` | `ia_service.py` | — |
-| Recomendaciones | `recomendaciones.py` | `ia_service.py` | — |
+| Recomendaciones | `recomendaciones.py` | `recomendaciones_service.py` | — |
 | Reportes PDF | `reportes.py` | `reportes_service.py` | — |
 
-**Volumen:** 6.140 líneas de backend · 4.609 de frontend · 115 tests
-automatizados · 9 tablas · 12 routers · 9 servicios · 13 pantallas.
+**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 386 tests
+automatizados · 9 tablas · 12 migraciones · 12 routers · 15 servicios · 13 pantallas.
