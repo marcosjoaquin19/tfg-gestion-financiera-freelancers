@@ -58,6 +58,7 @@ class AlertaAuditoria(Base):
     # sobre él sin ambigüedad (antes se lo localizaba por monto, lo que podía
     # confundir dos pares que compartieran el importe):
     #   - GASTO_DUPLICADO      → el gasto repetido (el más reciente del par).
+    #   - ANOMALIA_ESTADISTICA → el gasto señalado como atípico.
     #   - TRANSFERENCIA_PROPIA → la pata de salida (el débito) del par.
     # SET NULL: si el usuario borra ese gasto por su cuenta, se limpia sola.
 

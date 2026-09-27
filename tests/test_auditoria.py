@@ -314,3 +314,87 @@ def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_heade
     mayo = [g for g in gastos if g["id"] == id_sobreviviente_mayo]
     assert len(mayo) == 1
     assert mayo[0]["es_duplicado"] is False
+
+
+# --- Huella de alertas resueltas: silencia SOLO la condición resuelta ---
+
+def _resolver_pendientes(client, auth_headers, tipo):
+    for a in client.get(f"/alertas/?tipo={tipo}", headers=auth_headers).json():
+        client.patch(f"/alertas/{a['id']}/resolver", json={"resuelta": True}, headers=auth_headers)
+
+
+def _pendientes(client, auth_headers, tipo):
+    return client.get(f"/alertas/?tipo={tipo}", headers=auth_headers).json()
+
+
+def test_resolver_duplicado_no_silencia_otro_del_mismo_monto(client, auth_headers):
+    # Antes la huella era (tipo, monto): resolver un duplicado de $1000 en
+    # Software silenciaba cualquier otro duplicado de $1000.
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D0}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "fecha": D1}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    _resolver_pendientes(client, auth_headers, "gasto_duplicado")
+
+    otro = {**GASTO_BASE, "descripcion": "Uber", "categoria": "Transporte"}
+    client.post("/gastos/", json={**otro, "fecha": _hace(60)}, headers=auth_headers)
+    client.post("/gastos/", json={**otro, "fecha": _hace(59)}, headers=auth_headers)
+
+    resp = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert resp.json()["detalle"]["gastos_duplicados"] == 1
+    pendientes = _pendientes(client, auth_headers, "gasto_duplicado")
+    assert len(pendientes) == 1
+    assert "Transporte" in pendientes[0]["descripcion"]
+
+
+def test_anomalia_resuelta_no_reaparece_aunque_cambie_el_promedio(client, auth_headers):
+    # La descripción de la anomalía incluye promedio y desviación, que cambian
+    # al sumar gastos: la huella usa el gasto señalado, no el texto.
+    for i in range(5):
+        client.post("/gastos/", json={**GASTO_BASE, "fecha": _hace(31 - i)}, headers=auth_headers)
+    client.post("/gastos/", json={**GASTO_BASE, "monto": 50000, "fecha": _hace(22)}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    _resolver_pendientes(client, auth_headers, "anomalia_estadistica")
+
+    client.post("/gastos/", json={**GASTO_BASE, "monto": 1200, "fecha": _hace(15)}, headers=auth_headers)
+    resp = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert resp.json()["detalle"]["anomalias"] == 0
+
+
+def test_resolver_monotributo_de_un_mes_no_silencia_el_siguiente(client, auth_headers, monkeypatch):
+    # La cuota es la misma todos los meses: con la huella (tipo, monto),
+    # resolver la alerta de septiembre apagaba la de octubre y las siguientes.
+    from datetime import date
+    from decimal import Decimal
+    from app.database import get_db
+    from app.main import app
+    from app.models.categoria_monotributo import CategoriaMonotributo
+    import app.services.monotributo_service as ms
+
+    db = next(app.dependency_overrides[get_db]())
+    db.add(CategoriaMonotributo(
+        letra="A", limite_anual=Decimal("1000000"), cuota_mensual=Decimal("5000"),
+        actividad="servicios", fecha_vigencia=date(2024, 1, 1), activa=True,
+    ))
+    db.commit()
+    client.patch("/monotributo/categoria", json={"categoria_monotributo": "A"}, headers=auth_headers)
+
+    def fijar_hoy(dia):
+        class Fija(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return dia
+        monkeypatch.setattr(ms, "datetime", Fija)
+
+    fijar_hoy(datetime(2026, 9, 10))
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    _resolver_pendientes(client, auth_headers, "monotributo_impago")
+
+    # mismo mes: sigue silenciada
+    resp = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert resp.json()["detalle"]["monotributo_impago"] == 0
+
+    # mes siguiente sin pagar: la alerta tiene que volver
+    fijar_hoy(datetime(2026, 10, 5))
+    resp = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    assert resp.json()["detalle"]["monotributo_impago"] == 1
+    assert "Octubre" in _pendientes(client, auth_headers, "monotributo_impago")[0]["descripcion"]

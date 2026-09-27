@@ -43,6 +43,16 @@ MIN_GASTOS_PARA_ESTADISTICA = 5
 # con menos datos la desviación estándar no es confiable
 
 
+# a qué contador del resumen suma cada tipo de alerta
+CLAVE_CONTEO = {
+    TipoAlerta.GASTO_DUPLICADO: "gastos_duplicados",
+    TipoAlerta.ANOMALIA_ESTADISTICA: "anomalias",
+    TipoAlerta.DISCREPANCIA_FACTURACION: "discrepancias",
+    TipoAlerta.MONOTRIBUTO_IMPAGO: "monotributo_impago",
+    TipoAlerta.TRANSFERENCIA_PROPIA: "transferencias_propias",
+}
+
+
 # -------------------------------------------------------------------
 # FUNCIÓN AUXILIAR
 # -------------------------------------------------------------------
@@ -64,12 +74,27 @@ def _crear_alerta(
     )
 
 
-def _huella_alerta(tipo: TipoAlerta, monto) -> tuple:
-    """Identidad de una condición, para no regenerar alertas que el usuario
-    ya marcó como resueltas. Usamos (tipo, monto) porque es estable entre
-    corridas (la descripción de algunas alertas varía: promedios, desviaciones)."""
-    monto_norm = round(float(monto), 2) if monto is not None else None
-    return (tipo, monto_norm)
+def _huella_alerta(alerta: AlertaAuditoria) -> tuple:
+    """Identidad de la condición concreta que marca una alerta, para no
+    regenerar las que el usuario ya resolvió.
+
+    Tiene que distinguir situaciones distintas: con solo (tipo, monto), resolver
+    un duplicado de $5.000 en Software silenciaba cualquier otro duplicado de
+    $5.000, y resolver el monotributo de un mes silenciaba todos los siguientes
+    (la cuota es la misma). Por eso:
+      - anomalía: el gasto señalado (su descripción varía entre corridas porque
+        incluye el promedio y la desviación de la categoría);
+      - el resto: los registros referenciados más la descripción, que es estable
+        y ya nombra fechas, categoría, cliente o mes según el tipo.
+    """
+    if alerta.tipo == TipoAlerta.ANOMALIA_ESTADISTICA:
+        return (alerta.tipo, alerta.gasto_id_duplicado)
+    return (
+        alerta.tipo,
+        alerta.gasto_id_duplicado,
+        alerta.ingreso_id_relacionado,
+        alerta.descripcion,
+    )
 
 
 # -------------------------------------------------------------------
@@ -229,14 +254,12 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
         AlertaAuditoria.resuelta == False,
     ).delete()
 
-    # Huellas de las alertas YA RESUELTAS: una condición que el usuario marcó
-    # como resuelta NO se vuelve a generar aunque siga existiendo. Así "Resolver"
-    # es efectivo y no reaparece la misma alerta al re-ejecutar la auditoría.
+    # Huellas de las alertas YA RESUELTAS (ver _huella_alerta).
     resueltas = db.query(AlertaAuditoria).filter(
         AlertaAuditoria.usuario_id == usuario_id,
         AlertaAuditoria.resuelta == True,
     ).all()
-    huellas_resueltas = {_huella_alerta(a.tipo, a.monto_involucrado) for a in resueltas}
+    huellas_resueltas = {_huella_alerta(a) for a in resueltas}
 
     conteo = {
         "gastos_duplicados": 0, "anomalias": 0, "discrepancias": 0,
@@ -255,9 +278,6 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
                 g.es_duplicado = True
                 ids_marcados.add(g.id)
 
-        if _huella_alerta(TipoAlerta.GASTO_DUPLICADO, gasto_a.monto) in huellas_resueltas:
-            continue  # el usuario ya resolvió esta condición → no repetir
-
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.GASTO_DUPLICADO,
@@ -269,29 +289,26 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             # sin ambigüedad si otro par comparte el mismo monto.
             gasto_id_duplicado=gasto_b.id,
         ))
-        conteo["gastos_duplicados"] += 1
 
     # --- DETECTOR 2: anomalías ---
     anomalias = detectar_anomalias_estadisticas(db, usuario_id)
 
     for gasto, media, desviacion in anomalias:
-        if _huella_alerta(TipoAlerta.ANOMALIA_ESTADISTICA, gasto.monto) in huellas_resueltas:
-            continue
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.ANOMALIA_ESTADISTICA,
             f"Gasto inusualmente alto: {formato_pesos_ar(gasto.monto)} en '{gasto.categoria}' "
             f"(promedio de la categoría: {formato_pesos_ar(media)}, desviación: {formato_pesos_ar(desviacion)})",
             monto=gasto.monto,
+            # el gasto señalado: identifica la alerta aunque cambien el
+            # promedio y la desviación de la categoría entre corridas
+            gasto_id_duplicado=gasto.id,
         ))
-        conteo["anomalias"] += 1
 
     # --- DETECTOR 3: discrepancias ---
     facturas_vencidas = detectar_discrepancias_facturacion(db, usuario_id)
 
     for factura in facturas_vencidas:
-        if _huella_alerta(TipoAlerta.DISCREPANCIA_FACTURACION, factura.monto) in huellas_resueltas:
-            continue
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.DISCREPANCIA_FACTURACION,
@@ -299,20 +316,16 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             f"(venció el {factura.fecha_vencimiento.date()})",
             monto=factura.monto,
         ))
-        conteo["discrepancias"] += 1
 
     # --- DETECTOR 4: monotributo impago ---
-    mono_count, alerta_mono = detectar_monotributo_impago(db, usuario_id)
-    if alerta_mono and _huella_alerta(TipoAlerta.MONOTRIBUTO_IMPAGO, alerta_mono.monto_involucrado) not in huellas_resueltas:
-        conteo["monotributo_impago"] = mono_count
+    _, alerta_mono = detectar_monotributo_impago(db, usuario_id)
+    if alerta_mono:
         alertas.append(alerta_mono)
 
     # --- DETECTOR 5: transferencias entre cuentas propias ---
     transferencias = detectar_transferencias_propias(db, usuario_id)
 
     for ingreso, gasto in transferencias:
-        if _huella_alerta(TipoAlerta.TRANSFERENCIA_PROPIA, ingreso.monto) in huellas_resueltas:
-            continue
         alertas.append(_crear_alerta(
             usuario_id,
             TipoAlerta.TRANSFERENCIA_PROPIA,
@@ -324,7 +337,12 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             gasto_id_duplicado=gasto.id,
             ingreso_id_relacionado=ingreso.id,
         ))
-        conteo["transferencias_propias"] += 1
+
+    # Una condición que el usuario ya marcó como resuelta no se vuelve a
+    # generar aunque siga existiendo: así "Resolver" es efectivo.
+    alertas = [a for a in alertas if _huella_alerta(a) not in huellas_resueltas]
+    for alerta in alertas:
+        conteo[CLAVE_CONTEO[alerta.tipo]] += 1
 
     db.add_all(alertas)
     db.commit()
