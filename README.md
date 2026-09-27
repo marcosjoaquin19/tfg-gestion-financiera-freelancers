@@ -98,6 +98,11 @@ docker compose exec api python seed_modelo_base.py   # entrena el clasificador b
 docker compose exec api python seed_demo.py          # crea el usuario demo con datos
 ```
 
+Para reproducir los datos exactos de la defensa oral (enero a septiembre de
+2026, con fechas fijas), en lugar de `seed_demo.py` se puede usar
+`seed_demo_defensa.py`. El extracto que se importa en vivo está en
+`defensa_final/demo/extracto_28sep_14oct.csv`.
+
 **4. Abrir la aplicación**
 
 - Frontend: **http://localhost:3000**
