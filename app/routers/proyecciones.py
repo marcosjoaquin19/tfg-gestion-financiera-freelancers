@@ -8,17 +8,24 @@ frontend, valida el usuario autenticado y devuelve/consulta las proyecciones.
 Endpoints:
   POST /proyecciones/generar  → calcula y guarda N períodos de proyección.
   GET  /proyecciones/         → lista las proyecciones guardadas del usuario.
+  GET  /proyecciones/historico → serie mensual con la que se entrena el modelo.
   GET  /proyecciones/{id}     → devuelve una proyección puntual.
 """
 
+from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.models.proyeccion import Proyeccion
-from app.schemas.proyeccion import ProyeccionResponse, ProyeccionGenerarRequest
+from app.schemas.proyeccion import ProyeccionResponse, ProyeccionGenerarRequest, HistoricoResponse
 from app.dependencies import get_current_user
-from app.services.prophet_service import generar_proyecciones as _generar_proyecciones
+from app.models.ingreso import Ingreso
+from app.services.prophet_service import (
+    generar_proyecciones as _generar_proyecciones,
+    inicio_mes_en_curso,
+    serie_mensual,
+)
 
 
 router = APIRouter(prefix="/proyecciones", tags=["Proyecciones"])
@@ -49,6 +56,25 @@ def listar_proyecciones(
     ).order_by(Proyeccion.fecha_proyeccion.asc()).offset(offset).limit(limite).all()
 
     return proyecciones
+
+
+# GET /proyecciones/historico
+# La serie mensual que ve el modelo, para que el gráfico muestre exactamente
+# eso (antes el frontend sumaba los últimos 200 ingresos por su cuenta).
+# Va antes de /{proyeccion_id} para que "historico" no se lea como un id.
+@router.get("/historico", response_model=HistoricoResponse)
+def historico(
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
+    ingresos = db.query(Ingreso).filter(Ingreso.usuario_id == current_user.id).all()
+    serie, total_en_curso, _ = serie_mensual(ingresos)
+    return {
+        # en UTC explícito, como el resto de las fechas que devuelve la API
+        "meses": [{"mes": mes.replace(tzinfo=timezone.utc), "total": total} for mes, total in serie],
+        "mes_en_curso": inicio_mes_en_curso().replace(tzinfo=timezone.utc),
+        "total_mes_en_curso": total_en_curso,
+    }
 
 
 # GET /proyecciones/{id}

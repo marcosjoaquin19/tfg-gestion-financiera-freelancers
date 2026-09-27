@@ -4,7 +4,8 @@ Servicio de Proyecciones — predicción de ingresos con Prophet.
 Usa la librería Prophet (modelo de series temporales de Meta) para predecir los
 ingresos futuros del freelancer a partir de su historial. Devuelve, por período,
 el monto estimado y el rango (inferior/superior) del intervalo de confianza.
-Requiere un mínimo de ingresos históricos para entrenar; si no, no proyecta.
+Con pocos datos no usa Prophet: recurre a una media móvil (arranque en frío).
+Solo se entrena con meses cerrados y siempre se proyecta desde el mes que viene.
 """
 
 # PATRÓN: Strategy + Degradación elegante — Prophet si hay historial suficiente, media móvil si no.
@@ -24,71 +25,139 @@ from app.models.proyeccion import Proyeccion
 MIN_INGRESOS_PROPHET = 10
 # por debajo de este umbral Prophet no tiene suficientes datos → usamos media móvil
 
+MIN_MESES_PROPHET = 3
+# Prophet ajusta una tendencia sobre los totales mensuales. Con dos meses la
+# "tendencia" es la recta que pasa por dos puntos: encaja perfecto sin importar
+# los datos y se extrapola sin ningún control (1M y 3M → 13M en seis meses).
+# Con tres o más meses ya hay algo que ajustar.
 
-def _proyecciones_media_movil(usuario_id: int, ingresos, periodos: int) -> list[Proyeccion]:
+HORIZONTE_MAX_MESES = 6
+# HU-09: proyección de los próximos seis meses. Más allá, en series cortas e
+# irregulares como las de un freelancer, el error pasa a dominar la estimación.
+
+VENTANA_MEDIA_MOVIL = 3
+# el arranque en frío promedia los últimos 3 meses cerrados
+
+# Método con el que se calculó cada proyección (se guarda y se muestra).
+METODO_PROPHET = "prophet"
+METODO_MEDIA_MOVIL = "media_movil"
+METODO_MES_EN_CURSO = "mes_en_curso"
+# solo hay ingresos del mes que todavía no terminó: estimación provisoria
+METODO_SIN_DATOS = "sin_datos"
+
+
+def inicio_mes_en_curso() -> datetime:
+    """Primer día del mes actual (UTC), sin zona: el mismo criterio con el que
+    se agrupan los ingresos (las fechas se guardan en UTC)."""
+    ahora = datetime.now(timezone.utc)
+    return datetime(ahora.year, ahora.month, 1)
+
+
+def _clave_mes(fecha: datetime) -> datetime:
+    return datetime(fecha.year, fecha.month, 1)
+
+
+def serie_mensual(ingresos) -> tuple[list[tuple[datetime, float]], float, int]:
+    """Totales por mes con los que se entrena, más el parcial del mes en curso.
+
+    Devuelve (serie, total_mes_en_curso, ingresos_en_meses_cerrados).
+
+    - Solo entran los meses CERRADOS: el mes en curso todavía no terminó y,
+      tratado como un mes completo, parece una caída brusca que Prophet
+      extrapola hacia cero. Tampoco entran fechas futuras.
+    - Los meses sin ingresos que quedan ENTRE el primero y el último con datos
+      cuentan como $0: para un freelancer, un mes sin cobrar es un dato real.
+      No se completa con ceros después del último mes con datos, porque eso
+      puede ser un extracto que todavía no se importó.
     """
-    Cold start: menos de MIN_INGRESOS_PROPHET registros.
-    Proyecta la media de los ingresos disponibles para cada mes futuro.
+    mes_actual = inicio_mes_en_curso()
+    totales: dict[datetime, float] = {}
+    total_en_curso = 0.0
+    cantidad_cerrados = 0
+
+    for ingreso in ingresos:
+        mes = _clave_mes(ingreso.fecha)
+        if mes < mes_actual:
+            totales[mes] = totales.get(mes, 0.0) + float(ingreso.monto)
+            cantidad_cerrados += 1
+        elif mes == mes_actual:
+            total_en_curso += float(ingreso.monto)
+
+    if not totales:
+        return [], round(total_en_curso, 2), 0
+
+    serie = []
+    mes = min(totales)
+    ultimo = max(totales)
+    while mes <= ultimo:
+        serie.append((mes, round(totales.get(mes, 0.0), 2)))
+        mes += relativedelta(months=1)
+
+    return serie, round(total_en_curso, 2), cantidad_cerrados
+
+
+def _proyeccion(usuario_id, mes, yhat, lower, upper, metodo) -> Proyeccion:
+    return Proyeccion(
+        usuario_id=usuario_id,
+        fecha_proyeccion=mes.replace(tzinfo=timezone.utc),
+        monto_proyectado=round(max(yhat, 0), 2),
+        monto_lower=round(max(lower, 0), 2),
+        monto_upper=round(max(upper, 0), 2),
+        metodo=metodo,
+    )
+
+
+def _meses_a_proyectar(periodos: int) -> list[datetime]:
+    """Siempre desde el mes que viene, aunque el último dato sea viejo: una
+    proyección nunca cae sobre un mes que ya pasó."""
+    primero = inicio_mes_en_curso() + relativedelta(months=1)
+    return [primero + relativedelta(months=k) for k in range(periodos)]
+
+
+def _proyecciones_media_movil(usuario_id: int, montos: list[float], periodos: int, metodo: str) -> list[Proyeccion]:
+    """
+    Cold start: pocos datos para Prophet.
+    Proyecta el promedio de los montos mensuales recibidos para cada mes futuro.
     El rango lower/upper usa ±1 desviación estándar (o ±20% si hay menos de 2 datos).
-    periodos = número de meses a proyectar.
     """
-    montos = [float(i.monto) for i in ingresos]
     media = sum(montos) / len(montos) if montos else 0.0
     desviacion = statistics.stdev(montos) if len(montos) >= 2 else media * 0.2
 
-    # Primer día del mes siguiente como punto de partida
-    primer_mes_siguiente = datetime.now(timezone.utc).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0
-    ) + relativedelta(months=1)
-
     return [
-        Proyeccion(
-            usuario_id=usuario_id,
-            fecha_proyeccion=primer_mes_siguiente + relativedelta(months=mes),
-            monto_proyectado=round(media, 2),
-            monto_lower=round(max(media - desviacion, 0), 2),
-            monto_upper=round(media + desviacion, 2),
-        )
-        for mes in range(periodos)
+        _proyeccion(usuario_id, mes, media, media - desviacion, media + desviacion, metodo)
+        for mes in _meses_a_proyectar(periodos)
     ]
 
 
-def _proyecciones_prophet(usuario_id: int, ingresos, periodos: int) -> list[Proyeccion]:
-    df = pd.DataFrame([
-        {"ds": ingreso.fecha, "y": float(ingreso.monto)}
-        for ingreso in ingresos
-    ])
-    df["ds"] = pd.to_datetime(df["ds"]).dt.tz_localize(None)
-    # Prophet no acepta fechas con timezone → las removemos
+def _proyecciones_prophet(usuario_id: int, serie, periodos: int) -> list[Proyeccion]:
+    df = pd.DataFrame(serie, columns=["ds", "y"])
 
-    # Agrupar por mes: sumamos todos los ingresos de cada mes en un único punto.
-    # Esto evita el ruido diario y produce proyecciones mensuales más estables.
-    df["ds"] = df["ds"].dt.to_period("M").dt.to_timestamp()
-    df = df.groupby("ds")["y"].sum().reset_index()
+    meses = _meses_a_proyectar(periodos)
+    ultimo_dato = df["ds"].max()
+    # Prophet predice a partir del mes siguiente al último dato. Si ese dato es
+    # viejo, hay que pedirle también los meses intermedios y descartarlos.
+    faltan = relativedelta(meses[-1], ultimo_dato)
+    pasos = faltan.years * 12 + faltan.months
 
     modelo = Prophet(stan_backend="CMDSTANPY")
     modelo.fit(df)
     # freq="MS" → Month Start: cada predicción es el primer día de cada mes
-    futuro = modelo.make_future_dataframe(periods=periodos, freq="MS")
+    futuro = modelo.make_future_dataframe(periods=pasos, freq="MS", include_history=False)
     # Prophet calcula el intervalo de confianza (lower/upper) con simulación
     # Monte Carlo. Fijamos la semilla para que el resultado sea REPRODUCIBLE:
     # misma data → misma proyección, incluida la banda. Clave para defender el modelo.
     np.random.seed(42)
     forecast = modelo.predict(futuro)
+    forecast = forecast[forecast["ds"] >= meses[0]].head(periodos)
 
     return [
-        Proyeccion(
-            usuario_id=usuario_id,
-            fecha_proyeccion=fila["ds"].to_pydatetime(),
-            monto_proyectado=round(max(fila["yhat"], 0), 2),
-            monto_lower=round(max(fila["yhat_lower"], 0), 2),
-            monto_upper=round(max(fila["yhat_upper"], 0), 2),
-        )
-        for _, fila in forecast.tail(periodos).iterrows()
+        _proyeccion(usuario_id, fila["ds"].to_pydatetime(), fila["yhat"],
+                    fila["yhat_lower"], fila["yhat_upper"], METODO_PROPHET)
+        for _, fila in forecast.iterrows()
     ]
 
 
-def generar_proyecciones(db: Session, usuario_id: int, periodos: int = 6) -> list[Proyeccion]:
+def generar_proyecciones(db: Session, usuario_id: int, periodos: int = HORIZONTE_MAX_MESES) -> list[Proyeccion]:
     ingresos = (
         db.query(Ingreso)
         .filter(Ingreso.usuario_id == usuario_id)
@@ -96,17 +165,21 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = 6) -> lis
         .all()
     )
 
-    # Prophet ajusta una tendencia sobre los totales MENSUALES, así que además
-    # del mínimo de registros necesita al menos dos meses distintos de
-    # historial: con todo concentrado en un solo mes el DataFrame agrupado
-    # queda con una única fila y el fit de Prophet falla. En ese caso (usuario
-    # nuevo que cargó muchos movimientos juntos) usamos la media móvil.
-    meses_distintos = {(i.fecha.year, i.fecha.month) for i in ingresos}
+    serie, total_en_curso, cantidad_cerrados = serie_mensual(ingresos)
+    montos = [total for _, total in serie]
 
-    if len(ingresos) < MIN_INGRESOS_PROPHET or len(meses_distintos) < 2:
-        nuevas = _proyecciones_media_movil(usuario_id, ingresos, periodos)
+    if cantidad_cerrados >= MIN_INGRESOS_PROPHET and len(serie) >= MIN_MESES_PROPHET:
+        nuevas = _proyecciones_prophet(usuario_id, serie, periodos)
+    elif serie:
+        nuevas = _proyecciones_media_movil(
+            usuario_id, montos[-VENTANA_MEDIA_MOVIL:], periodos, METODO_MEDIA_MOVIL,
+        )
+    elif total_en_curso > 0:
+        # Usuario nuevo con ingresos solo en el mes que todavía no terminó:
+        # es un piso, no un promedio, y se informa como estimación provisoria.
+        nuevas = _proyecciones_media_movil(usuario_id, [total_en_curso], periodos, METODO_MES_EN_CURSO)
     else:
-        nuevas = _proyecciones_prophet(usuario_id, ingresos, periodos)
+        nuevas = _proyecciones_media_movil(usuario_id, [], periodos, METODO_SIN_DATOS)
 
     db.query(Proyeccion).filter(Proyeccion.usuario_id == usuario_id).delete()
     db.add_all(nuevas)

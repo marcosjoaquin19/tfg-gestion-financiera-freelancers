@@ -3,7 +3,8 @@
  *
  * Permite generar y visualizar (en un gráfico) la proyección de ingresos
  * futuros calculada por el modelo Prophet en el backend. Muestra el monto
- * estimado por período junto con su rango de confianza.
+ * estimado por período junto con su rango de confianza, con qué método se
+ * calculó y cuándo.
  */
 import { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
@@ -14,18 +15,74 @@ const MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','n
 
 // Las proyecciones llegan como el 1° de cada mes a medianoche UTC ("...T00:00:00Z"):
 // se leen con getters UTC para que la etiqueta no retroceda al mes anterior (ART).
-function mesLabel(str) {
-  if (!str) return '';
-  const d = new Date(str);
-  const m = MESES_ES[d.getUTCMonth()];
-  return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getUTCFullYear();
-}
-
 function formatFechaLarga(str) {
   if (!str) return '—';
   const d = new Date(str);
   const m = MESES_ES[d.getUTCMonth()];
   return m.charAt(0).toUpperCase() + m.slice(1) + ' ' + d.getUTCFullYear();
+}
+
+// Clave "AAAA-MM" de una fecha UTC de la API (1° de mes a medianoche UTC).
+function claveMes(str) {
+  const d = new Date(str);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function sumarMes(clave, n) {
+  const [a, m] = clave.split('-').map(Number);
+  const d = new Date(Date.UTC(a, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function etiquetaMes(clave) {
+  const [a, m] = clave.split('-').map(Number);
+  const nombre = MESES_ES[m - 1];
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1) + ' ' + a;
+}
+
+// fecha_generacion es un instante real: se muestra en la hora local.
+function formatFechaHora(str) {
+  if (!str) return '—';
+  const d = new Date(str);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${d.getDate()} ${MESES_ES[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`;
+}
+
+// Texto que declara con qué se calculó la proyección (campo `metodo`).
+function describirMetodo(metodo, mesesHistoricos) {
+  switch (metodo) {
+    case 'prophet':
+      return {
+        titulo: 'Calculado con Prophet',
+        detalle: `Tendencia ajustada sobre ${mesesHistoricos} meses cerrados de ingresos.`,
+        color: '#3b82f6',
+      };
+    case 'media_movil':
+      return {
+        titulo: 'Promedio simple (arranque en frío)',
+        detalle: `Promedio de los últimos ${Math.min(mesesHistoricos, 3)} meses cerrados. Prophet se usa a partir de 10 ingresos en al menos 3 meses cerrados.`,
+        color: '#fbbf24',
+      };
+    case 'mes_en_curso':
+      return {
+        titulo: 'Estimación provisoria',
+        detalle: 'Solo hay ingresos del mes en curso, que todavía no terminó: la proyección es un piso.',
+        color: '#fbbf24',
+      };
+    case 'sin_datos':
+      return {
+        titulo: 'Sin ingresos cargados',
+        detalle: 'No hay historial para proyectar: todos los meses quedan en $0.',
+        color: '#64748b',
+      };
+    default:
+      return {
+        titulo: 'Proyección de una versión anterior',
+        detalle: 'Volvé a generarla para ver con qué método se calcula.',
+        color: '#64748b',
+      };
+  }
 }
 
 function fmtMonto(n) {
@@ -61,7 +118,8 @@ function loadChartJS(callback) {
 
 export default function Proyecciones() {
   const [proyecciones, setProyecciones] = useState([]);
-  const [historico, setHistorico]       = useState([]);  // ingresos reales agrupados por mes
+  const [historico, setHistorico]       = useState([]);  // meses cerrados con los que se entrena
+  const [enCurso, setEnCurso]           = useState(null);  // mes que todavía no terminó (no entra al cálculo)
   const [loading, setLoading]           = useState(true);
   const [generando, setGenerando]       = useState(false);
   const canvasRef = useRef(null);
@@ -70,27 +128,19 @@ export default function Proyecciones() {
   async function fetchProyecciones() {
     setLoading(true);
     try {
-      // Traemos proyecciones + ingresos reales (para dibujar el histórico).
-      const [resP, resI] = await Promise.all([
+      // Proyecciones + la serie mensual EXACTA con la que se entrena el modelo
+      // (meses cerrados, huecos en $0), calculada por el backend.
+      const [resP, resH] = await Promise.all([
         api.get('/proyecciones/', { params: { limite: 12 } }),
-        api.get('/ingresos/', { params: { limite: 200 } }),
+        api.get('/proyecciones/historico'),
       ]);
       setProyecciones(resP.data);
-
-      // Agrupamos los ingresos reales por mes (misma lógica que usa Prophet).
-      const porMes = {};
-      for (const ing of resI.data) {
-        const d = new Date(ing.fecha);
-        const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01T00:00:00`;
-        porMes[key] = (porMes[key] || 0) + parseFloat(ing.monto || 0);
-      }
-      const hist = Object.entries(porMes)
-        .map(([ds, y]) => ({ ds, y }))
-        .sort((a, b) => new Date(a.ds) - new Date(b.ds));
-      setHistorico(hist);
+      setHistorico(resH.data.meses.map((m) => ({ ds: m.mes, y: m.total })));
+      setEnCurso({ ds: resH.data.mes_en_curso, y: resH.data.total_mes_en_curso });
     } catch (_) {
       setProyecciones([]);
       setHistorico([]);
+      setEnCurso(null);
     } finally {
       setLoading(false);
     }
@@ -112,26 +162,37 @@ export default function Proyecciones() {
 
       const Chart = window.Chart;
 
-      // Eje X = meses históricos + meses proyectados.
-      const labels = [
-        ...historico.map(h => mesLabel(h.ds)),
-        ...proyecciones.map(p => mesLabel(p.fecha_proyeccion)),
-      ];
+      // Eje X continuo, mes a mes: si faltan datos de algún mes (por ejemplo,
+      // extractos todavía no importados) se ve el hueco en lugar de pegar
+      // meses que no son consecutivos.
+      const histPorMes = Object.fromEntries(historico.map(h => [claveMes(h.ds), h.y]));
+      const proyPorMes = Object.fromEntries(proyecciones.map(p => [claveMes(p.fecha_proyeccion), p]));
+      const claveEnCurso = enCurso ? claveMes(enCurso.ds) : null;
+      const claves = [...Object.keys(histPorMes), ...Object.keys(proyPorMes), ...(claveEnCurso ? [claveEnCurso] : [])].sort();
+      const meses = [];
+      for (let c = claves[0]; c <= claves[claves.length - 1]; c = sumarMes(c, 1)) meses.push(c);
+      const labels = meses.map(etiquetaMes);
 
-      const H = historico.length;
-      const P = proyecciones.length;
+      // Serie histórica real: solo meses cerrados.
+      const histData = meses.map(c => (c in histPorMes ? histPorMes[c] : null));
 
-      // Serie histórica real (null en los meses futuros).
-      const histData = [...historico.map(h => h.y), ...Array(P).fill(null)];
+      // El mes en curso va aparte, como un punto hueco: todavía no terminó y
+      // no entra en el cálculo.
+      const enCursoData = meses.map(c => (c === claveEnCurso && enCurso && enCurso.y > 0 ? enCurso.y : null));
 
-      // Las series de proyección arrancan en el ÚLTIMO punto histórico (conexión
-      // visual), por eso van con null hasta ahí y luego los valores proyectados.
-      const lastHistY = H > 0 ? historico[H - 1].y : null;
-      const pad = Array(Math.max(H - 1, 0)).fill(null);
-      const conexion = H > 0 ? [lastHistY] : [];
-      const lower = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_lower))];
-      const yhat  = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_proyectado))];
-      const upper = [...pad, ...conexion, ...proyecciones.map(p => parseFloat(p.monto_upper))];
+      // Las series de proyección arrancan en el último mes cerrado cuando es el
+      // mes anterior al actual (conexión visual por encima del mes en curso).
+      // Si el historial termina antes, no se dibuja una línea inventada.
+      const ultimaHist = historico.length ? claveMes(historico[historico.length - 1].ds) : null;
+      const conecta = ultimaHist && claveEnCurso && sumarMes(ultimaHist, 1) === claveEnCurso;
+      const serieProy = (campo) => meses.map(c => {
+        if (c in proyPorMes) return parseFloat(proyPorMes[c][campo]);
+        if (conecta && c === ultimaHist) return histPorMes[c];
+        return null;
+      });
+      const lower = serieProy('monto_lower');
+      const yhat  = serieProy('monto_proyectado');
+      const upper = serieProy('monto_upper');
 
       chartRef.current = new Chart(canvasRef.current, {
         type: 'line',
@@ -141,6 +202,7 @@ export default function Proyecciones() {
             // ── Relleno de área de confianza (lower → upper) ──────────────────
             {
               label: 'Área de confianza',
+              spanGaps: true,
               data: lower,
               borderColor: 'transparent',
               backgroundColor: 'rgba(59,130,246,0.12)',
@@ -150,6 +212,7 @@ export default function Proyecciones() {
             },
             {
               label: '_upper_area', // prefijo _ → excluido del tooltip
+              spanGaps: true,
               data: upper,
               borderColor: 'transparent',
               backgroundColor: 'transparent',
@@ -160,6 +223,7 @@ export default function Proyecciones() {
             // ── Líneas visibles ───────────────────────────────────────────────
             {
               label: 'Pesimista',
+              spanGaps: true,
               data: lower,
               borderColor: '#ef4444',
               borderWidth: 1.5,
@@ -172,6 +236,7 @@ export default function Proyecciones() {
             },
             {
               label: 'Proyectado',
+              spanGaps: true,
               data: yhat,
               borderColor: '#3b82f6',
               borderWidth: 3,
@@ -183,6 +248,7 @@ export default function Proyecciones() {
             },
             {
               label: 'Optimista',
+              spanGaps: true,
               data: upper,
               borderColor: '#22c55e',
               borderWidth: 1.5,
@@ -192,6 +258,18 @@ export default function Proyecciones() {
               pointBackgroundColor: '#22c55e',
               fill: false,
               tension: 0.3,
+            },
+            // ── Mes en curso: parcial, fuera del cálculo ──────────────────────
+            {
+              label: 'Mes en curso (parcial)',
+              data: enCursoData,
+              borderColor: '#94a3b8',
+              backgroundColor: '#161b27',
+              pointRadius: 6,
+              pointBorderWidth: 2,
+              pointStyle: 'circle',
+              showLine: false,
+              fill: false,
             },
             // ── Histórico real (lo que efectivamente ingresó) ────────────────
             {
@@ -235,6 +313,9 @@ export default function Proyecciones() {
               ticks:  { color: '#64748b', font: { size: 12 } },
             },
             y: {
+              // desde $0: no exagera subas ni bajas, y con datos casi
+              // constantes el eje no se estira a centavos de diferencia
+              beginAtZero: true,
               grid:   { color: 'rgba(255,255,255,0.05)' },
               border: { color: 'rgba(255,255,255,0.05)' },
               ticks: {
@@ -256,12 +337,13 @@ export default function Proyecciones() {
         chartRef.current = null;
       }
     };
-  }, [proyecciones, historico]);
+  }, [proyecciones, historico, enCurso]);
 
   const promedio  = avg(proyecciones, 'monto_proyectado');
   const pesimista = avg(proyecciones, 'monto_lower');
   const optimista = avg(proyecciones, 'monto_upper');
   const histPromedio = avg(historico, 'y');  // promedio mensual real, para verificar coherencia
+  const metodo = describirMetodo(proyecciones[0]?.metodo, historico.length);
 
   const thStyle = {
     padding: '12px 16px', fontSize: '12px', color: '#475569',
@@ -310,6 +392,23 @@ export default function Proyecciones() {
         </div>
       ) : (
         <>
+          {/* ── Cómo y cuándo se calculó ── */}
+          <div style={{
+            background: '#161b27', border: '1px solid #1e293b', borderLeft: `3px solid ${metodo.color}`,
+            borderRadius: '8px', padding: '12px 16px', marginBottom: '16px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px',
+          }}>
+            <div>
+              <p style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: metodo.color }}>{metodo.titulo}</p>
+              <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#94a3b8' }}>
+                {metodo.detalle} El mes en curso no entra en el cálculo porque todavía no terminó.
+              </p>
+            </div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap' }}>
+              Calculada el {formatFechaHora(proyecciones[0]?.fecha_generacion)}
+            </p>
+          </div>
+
           {/* ── Métricas resumen ── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
             {[
@@ -333,28 +432,33 @@ export default function Proyecciones() {
                 </p>
                 {historico.length > 0 && (
                   <p style={{ margin: '2px 0 0 0', fontSize: '11px', color: '#475569' }}>
-                    Promedio histórico mensual: <strong style={{ color: '#94a3b8' }}>{fmtMonto(histPromedio)}</strong> · la proyección parte de ahí
+                    Promedio mensual de los meses cerrados: <strong style={{ color: '#94a3b8' }}>{fmtMonto(histPromedio)}</strong>
                   </p>
                 )}
               </div>
               {/* ── Leyenda HTML personalizada ── */}
-              <div style={{ display: 'flex', gap: '20px' }}>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {[
                   { color: '#e2e8f0', dash: false, label: 'Histórico'  },
+                  { color: '#94a3b8', dash: false, label: 'Mes en curso', punto: true },
                   { color: '#3b82f6', dash: false, label: 'Proyectado' },
                   { color: '#ef4444', dash: true,  label: 'Pesimista'  },
                   { color: '#22c55e', dash: true,  label: 'Optimista'  },
-                ].map(({ color, dash, label }) => (
+                ].map(({ color, dash, label, punto }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <svg width="22" height="10">
+                      {punto ? (
+                        <circle cx="11" cy="5" r="4" fill="none" stroke={color} strokeWidth="2" />
+                      ) : (
                       <line
                         x1="0" y1="5" x2="22" y2="5"
                         stroke={color}
                         strokeWidth={label === 'Proyectado' ? 3 : 1.5}
                         strokeDasharray={dash ? '5 4' : undefined}
                       />
+                      )}
                     </svg>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>{label}</span>
+                    <span style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap' }}>{label}</span>
                   </div>
                 ))}
               </div>

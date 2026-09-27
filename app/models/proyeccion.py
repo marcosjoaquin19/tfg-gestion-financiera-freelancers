@@ -6,7 +6,7 @@ ingresos generada por el modelo Prophet: una fecha futura con su monto estimado
 y el rango (inferior/superior) del intervalo de confianza.
 """
 
-from sqlalchemy import Column, Integer, Numeric, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Numeric, DateTime, ForeignKey, String
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -32,6 +32,12 @@ class Proyeccion(Base):
     monto_upper = Column(Numeric(12, 2), nullable=False)
     # límite superior de la predicción (optimista)
     
+    metodo = Column(String(20), nullable=True)
+    # con qué se calculó: "prophet", "media_movil" (pocos datos), "mes_en_curso"
+    # (solo hay ingresos del mes que todavía no terminó) o "sin_datos".
+    # Se guarda para que la pantalla lo declare. NULL en filas anteriores a la
+    # migración 0010.
+
     fecha_generacion = Column(DateTime(timezone=True), server_default=func.now())
     # cuando se generó esta proyección
 
