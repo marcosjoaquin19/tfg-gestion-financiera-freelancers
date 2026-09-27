@@ -2,11 +2,13 @@
  * Pantalla Resumen IA — resumen financiero mensual.
  *
  * Pide al backend (endpoint /resumen/financiero) un resumen del mes redactado
- * en lenguaje natural por la IA y lo muestra. Permite elegir el período e indica
+ * en lenguaje natural por la IA y lo muestra. Es descriptivo (cómo te fue en
+ * el período); qué hacer al respecto está en la pantalla de Recomendaciones. Permite elegir el período e indica
  * si el texto se generó con IA, por qué se usó la plantilla local si no, o si
  * no había datos en el período. Un error de la API se muestra, no se oculta.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import AvisoAlcance from '../components/AvisoAlcance';
 import api, { extraerMensajeError } from '../api';
@@ -157,6 +159,14 @@ export default function ResumenIA() {
               {MOTIVO_RESERVA[resumen.motivo_reserva]}
             </p>
           )}
+
+          {/* El resumen describe; las sugerencias viven en Recomendaciones. */}
+          <p style={{ margin: '18px 0 0 0', paddingTop: '14px', borderTop: '1px solid #1e3a5f', fontSize: '13px', color: '#94a3b8' }}>
+            ¿Qué hacer con esto?{' '}
+            <Link to="/recomendaciones" style={{ color: '#60a5fa', textDecoration: 'none', fontWeight: 500 }}>
+              Ver recomendaciones →
+            </Link>
+          </p>
         </div>
       ) : (
         <div style={{ textAlign: 'center', color: '#475569', fontSize: '14px', padding: '48px' }}>

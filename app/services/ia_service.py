@@ -28,11 +28,8 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
-from app.models.factura import Factura, EstadoFactura
-from app.models.alerta_auditoria import AlertaAuditoria
 
 from app.services.categorias_gasto import CATEGORIAS_GASTO
-from app.services.facturas_estado import marcar_vencidas
 from app.services.formato import formato_pesos_ar
 
 logger = logging.getLogger(__name__)
@@ -52,8 +49,14 @@ MESES_ES = {
 # -------------------------------------------------------------------
 # RESUMEN FINANCIERO (HU-11)
 # -------------------------------------------------------------------
+# Es DESCRIPTIVO: cuenta cómo le fue al usuario en el período elegido, sobre
+# los mismos indicadores del período que el panel principal (ingresos, gastos
+# por rubro y balance). No aconseja: las sugerencias son de Recomendaciones
+# (HU-12), que funciona con reglas locales.
+#
 # Flujo: se calculan los totales del mes → se le piden a Groq en un prompt con
-# reglas estrictas → la respuesta pasa por controles (formato, largo, cifras)
+# reglas estrictas → la respuesta pasa por controles (formato, largo, cifras,
+# que no aconseje ni prediga)
 # → si no los pasa se reintenta una vez → si tampoco, o si Groq no responde,
 # se usa la plantilla local. Nunca se muestra como "IA" un texto que no pasó
 # los controles.
@@ -75,19 +78,18 @@ GROQ_TEMPERATURA = 0.3
 # texto variaba mucho entre un pedido y otro y agregaba afirmaciones propias.
 
 MAX_PALABRAS_RESUMEN = 150      # criterio de aceptación de HU-11
-MIN_PALABRAS_RESUMEN = 40       # por debajo no es un resumen: se descarta
+MIN_PALABRAS_RESUMEN = 30       # por debajo no es un resumen: se descarta
 INTENTOS_IA = 2                 # un reintento si la respuesta no pasa los controles
 
-INSTRUCCIONES_RESUMEN = """Sos un asistente financiero para freelancers monotributistas de Argentina.
-Redactá un resumen del mes a partir de los datos que te paso. Reglas obligatorias:
-1. Escribí en español rioplatense, tratando al usuario de vos (tenés, cobraste, gastaste), en un tono cercano y profesional.
-2. Un único párrafo de texto plano, de 3 a 5 oraciones y entre 60 y 120 palabras: sin títulos, sin viñetas, sin negritas ni ningún otro formato.
-3. Usá solamente las cifras de los datos, copiadas exactamente como están escritas. No calcules cifras nuevas (sumas, restas, porcentajes, promedios) ni hagas proyecciones o predicciones sobre meses futuros.
-4. No enumeres todas las categorías de gasto: nombrá solo las dos o tres de mayor monto.
-5. Hablá de ingresos o cobros; no menciones trabajos, clientes ni proyectos.
-6. Las facturas pendientes son las que están sin cobrar hoy y pueden ser de otros meses: no las presentes como parte del mes.
-7. Podés cerrar con una observación breve que se desprenda de los datos (por ejemplo, si el balance fue positivo o negativo, o que conviene hacer seguimiento de las facturas pendientes), sin cifras nuevas.
-8. No agregues información que no esté en los datos."""
+INSTRUCCIONES_RESUMEN = """Sos un asistente que redacta el resumen financiero mensual de un freelancer monotributista de Argentina.
+Describí cómo le fue en el mes a partir de los datos que te paso. Reglas obligatorias:
+1. Escribí en español rioplatense, tratando al usuario de vos (cobraste, gastaste), en un tono cercano y profesional.
+2. Un único párrafo de texto plano, de 3 a 5 oraciones y entre 40 y 120 palabras: sin títulos, sin viñetas, sin negritas ni ningún otro formato.
+3. Solo describí el mes: cuánto cobró, cuánto gastó, en qué rubros se concentró el gasto y cómo cerró el balance. No des consejos, sugerencias ni recomendaciones, y no hagas proyecciones ni predicciones.
+4. Usá solamente las cifras de los datos, copiadas exactamente como están escritas. No calcules cifras nuevas (sumas, restas, porcentajes, promedios).
+5. No enumeres todas las categorías de gasto: nombrá solo las dos o tres de mayor monto.
+6. Hablá de ingresos o cobros; no menciones trabajos, clientes ni proyectos.
+7. No agregues información que no esté en los datos."""
 
 
 class ResultadoResumen(NamedTuple):
@@ -109,8 +111,6 @@ class DatosMes(NamedTuple):
     cant_ingresos: int
     gastos_por_categoria: list          # [(categoria, total)], de mayor a menor
     total_gastos: Decimal
-    cant_facturas_pend: int
-    total_facturas_pend: Decimal
 
     @property
     def balance(self) -> Decimal:
@@ -119,6 +119,10 @@ class DatosMes(NamedTuple):
     @property
     def periodo(self) -> str:
         return f"{MESES_ES[self.mes]} {self.anio}"
+
+    @property
+    def periodo_en_texto(self) -> str:
+        return f"{MESES_ES[self.mes].lower()} de {self.anio}"
 
 
 def _plural(n: int, singular: str, plural: str) -> str:
@@ -152,14 +156,9 @@ def _datos_del_mes(db: Session, usuario_id: int, mes: int, anio: int) -> DatosMe
         ((r.categoria, Decimal(r.total)) for r in gastos), key=lambda x: x[1], reverse=True,
     )
 
-    # Facturas pendientes A HOY (las vencidas se marcan antes para no contarlas
-    # acá). No son "del mes": se informan así en el prompt y en la plantilla.
-    marcar_vencidas(db, usuario_id)
-    facturas_pendientes = db.query(Factura).filter(
-        Factura.usuario_id == usuario_id,
-        Factura.estado == EstadoFactura.PENDIENTE,
-    ).all()
-
+    # Las facturas pendientes no entran: son el estado de HOY, no del período
+    # elegido, y el resumen describe el período (su seguimiento está en
+    # Recomendaciones).
     return DatosMes(
         mes=mes,
         anio=anio,
@@ -167,8 +166,6 @@ def _datos_del_mes(db: Session, usuario_id: int, mes: int, anio: int) -> DatosMe
         cant_ingresos=len(ingresos),
         gastos_por_categoria=gastos_por_categoria,
         total_gastos=Decimal(sum(t for _, t in gastos_por_categoria) or 0),
-        cant_facturas_pend=len(facturas_pendientes),
-        total_facturas_pend=Decimal(sum(f.monto for f in facturas_pendientes) or 0),
     )
 
 
@@ -180,22 +177,17 @@ def _datos_para_ia(d: DatosMes) -> str:
         gastos = "; ".join(f"{cat} {formato_pesos_ar(total)}" for cat, total in d.gastos_por_categoria)
     else:
         gastos = "no hubo gastos"
-    if d.cant_facturas_pend:
-        facturas = f"{d.cant_facturas_pend} por {formato_pesos_ar(d.total_facturas_pend)}"
-    else:
-        facturas = "ninguna"
     return (
-        f"Período: {d.periodo}\n"
+        f"Período: {d.periodo_en_texto}\n"
         f"Ingresos del mes: {formato_pesos_ar(d.total_ingresos)} ({_plural(d.cant_ingresos, 'cobro', 'cobros')})\n"
         f"Gastos del mes por categoría, de mayor a menor: {gastos}\n"
         f"Total de gastos del mes: {formato_pesos_ar(d.total_gastos)}\n"
-        f"Balance del mes: {_texto_balance(d.balance)}\n"
-        f"Facturas pendientes de cobro a hoy: {facturas}"
+        f"Balance del mes: {_texto_balance(d.balance)}"
     )
 
 
 def _montos_enviados(d: DatosMes) -> list[Decimal]:
-    montos = [d.total_ingresos, d.total_gastos, abs(d.balance), d.total_facturas_pend]
+    montos = [d.total_ingresos, d.total_gastos, abs(d.balance)]
     montos += [total for _, total in d.gastos_por_categoria]
     return [m for m in montos if m > 0]
 
@@ -256,6 +248,16 @@ def _limpiar_formato(texto: str) -> str:
 
 _RE_FIN_ORACION = re.compile(r"(?<=[.!?…])\s+")
 
+_RE_CONSEJO = re.compile(
+    r"\b(te sugiero|te sugerimos|te recomiendo|te recomendamos|te aconsejo|recomendable|conviene|convendría|"
+    r"deberías|podrías|sería (?:bueno|conveniente|ideal|importante)|es importante que|no olvides|asegurate|"
+    r"recordá|seguí|mantené|revisá|controlá|ahorrá|invertí|aprovechá|evitá|reducí|cuidá|"
+    r"próximo mes|mes que viene|próximos meses|a futuro)\b",
+    re.IGNORECASE,
+)
+# El resumen describe; no aconseja ni predice. Si el modelo lo hace igual, el
+# texto se descarta como cualquier otro que no pase los controles.
+
 
 def _oraciones_completas(texto: str, max_palabras: int = MAX_PALABRAS_RESUMEN) -> str:
     """Descarta una oración final incompleta (respuesta cortada) y recorta en
@@ -291,6 +293,9 @@ def _problema_del_texto(texto: str, permitidos: list[Decimal]) -> str | None:
     raras = _cifras_no_enviadas(texto, permitidos)
     if raras:
         return f"cifras que no estaban en los datos: {raras}"
+    consejo = _RE_CONSEJO.search(texto)
+    if consejo:
+        return f"aconseja o predice en lugar de describir: {consejo.group(0)!r}"
     return None
 
 
@@ -353,7 +358,7 @@ def _redactar_con_ia(d: DatosMes) -> tuple[str | None, str | None]:
 
 
 def _plantilla_local(d: DatosMes) -> str:
-    """Reserva local (HU-11): mismo contenido, con redacción fija. Se usa si
+    """Reserva local (HU-11): describe el mes con redacción fija. Se usa si
     Groq no responde o si su texto no pasó los controles."""
     if d.cant_ingresos:
         ingresos = f"cobraste {formato_pesos_ar(d.total_ingresos)} en {_plural(d.cant_ingresos, 'ingreso', 'ingresos')}"
@@ -364,15 +369,12 @@ def _plantilla_local(d: DatosMes) -> str:
     else:
         gastos = "no registraste gastos"
 
-    partes = [f"En {d.periodo} {ingresos} y {gastos}: el mes cerró con {_texto_balance(d.balance)}."]
-    if d.gastos_por_categoria:
-        categoria, total = d.gastos_por_categoria[0]
-        partes.append(f"El rubro con más gasto fue {categoria}, con {formato_pesos_ar(total)}.")
-    if d.cant_facturas_pend:
-        pendientes = _plural(d.cant_facturas_pend, "factura pendiente", "facturas pendientes")
-        partes.append(f"Hoy tenés {pendientes} de cobro por {formato_pesos_ar(d.total_facturas_pend)}.")
-    else:
-        partes.append("Hoy no tenés facturas pendientes de cobro.")
+    partes = [f"En {d.periodo_en_texto} {ingresos} y {gastos}: el mes cerró con {_texto_balance(d.balance)}."]
+    rubros = [f"{cat}, con {formato_pesos_ar(total)}" for cat, total in d.gastos_por_categoria[:2]]
+    if len(rubros) == 2:
+        partes.append(f"El rubro con más gasto fue {rubros[0]}, seguido de {rubros[1]}.")
+    elif rubros:
+        partes.append(f"Todo el gasto del mes fue en {rubros[0]}.")
     return " ".join(partes)
 
 

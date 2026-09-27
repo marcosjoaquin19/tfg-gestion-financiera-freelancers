@@ -50,9 +50,10 @@ def groq(monkeypatch):
 
 @pytest.fixture
 def mes_con_datos(client, auth_headers):
-    """Agosto 2026: 3 cobros por $ 2.800.000, gastos por $ 431.000 en tres
-    rubros y una factura pendiente de $ 3.150.000. Descripciones y cliente
-    llevan un nombre propio para verificar que nunca viajan a la IA."""
+    """Agosto 2026: 3 cobros por $ 2.800.000 y gastos por $ 431.000 en tres
+    rubros. También hay una factura pendiente de $ 3.150.000, que NO es del
+    período y no debe entrar al resumen. Descripciones y cliente llevan un
+    nombre propio para verificar que nunca viajan a la IA."""
     for monto in (1_000_000, 900_000, 900_000):
         client.post("/ingresos/", json={
             "descripcion": "Honorarios Juan Pérez", "monto": monto,
@@ -79,11 +80,10 @@ def _pedir(client, headers, mes=8, anio=2026):
 
 
 BUENO = (
-    "En Agosto 2026 cobraste $ 2.800.000,00 en tres ingresos y tus gastos sumaron $ 431.000,00, "
-    "así que cerraste el mes con un superávit de $ 2.369.000,00. El rubro con más gasto fue "
-    "Infraestructura, con $ 176.000,00, seguido por Capacitación con $ 160.000,00 y Servicios con "
-    "$ 95.000,00. Hoy tenés una factura pendiente de cobro por $ 3.150.000,00, que puede ser de otro "
-    "mes. Es un buen momento para revisar tus gastos fijos y seguir registrando cada movimiento."
+    "En agosto de 2026 cobraste $ 2.800.000,00 en tres ingresos y tus gastos sumaron $ 431.000,00, "
+    "así que el mes cerró con un superávit de $ 2.369.000,00. El gasto se concentró en Infraestructura, "
+    "con $ 176.000,00, seguido por Capacitación, con $ 160.000,00, y Servicios, con $ 95.000,00. Fue un "
+    "mes en el que tus cobros superaron con amplitud a tus gastos, con un resultado positivo para el período."
 )
 
 
@@ -99,7 +99,24 @@ def test_a_la_ia_solo_viajan_totales_agregados(client, auth_headers, groq, mes_c
     assert "Ingresos del mes: $ 2.800.000,00 (3 cobros)" in enviado   # formato argentino
     assert "Infraestructura $ 176.000,00" in enviado                  # categoría de la lista cerrada
     assert "superávit de $ 2.369.000,00" in enviado
-    assert "Facturas pendientes de cobro a hoy: 1 por $ 3.150.000,00" in enviado
+    assert "Período: agosto de 2026" in enviado
+
+
+def test_el_resumen_describe_el_periodo_sin_facturas_de_hoy(client, auth_headers, groq, mes_con_datos):
+    # La tesis: "presenta la situación del período seleccionado" sobre "los
+    # mismos indicadores del período que el panel principal". Las facturas
+    # pendientes son el estado de hoy, no del período: van en Recomendaciones.
+    groq.respuestas = [(BUENO, "stop")]
+    _pedir(client, auth_headers)
+    enviado = " ".join(m["content"] for m in groq.llamadas[0]["messages"])
+    assert "3.150.000" not in enviado and "actura" not in enviado
+
+
+def test_las_instrucciones_piden_describir_y_no_aconsejar():
+    reglas = ia.INSTRUCCIONES_RESUMEN
+    assert "Describí cómo le fue en el mes" in reglas
+    assert "No des consejos, sugerencias ni recomendaciones" in reglas
+    assert "no hagas proyecciones ni predicciones" in reglas
 
 
 def test_parametros_de_la_llamada(client, auth_headers, groq, mes_con_datos):
@@ -139,8 +156,8 @@ def test_markdown_titulos_y_vinetas_quedan_en_un_parrafo(client, auth_headers, g
         "En **Agosto 2026** cobraste $ 2.800.000,00 en tres ingresos y tus gastos sumaron $ 431.000,00. "
         "Cerraste el mes con un superávit de $ 2.369.000,00.\n\n"
         "- Infraestructura: $ 176.000,00\n- Capacitación: $ 160.000,00\n- Servicios: $ 95.000,00\n\n"
-        "Hoy tenés una factura pendiente de cobro por $ 3.150.000,00. Seguí registrando cada movimiento "
-        "para mantener tus números al día y tomar mejores decisiones."
+        "Fue un mes con un resultado claramente positivo, en el que los cobros superaron con amplitud "
+        "a los gastos registrados en el período."
     )
     groq.respuestas = [(con_formato, "stop")]
     texto = _pedir(client, auth_headers)["resumen"]
@@ -156,16 +173,16 @@ def test_respuesta_cortada_descarta_la_oracion_incompleta(client, auth_headers, 
     groq.respuestas = [(cortada, "length")]
     data = _pedir(client, auth_headers)
     assert data["generado_con_ia"] is True
-    assert data["resumen"].endswith("movimiento.")
+    assert data["resumen"].endswith("período.")
     assert "cartera por" not in data["resumen"]
 
 
 def test_cortada_en_el_punto_de_un_monto_tambien_se_descarta(client, auth_headers, groq, mes_con_datos):
     # "$ 3." termina en punto pero es un monto a medias: con finish_reason
     # "length" la última oración se descarta siempre.
-    groq.respuestas = [(BUENO + " Si cobrás esa factura vas a sumar $ 3.", "length")]
+    groq.respuestas = [(BUENO + " En total registraste gastos por $ 4.", "length")]
     texto = _pedir(client, auth_headers)["resumen"]
-    assert "$ 3." not in texto.replace("$ 3.150", "")
+    assert "$ 4." not in texto
 
 
 def test_respuesta_demasiado_corta_se_reintenta(client, auth_headers, groq, mes_con_datos):
@@ -181,11 +198,11 @@ def test_dos_respuestas_invalidas_usan_la_plantilla(client, auth_headers, groq, 
     assert len(groq.llamadas) == 2
     assert data["generado_con_ia"] is False
     assert data["motivo_reserva"] == "respuesta_descartada"
-    assert data["resumen"].startswith("En Agosto 2026 cobraste $ 2.800.000,00")
+    assert data["resumen"].startswith("En agosto de 2026 cobraste $ 2.800.000,00")
 
 
 def test_nunca_supera_150_palabras(client, auth_headers, groq, mes_con_datos):
-    largo = BUENO + " " + " ".join(["Seguí así y mantené tus registros ordenados cada semana."] * 20)
+    largo = BUENO + " " + " ".join(["Durante el período registraste movimientos en varias categorías de gasto."] * 20)
     groq.respuestas = [(largo, "stop")]
     texto = _pedir(client, auth_headers)["resumen"]
     assert len(texto.split()) <= ia.MAX_PALABRAS_RESUMEN
@@ -200,6 +217,22 @@ def test_nunca_supera_150_palabras(client, auth_headers, groq, mes_con_datos):
     "El mes que viene podrías cobrar unos 4 millones.",                     # predicción con cifra
 ])
 def test_cifra_no_enviada_se_rechaza_y_reintenta(client, auth_headers, groq, mes_con_datos, agregado):
+    groq.respuestas = [(BUENO + " " + agregado, "stop"), (BUENO, "stop")]
+    data = _pedir(client, auth_headers)
+    assert len(groq.llamadas) == 2
+    assert data["resumen"] == BUENO
+
+
+@pytest.mark.parametrize("agregado", [
+    "Te sugerimos revisar tus gastos fijos.",
+    "Conviene hacer seguimiento de tus cobros.",
+    "Podrías destinar parte del superávit a una reserva.",
+    "Revisá tus suscripciones.",
+    "El mes que viene vas a tener un resultado similar.",
+])
+def test_consejos_o_predicciones_se_rechazan_y_reintenta(client, auth_headers, groq, mes_con_datos, agregado):
+    # El resumen describe cómo le fue en el mes; aconsejar es tarea de
+    # Recomendaciones y predecir, de Proyecciones.
     groq.respuestas = [(BUENO + " " + agregado, "stop"), (BUENO, "stop")]
     data = _pedir(client, auth_headers)
     assert len(groq.llamadas) == 2
@@ -245,9 +278,9 @@ def test_plantilla_local_completa(client, auth_headers, groq, mes_con_datos, mon
     monkeypatch.delenv("GROQ_API_KEY")
     texto = _pedir(client, auth_headers)["resumen"]
     assert texto == (
-        "En Agosto 2026 cobraste $ 2.800.000,00 en 3 ingresos y tus gastos sumaron $ 431.000,00: "
+        "En agosto de 2026 cobraste $ 2.800.000,00 en 3 ingresos y tus gastos sumaron $ 431.000,00: "
         "el mes cerró con superávit de $ 2.369.000,00. El rubro con más gasto fue Infraestructura, "
-        "con $ 176.000,00. Hoy tenés 1 factura pendiente de cobro por $ 3.150.000,00."
+        "con $ 176.000,00, seguido de Capacitación, con $ 160.000,00."
     )
 
 
@@ -260,7 +293,8 @@ def test_plantilla_con_deficit_y_sin_facturas(client, auth_headers, groq, monkey
     texto = _pedir(client, auth_headers, mes=7)["resumen"]
     assert "cobraste $ 100.000,00 en 1 ingreso " in texto
     assert "déficit de $ 300.000,00" in texto
-    assert "Hoy no tenés facturas pendientes de cobro." in texto
+    assert "Todo el gasto del mes fue en Hardware, con $ 400.000,00." in texto
+    assert "factura" not in texto.lower()
 
 
 def test_plantilla_solo_gastos(client, auth_headers, groq, monkeypatch):
@@ -268,7 +302,7 @@ def test_plantilla_solo_gastos(client, auth_headers, groq, monkeypatch):
     client.post("/gastos/", json={"descripcion": "Hosting", "monto": 50_000, "categoria": "Infraestructura",
                                   "fecha": "2026-06-11T12:00:00"}, headers=auth_headers)
     texto = _pedir(client, auth_headers, mes=6)["resumen"]
-    assert texto.startswith("En Junio 2026 no registraste ingresos y tus gastos sumaron $ 50.000,00")
+    assert texto.startswith("En junio de 2026 no registraste ingresos y tus gastos sumaron $ 50.000,00")
 
 
 # --- Mes sin datos y parámetros ------------------------------------------------------
