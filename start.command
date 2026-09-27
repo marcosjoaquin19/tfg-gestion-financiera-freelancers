@@ -26,7 +26,9 @@ fi
 # 1) Crear .env si no existe (valores que coinciden con docker-compose.yml)
 if [ ! -f .env ]; then
   echo "-> Generando archivo .env ..."
-  SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))" 2>/dev/null || echo "clave_demo_freelancecontrol")
+  # Clave aleatoria de 64 caracteres (la API no arranca con menos de 32).
+  # openssl viene con macOS; si faltara, se usa el generador del sistema.
+  SECRET=$(openssl rand -hex 32 2>/dev/null || LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 64)
   cat > .env <<EOF
 DATABASE_URL=postgresql://marcos:marcos123@db:5432/tfg_freelancers
 POSTGRES_USER=marcos

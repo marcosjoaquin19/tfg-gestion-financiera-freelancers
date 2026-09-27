@@ -108,14 +108,21 @@ proyecto-tfg/
 │   │
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── auth.py                           # Hash/verificación contraseñas, JWT, CRUD usuario
+│   │   ├── auth.py                           # Hash/verificación contraseñas, JWT, control de SECRET_KEY al arrancar
 │   │   ├── auditoria.py                      # Módulo M3: detección duplicados, anomalías, discrepancias
 │   │   ├── ml_service.py                     # Clasificador NLP local (Naive Bayes/SVM + TF-IDF), reentrenamiento
 │   │   ├── prophet_service.py                # Proyecciones con Prophet o media móvil (fallback)
-│   │   ├── ia_service.py                     # Clasificación (delega en ml_service) + Groq para resumen/recomendaciones
+│   │   ├── ia_service.py                     # Clasificación (delega en ml_service) + Groq para el resumen
+│   │   ├── recomendaciones_service.py        # Recomendaciones (HU-12) por reglas locales, con su dato de origen
 │   │   ├── csv_service.py                    # Importación CSV/Excel: detección columnas, parsing, duplicados
 │   │   ├── reportes_service.py               # Generación del reporte mensual en PDF (ReportLab)
-│   │   └── monotributo_service.py            # Estado Monotributo, verificación pago mensual
+│   │   ├── monotributo_service.py            # Estado Monotributo, escala vigente por fecha, pago mensual
+│   │   ├── categorias_gasto.py               # Lista cerrada de las 12 categorías de gasto
+│   │   ├── categorias_ingreso.py             # Lista cerrada de categorías de ingreso
+│   │   ├── duplicados_gasto.py               # Regla de gasto repetido (monto + categoría ±3 días)
+│   │   ├── duplicados_ingreso.py             # Regla de ingreso repetido
+│   │   ├── facturas_estado.py                # Paso automático de PENDIENTE a VENCIDA en el servidor
+│   │   └── formato.py                        # Formato de moneda argentina compartido
 │   │
 │   └── routers/
 │       ├── __init__.py

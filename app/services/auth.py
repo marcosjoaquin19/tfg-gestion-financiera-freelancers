@@ -47,6 +47,35 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # clave secreta para firmar el token → está en el .env
 # si alguien la conoce puede generar tokens falsos, nunca hardcodearla
 
+# Valor de ejemplo de .env.example. Es público (está en el repositorio): con
+# esa clave cualquiera podría firmar tokens válidos para cualquier usuario.
+CLAVE_DE_EJEMPLO = "generar_una_clave_aleatoria_y_pegarla_aca"
+# Largo mínimo: 32 caracteres (secrets.token_urlsafe(48) genera 64).
+LARGO_MINIMO_CLAVE = 32
+
+
+def validar_clave_de_firma(clave: str | None) -> None:
+    """Frena el arranque de la API si la clave de firma no es segura.
+
+    Sin este control, una clave faltante recién fallaba en el primer login
+    (error 500), y la clave de ejemplo funcionaba en silencio.
+    """
+    if not clave:
+        raise RuntimeError(
+            "Falta SECRET_KEY en el entorno. Generala con: "
+            'python -c "import secrets; print(secrets.token_urlsafe(48))" y cargala en el .env.'
+        )
+    if clave == CLAVE_DE_EJEMPLO:
+        raise RuntimeError(
+            "SECRET_KEY tiene el valor de ejemplo de .env.example, que es público. "
+            "Generá una clave propia antes de levantar la API."
+        )
+    if len(clave) < LARGO_MINIMO_CLAVE:
+        raise RuntimeError(
+            f"SECRET_KEY es demasiado corta ({len(clave)} caracteres): "
+            f"se exigen al menos {LARGO_MINIMO_CLAVE}."
+        )
+
 ALGORITHM = "HS256"
 # algoritmo de firma del JWT
 # HS256 = HMAC con SHA-256, el más común para APIs internas

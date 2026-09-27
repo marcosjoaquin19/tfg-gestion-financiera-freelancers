@@ -146,3 +146,29 @@ def test_aislamiento_entre_usuarios(client, auth_headers):
     listado_b = client.get("/ingresos/", headers=headers_b)
     assert listado_b.status_code == 200
     assert listado_b.json() == []
+
+
+# ---------------------------------------------------------------------------
+# Clave de firma de los tokens (HU-17): la API no arranca con una clave insegura
+# ---------------------------------------------------------------------------
+
+import pytest
+
+from app.services.auth import CLAVE_DE_EJEMPLO, validar_clave_de_firma
+
+
+@pytest.mark.parametrize("clave, motivo", [
+    (None, "Falta SECRET_KEY"),
+    ("", "Falta SECRET_KEY"),
+    (CLAVE_DE_EJEMPLO, "valor de ejemplo"),
+    ("corta-de-31-caracteres-xxxxxxxx", "demasiado corta"),
+])
+def test_clave_de_firma_insegura_frena_el_arranque(clave, motivo):
+    with pytest.raises(RuntimeError, match=motivo):
+        validar_clave_de_firma(clave)
+
+
+def test_clave_de_firma_valida_se_acepta():
+    import secrets
+    validar_clave_de_firma(secrets.token_urlsafe(48))   # no lanza
+    validar_clave_de_firma("x" * 32)                     # justo en el mínimo

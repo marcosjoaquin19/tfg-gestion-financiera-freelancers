@@ -48,6 +48,11 @@ from app.routers import auth, ingresos, gastos, facturas, alertas, proyecciones,
 # Carga las variables del archivo .env (ej: DATABASE_URL, SECRET_KEY, GROQ_API_KEY)
 load_dotenv()
 
+# Sin una clave de firma segura la API no arranca: mejor un error claro al
+# levantar que tokens falsificables en producción (HU-17).
+from app.services.auth import SECRET_KEY, validar_clave_de_firma  # noqa: E402
+validar_clave_de_firma(SECRET_KEY)
+
 # Crea automáticamente las tablas en la base de datos a partir de los modelos
 # de SQLAlchemy si aún no existen. En producción este paso lo cubren las
 # migraciones de Alembic; acá sirve como red de seguridad al iniciar.

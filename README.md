@@ -65,14 +65,15 @@ SECRET_KEY=pegar_aca_una_clave_aleatoria
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 
-# Opcional: sólo para el resumen y las recomendaciones con IA.
-# Si se deja vacío, esos módulos usan un fallback local determinístico
-# y la aplicación funciona igual.
+# Opcional: sólo para el resumen financiero con IA (las recomendaciones se
+# calculan con reglas locales). Si se deja vacío, el resumen se arma con una
+# plantilla local y la aplicación funciona igual.
 GROQ_API_KEY=
 GROQ_MODEL=openai/gpt-oss-120b
 ```
 
-Para generar la `SECRET_KEY` se puede usar:
+Para generar la `SECRET_KEY` se puede usar el comando de abajo. La API no arranca
+si la clave falta, si quedó el valor de ejemplo o si tiene menos de 32 caracteres:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
