@@ -192,9 +192,13 @@ encima, el tribunal no escucha ninguna de las dos cosas.
 ### Preparación previa (hacelo ANTES de entrar a la sala)
 
 - [ ] `docker compose up -d` y esperar que los tres contenedores estén `healthy`
+- [ ] **Esa mañana:** `docker compose exec api python seed_demo_defensa.py`. Deja
+      los datos exactamente como se ensayaron (enero a septiembre) y borra lo que
+      se haya cargado en los ensayos. **No** importes el extracto ni ejecutes la
+      auditoría antes de entrar: son parte de la demo.
 - [ ] Abrir `http://localhost:3000` y **hacer login** con `demo@freelancecontrol.com` / `demo1234`
 - [ ] Dejar abiertas, en pestañas: **Dashboard** · **Gastos** · **Importar CSV** · **Auditoría** · **Monotributo** · **Proyecciones**
-- [ ] Tener el archivo de extracto de ejemplo **ya localizado** en `docs/extractos_ejemplo/` (no lo busques en vivo)
+- [ ] Tener el extracto **ya localizado**: Escritorio → `TFG_Defensa` → `demo` → `extracto_28sep_14oct.csv` (no lo busques en vivo)
 - [ ] Zoom del navegador al **110 %** — el tribunal está lejos de la pantalla
 - [ ] Notificaciones del sistema en **silencio**
 - [ ] El video del bloque 3 **minimizado pero abierto**, por si hay que volver a él
@@ -205,9 +209,14 @@ encima, el tribunal no escucha ninguna de las dos cosas.
 
 > **IDEA FUERZA:** esto es lo que el freelancer hoy no tiene: una sola pantalla.
 
-> "Este es el panel principal. Ingresos del mes, gastos, balance, facturas
-> pendientes y las alertas activas. Es la respuesta a la cuarta problemática, la
-> fragmentación: hoy esta información vive en cinco lugares distintos."
+> "Este es el panel principal. Ingresos del mes, gastos, balance, la
+> proyección del mes que viene y una recomendación. Es la respuesta a la cuarta
+> problemática, la fragmentación: hoy esta información vive en cinco lugares
+> distintos.
+>
+> Hoy es 14 de octubre: el mes recién empieza y todavía no cargué nada, por eso
+> octubre está en cero. En unos minutos lo completo importando el extracto del
+> banco."
 
 **No te quedes.** Treinta segundos y seguís.
 
@@ -242,9 +251,17 @@ encima, el tribunal no escucha ninguna de las dos cosas.
    > modelo personal."
 
 4. Mostrar **Estado ML**: algoritmo activo, cantidad de ejemplos, exactitud.
+   Arriba de todo decía "modelo base"; ahora dice **modelo propio**, con unos
+   **666 ejemplos** (los ~66 gastos de la usuaria + los 600 del modelo base).
+   > "Cuando creé el primer gasto, como la usuaria ya tenía más de veinte gastos
+   > categorizados, el sistema entrenó solo su modelo personal, en segundo
+   > plano: no tuve que tocar nada. Desde ahora aprende de sus datos."
 
-> ⚠️ **Trampa:** no prometas que el reentrenamiento es instantáneo. Se dispara
-> por umbral de correcciones acumuladas, no en cada corrección.
+> ⚠️ **Trampa:** no digas que el modelo se reentrena al instante. La corrección
+> se aplica al instante (la próxima clasificación de esa descripción ya la
+> usa, sin pasar por el modelo), pero el reentrenamiento corre en segundo
+> plano: la primera vez al llegar a 20 gastos propios, después cada 10 gastos
+> nuevos o ante cada corrección. La respuesta no espera a que termine (HU-05).
 
 ---
 
@@ -264,18 +281,27 @@ encima, el tribunal no escucha ninguna de las dos cosas.
 
 **Hacé:**
 
-1. Subir el archivo de ejemplo.
+1. Subir `extracto_28sep_14oct.csv` y tocar **Analizar archivo**.
 2. **Detenerte en la vista previa.** Es el momento clave:
    > "El sistema detectó solo qué columna es la fecha, cuál la descripción y
    > cuál el importe. No le dije nada. Esa detección se hace con heurísticas
    > locales sobre un diccionario de sinónimos que armé relevando las
    > exportaciones de nueve entidades: Galicia, Santander, BBVA, Macro, Nación,
    > Brubank, ICBC, Mercado Pago y Naranja X."
-3. Señalar los movimientos **ya clasificados** en la vista previa.
-4. Señalar los marcados como **posible duplicado**.
-   > "Y antes de confirmar, me avisa cuáles ya están en el sistema. Si importo
-   > el mismo extracto dos veces, no me duplica los movimientos."
-5. Confirmar la importación.
+3. Señalar los movimientos **ya clasificados** (cada uno con su categoría) y
+   los cuatro que quedaron en "Otros" para revisar (coworking, Telecentro, el
+   pago de la tarjeta): "cuando no está seguro, no inventa".
+4. Señalar los avisos de arriba, que son los casos trampa del archivo:
+   > "Antes de guardar nada, me avisa tres cosas. Los tres primeros movimientos,
+   > del 28 al 30 de septiembre, ya los había importado con el extracto
+   > anterior: los reconoce y no los duplica. Estos dos, del 3 y el 4 de octubre,
+   > son una transferencia a mi propia cuenta de Mercado Pago y su vuelta: no es
+   > facturación, así que tampoco los guarda. Y una fila tiene una fecha que no
+   > existe, 31 de septiembre: no la inventa ni la reemplaza por hoy, me dice
+   > cuál es y por qué quedó afuera."
+5. Confirmar: **29 movimientos importados** (3 cobros y 26 gastos).
+6. Volver al **Dashboard** (15 segundos): octubre ya tiene ingresos
+   ($ 3.460.000) y gastos. "Esto es lo que antes era una tarde de planilla."
 
 **El remate — decilo, es el mejor argumento técnico del bloque:**
 
@@ -301,20 +327,30 @@ encima, el tribunal no escucha ninguna de las dos cosas.
 > "Tercera problemática: hoy nadie audita estos registros hasta el cierre fiscal."
 
 **Hacé:** ejecutar la auditoría y recorrer las alertas, nombrando los cinco
-detectores a medida que aparecen:
+detectores a medida que aparecen. Con el extracto ya importado vas a ver: dos
+duplicados (Adobe en junio y **Figma, cobrado el 2 y el 4 de octubre**: vino en
+el extracto), la anomalía del servidor de $ 900.000 de julio y dos facturas
+vencidas (Consultora Aurora y Brand Studio). **No** aparece la cuota de octubre:
+el extracto trajo el pago del día 7 — decilo, muestra que los módulos se hablan.
 
 1. **Gastos duplicados** — mismo monto y categoría en una ventana de 3 días.
 2. **Anomalías estadísticas** — montos que se desvían del comportamiento
    histórico de esa categoría en los últimos 6 meses.
 3. **Facturas vencidas o impagas** — plata que debería haber entrado y no entró.
 4. **Cuota de Monotributo sin registrar** en el mes corriente.
-5. **Transferencias entre cuentas propias** — y explicá por qué existe:
+5. **Transferencias entre cuentas propias** — la vieron recién en la
+   importación, que la frenó antes de guardarla. Explicá por qué existe:
    > "Este detector es el más específico del dominio. Si alguien mueve plata de
    > su cuenta del banco a Mercado Pago, eso aparece en los extractos como un
    > egreso y un ingreso. Si el sistema lo contara como ingreso, le estaría
    > **inflando la facturación acumulada**, que es justamente el número del que
    > depende su categoría fiscal. Detectarlo no es una comodidad: es evitar un
    > falso positivo con consecuencias impositivas."
+
+**Si hay tiempo (30"):** Brand Studio figura vencida, pero en el extracto vino
+su transferencia del 9 de octubre. Ir a **Facturas → Marcar pagada** y volver a
+ejecutar la auditoría: la alerta desaparece. Y en el duplicado de Figma, el
+botón **Eliminar duplicado**.
 
 **Cerrá con la idempotencia — es una pregunta probable, adelantate:**
 
@@ -352,11 +388,16 @@ detectores a medida que aparecen:
 > la categoría y estima en qué mes lo superaría a este ritmo**, y qué categoría
 > cubriría esa proyección. No espera a que pase: lo anticipa."
 
+**Qué se ve el 14/10 (categoría G):** semáforo **rojo, 109,4 %**. Con lo
+facturado ($ 40.760.000 después de importar) más la proyección, pasaría el tope
+de la G **en diciembre**, y la categoría que cubriría esa proyección es la **H**.
+Decilo así: "no dice que me pasé: dice que a este ritmo me pasaría en diciembre".
+
 **Mostrá también:**
 
-- La cuota mensual y si está registrada como pagada.
-- El botón **"Registrar pago ahora"**, que precarga el gasto con el monto exacto
-  de la cuota.
+- La cuota mensual y que la de octubre figura **pagada**: vino en el extracto.
+  (Si no estuviera, aparece el botón **"Registrar pago ahora"**, que precarga el
+  gasto con el monto exacto de la cuota.)
 
 **Y ahora el momento que los profesores pidieron — señalá el aviso al pie:**
 
@@ -400,6 +441,12 @@ detectores a medida que aparecen:
 >
 > El punto hueco es el mes en curso: todavía no terminó, así que se muestra
 > aparte y no entra en el cálculo.
+>
+> Y fíjense el ancho de la banda. Los meses de este freelancer alternan: meses
+> de proyecto grande, de 6 a 9 millones, y meses de 1 a 2 millones. Con nueve
+> meses de historia el modelo ajusta la tendencia, pero no puede saber si
+> noviembre va a traer un proyecto grande o no, y lo dice: la banda va de 3,6
+> a 10,7 millones. Ese es el límite del motor predictivo, y está a la vista.
 >
 > Lo que quiero destacar no es que ande, sino **qué pasa cuando no puede andar**.
 > Prophet necesita un mínimo de historial: al menos diez ingresos en meses ya
@@ -734,7 +781,7 @@ que el tribunal va a estar esperando:
 | Dataset de evaluación | **600 ejemplos**, 50 por categoría, 5-fold |
 | Mejor / peor categoría (F1) | Monotributo **0,96** / Marketing **0,58** |
 | Categorías | **12** |
-| Pruebas automatizadas | **387** backend + 8 de pantalla |
+| Pruebas automatizadas | **390** backend + 8 de pantalla |
 | Historias de usuario | **17** |
 | Sprints / duración | **8 sprints** / 4 meses |
 | Pantallas | **13** |
