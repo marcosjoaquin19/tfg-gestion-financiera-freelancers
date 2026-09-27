@@ -9,6 +9,10 @@
 import { useState, useEffect, useRef } from 'react';
 import Layout from '../components/Layout';
 import AvisoAlcance from '../components/AvisoAlcance';
+// Chart.js empaquetado con la app (npm), no descargado de un CDN: la única
+// salida a internet del sistema es la llamada a Groq del resumen, y el gráfico
+// tiene que verse aunque no haya conexión.
+import Chart from 'chart.js/auto';
 import api from '../api';
 
 const MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -101,18 +105,6 @@ function avg(arr, key) {
   return arr.reduce((s, p) => s + parseFloat(p[key] || 0), 0) / arr.length;
 }
 
-// ── Chart.js loader ────────────────────────────────────────────────────────────
-
-function loadChartJS(callback) {
-  if (window.Chart) { callback(); return; }
-  const existing = document.querySelector('script[data-chartjs]');
-  if (existing) { existing.addEventListener('load', callback, { once: true }); return; }
-  const script = document.createElement('script');
-  script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js';
-  script.setAttribute('data-chartjs', '1');
-  script.onload = callback;
-  document.head.appendChild(script);
-}
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
@@ -153,14 +145,13 @@ export default function Proyecciones() {
     if (!proyecciones.length) return;
 
     function buildChart() {
-      if (!canvasRef.current || !window.Chart) return;
+      if (!canvasRef.current) return;
 
       if (chartRef.current) {
         chartRef.current.destroy();
         chartRef.current = null;
       }
 
-      const Chart = window.Chart;
 
       // Eje X continuo, mes a mes: si faltan datos de algún mes (por ejemplo,
       // extractos todavía no importados) se ve el hueco en lugar de pegar
@@ -329,7 +320,7 @@ export default function Proyecciones() {
       });
     }
 
-    loadChartJS(buildChart);
+    buildChart();
 
     return () => {
       if (chartRef.current) {

@@ -403,8 +403,7 @@ export default function Monotributo() {
                 {' '}con una cuota mensual de <strong>${fmt(catSiguienteInfo.cuota_mensual)}</strong>.
               </>
             ) : null}
-            {' '}Te recomendamos consultar con tu contador antes de que se acerque la fecha de recategorización{' '}
-            <strong>(febrero y agosto de cada año)</strong>.
+            {' '}Te sugerimos consultar con tu contador antes de la próxima recategorización semestral.
           </p>
         </div>
       )}
