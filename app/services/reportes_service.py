@@ -517,12 +517,14 @@ def _seccion_pie(estilos) -> list:
     # reporte es justamente el artefacto que sale de la aplicación y circula
     # fuera de ella (el usuario se lo envía al contador o lo imprime): tiene
     # que llevar el límite de responsabilidad consigo. Mismo enunciado que el
-    # componente frontend/src/components/AvisoAlcance.js.
+    # componente frontend/src/components/AvisoAlcance.js, con la frase exacta
+    # del criterio de la HU-13: "no reemplaza el asesoramiento de un contador
+    # matriculado".
     texto = (
         "Documento generado automáticamente por FreelanceControl a partir de los datos "
         "cargados por el usuario. El sistema informa, proyecta y alerta: no constituye "
-        "asesoramiento contable, fiscal ni financiero, y no reemplaza la intervención de "
-        "un profesional matriculado. Las cifras deben verificarse contra la documentación "
+        "asesoramiento contable, fiscal ni financiero, y no reemplaza el asesoramiento de "
+        "un contador matriculado. Las cifras deben verificarse contra la documentación "
         "respaldatoria antes de su presentación ante organismos de control."
     )
     return [Spacer(1, 0.6 * cm), Paragraph(texto, estilos["Pie"])]

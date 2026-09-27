@@ -267,7 +267,7 @@ export default function Clasificador() {
         </div>
 
         <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#94a3b8', lineHeight: 1.6 }}>
-          Describí tu gasto y la IA sugiere automáticamente la categoría correcta.
+          Describí tu gasto y la IA sugiere automáticamente la categoría más probable.
         </p>
 
         {/* Textarea */}

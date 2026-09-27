@@ -256,4 +256,5 @@ def test_alertas_con_nombre_legible_y_aviso_de_las_que_no_entran(client, auth_he
 
 def test_incluye_el_descargo(client, auth_headers, reloj):
     texto = _pdf(client, auth_headers, 8)
-    assert "no reemplaza la intervención de un profesional matriculado" in texto
+    # Criterio textual de la HU-13.
+    assert "no reemplaza el asesoramiento de un contador matriculado" in texto

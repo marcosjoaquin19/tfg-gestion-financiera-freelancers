@@ -7,6 +7,7 @@
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import AvisoAlcance from '../components/AvisoAlcance';
 import api, { extraerMensajeError } from '../api';
 
 const MESES = [
@@ -269,6 +270,10 @@ export default function Dashboard() {
           </span>
         </div>
       </div>
+
+      {/* El panel también muestra una proyección y una recomendación: lleva el
+          mismo descargo que sus pantallas de detalle. */}
+      <AvisoAlcance detalle="La proyección del próximo mes es una estimación sobre su historial y la recomendación es orientativa: las decisiones son del usuario y, cuando corresponda, de su contador." />
     </Layout>
   );
 }

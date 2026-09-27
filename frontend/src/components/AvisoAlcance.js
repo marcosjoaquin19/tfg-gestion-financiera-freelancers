@@ -13,6 +13,7 @@
  *   - Recomendaciones  → sugerencias financieras calculadas por reglas.
  *   - Resumen IA       → texto generado por un modelo de lenguaje.
  *   - Auditoría        → alertas sobre posibles inconsistencias.
+ *   - Dashboard        → resume la proyección y la primera recomendación.
  *
  * Decisión de diseño: el descargo vive en un único componente reutilizable y
  * no duplicado en cada pantalla. Si el texto legal cambia, se edita en un solo
