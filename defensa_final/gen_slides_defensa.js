@@ -412,7 +412,7 @@ capas.forEach((c, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:9.35, y:2.25, w:3.25, h:4.05, fill:{color:NAVY}, rectRadius:0.1 });
 s.addText("STACK CLAVE", { x:9.6, y:2.47, w:2.8, h:0.4, fontFace:FB, fontSize:12, bold:true, color:MINT, charSpacing:2 });
 ["scikit-learn — TF-IDF + SVM", "Prophet — series temporales", "ReportLab — PDF programático",
- "Groq — solo datos agregados", "Docker Compose", "pytest — 386 pruebas"].forEach((t, i) => {
+ "Groq — solo datos agregados", "Docker Compose", "pytest — 387 pruebas"].forEach((t, i) => {
   s.addText("›", { x:9.6, y:3.0 + i * 0.52, w:0.3, h:0.4, fontFace:FB, fontSize:15, color:MINT, bold:true });
   s.addText(t, { x:9.9, y:3.0 + i * 0.52, w:2.6, h:0.45, fontFace:FB, fontSize:11.5, color:ICE, valign:"middle" });
 });
@@ -447,7 +447,7 @@ back.forEach((b, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:8.85, y:2.1, w:3.75, h:3.9, fill:{color:NAVY2},
   line:{color:TEAL, width:1}, rectRadius:0.1 });
 s.addText("QUÉ ME DIO", { x:9.15, y:2.32, w:3.2, h:0.35, fontFace:FB, fontSize:11.5, bold:true, color:MINT, charSpacing:2 });
-[["Testeabilidad", "386 pruebas contra SQLite en memoria, sin levantar HTTP. Unos 2 minutos."],
+[["Testeabilidad", "387 pruebas contra SQLite en memoria, sin levantar HTTP. Unos 2 minutos."],
  ["Reutilización", "La regla de la cuota la usan el módulo fiscal y la auditoría."],
  ["Un solo lugar", "El formato de moneda lo comparten las alertas y el PDF."]].forEach((v, i) => {
   const y = 2.8 + i * 1.05;
@@ -493,7 +493,7 @@ s.addTable(
   { x:0.7, y:2.15, w:11.9, colW:[3.4, 2.4, 3.3, 2.8], rowH:0.34,
     fontFace:FB, fontSize:12, border:{ type:"solid", color:BORDE, pt:0.5 }, valign:"middle" }
 );
-s.addText("8.063 líneas de backend  ·  5.344 de frontend  ·  386 pruebas  ·  9 tablas  ·  13 pantallas", {
+s.addText("8.063 líneas de backend  ·  5.344 de frontend  ·  387 pruebas  ·  9 tablas  ·  13 pantallas", {
   x:0.7, y:6.65, w:11.9, h:0.45, fontFace:FB, fontSize:13, bold:true, color:TEAL, align:"center" });
 footer(s);
 
@@ -826,7 +826,7 @@ s = slide(true);
 s.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.28, h:7.5, fill:{color:MINT} });
 s.addText("FreelanceControl", { x:0.85, y:2.35, w:11.7, h:1.2, fontFace:FH, fontSize:50, bold:true, color:WHITE });
 s.addText("Gracias.", { x:0.9, y:3.6, w:11.0, h:0.8, fontFace:FH, fontSize:30, color:MINT });
-const cierre = [["76 %", "exactitud"], ["386", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
+const cierre = [["76 %", "exactitud"], ["387", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
 cierre.forEach((c, i) => {
   const x = 0.9 + i * 1.95;
   s.addText(c[0], { x, y:4.8, w:1.8, h:0.55, fontFace:FH, fontSize:26, bold:true, color:WHITE });

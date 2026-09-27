@@ -734,7 +734,7 @@ que el tribunal va a estar esperando:
 | Dataset de evaluación | **600 ejemplos**, 50 por categoría, 5-fold |
 | Mejor / peor categoría (F1) | Monotributo **0,96** / Marketing **0,58** |
 | Categorías | **12** |
-| Pruebas automatizadas | **386** backend + 8 de pantalla |
+| Pruebas automatizadas | **387** backend + 8 de pantalla |
 | Historias de usuario | **17** |
 | Sprints / duración | **8 sprints** / 4 meses |
 | Pantallas | **13** |

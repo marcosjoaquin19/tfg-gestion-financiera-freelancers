@@ -48,7 +48,7 @@ capas (layered architecture)** de cuatro niveles.
 un servicio y devuelve el resultado. Esto trajo tres beneficios concretos y
 verificables en este proyecto:
 
-1. **Testeabilidad.** Los 386 tests prueban los servicios directamente contra una
+1. **Testeabilidad.** Los 387 tests prueban los servicios directamente contra una
    base SQLite en memoria, sin levantar HTTP. La suite corre en unos 2 minutos.
 2. **Reutilización real.** `monotributo_service.verificar_pago_monotributo()` lo
    usan el router de monotributo *y* el servicio de auditoría. Si la regla
@@ -427,5 +427,5 @@ contador matriculado"* (un test la busca en el PDF generado).
 | Recomendaciones | `recomendaciones.py` | `recomendaciones_service.py` | — |
 | Reportes PDF | `reportes.py` | `reportes_service.py` | — |
 
-**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 386 tests
+**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 387 tests
 automatizados · 9 tablas · 12 migraciones · 12 routers · 15 servicios · 13 pantallas.

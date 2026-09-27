@@ -33,3 +33,6 @@ defensa_final/tesis/
 
 # PDF de lectura: se regeneran con gen_pdfs_lectura.py, no se versionan.
 defensa_final/lectura/
+
+# Material local para la revisión con un asistente externo (no es código).
+defensa_final/revision_gemini/
