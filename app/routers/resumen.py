@@ -3,7 +3,8 @@ Router de Resumen Financiero — resumen mensual redactado con IA.
 
 Expone GET /resumen/financiero. Toma los datos del mes pedido (o el actual),
 delega en ia_service la redacción de un resumen en lenguaje natural (modelo
-Groq) e informa si pudo generarse con IA o si no hay datos suficientes.
+Groq) e informa si pudo generarse con IA, por qué se usó la plantilla local
+si no, o si no hay datos en el período.
 """
 
 from datetime import datetime
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/resumen", tags=["Resumen"])
 @router.get("/financiero")
 def resumen_financiero(
     mes: int = Query(default=None, ge=1, le=12),
-    anio: int = Query(default=None, ge=2000),
+    anio: int = Query(default=None, ge=2000, le=2100),
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -38,7 +39,7 @@ def resumen_financiero(
     mes_final = mes or hoy.month
     anio_final = anio or hoy.year
 
-    resumen, generado_con_ia, sin_datos = generar_resumen_financiero(
+    resultado = generar_resumen_financiero(
         usuario_id=current_user.id,
         db=db,
         mes=mes_final,
@@ -46,8 +47,11 @@ def resumen_financiero(
     )
 
     return {
-        "resumen": resumen,
-        "generado_con_ia": generado_con_ia,
-        "sin_datos": sin_datos,
+        "resumen": resultado.texto,
+        "generado_con_ia": resultado.generado_con_ia,
+        "sin_datos": resultado.sin_datos,
+        # por qué se usó la plantilla local (None si el texto es de la IA):
+        # "sin_clave", "servicio_no_disponible" o "respuesta_descartada"
+        "motivo_reserva": resultado.motivo_reserva,
         "periodo": f"{MESES_ES[mes_final]} {anio_final}",
     }

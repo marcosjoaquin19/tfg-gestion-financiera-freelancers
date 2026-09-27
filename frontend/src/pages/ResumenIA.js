@@ -3,17 +3,26 @@
  *
  * Pide al backend (endpoint /resumen/financiero) un resumen del mes redactado
  * en lenguaje natural por la IA y lo muestra. Permite elegir el período e indica
- * si el texto se generó con IA o si no había datos suficientes.
+ * si el texto se generó con IA, por qué se usó la plantilla local si no, o si
+ * no había datos en el período. Un error de la API se muestra, no se oculta.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from '../components/Layout';
 import AvisoAlcance from '../components/AvisoAlcance';
-import api from '../api';
+import api, { extraerMensajeError } from '../api';
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ];
+
+// Por qué el resumen salió de la plantilla local (campo motivo_reserva).
+const MOTIVO_RESERVA = {
+  sin_clave: 'El servicio de IA no está configurado: resumen armado con la plantilla local.',
+  servicio_no_disponible: 'El servicio de IA no respondió: resumen armado con la plantilla local.',
+  limite_de_uso: 'El servicio de IA alcanzó su límite de uso por minuto: resumen armado con la plantilla local. Probá de nuevo en unos segundos.',
+  respuesta_descartada: 'La respuesta de la IA no pasó los controles de calidad: resumen armado con la plantilla local.',
+};
 
 const selectStyle = {
   background: '#0f1117', border: '1px solid #1e293b',
@@ -23,27 +32,41 @@ const selectStyle = {
 };
 
 export default function ResumenIA() {
-  const now = new Date();
-  const [mes, setMes] = useState(now.getMonth() + 1);
-  const [anio, setAnio] = useState(now.getFullYear());
+  // Período con el que abre la pantalla: el mes en curso, calculado una sola vez.
+  const [inicial] = useState(() => {
+    const d = new Date();
+    return { mes: d.getMonth() + 1, anio: d.getFullYear() };
+  });
+  const [mes, setMes] = useState(inicial.mes);
+  const [anio, setAnio] = useState(inicial.anio);
   const [cargando, setCargando] = useState(false);
   const [resumen, setResumen] = useState(null);
+  const [error, setError] = useState('');
+  // Número del último pedido: si llega la respuesta de uno anterior (doble
+  // clic, cambio rápido de mes, o el doble montaje del modo estricto de React
+  // en desarrollo), se ignora para que no pise a la más reciente.
+  const ultimoPedido = useRef(0);
 
-  async function fetchResumen(m, a) {
+  const fetchResumen = useCallback(async (m, a) => {
+    const pedido = ++ultimoPedido.current;
     setCargando(true);
     setResumen(null);
+    setError('');
     try {
       const res = await api.get('/resumen/financiero', { params: { mes: m, anio: a } });
-      setResumen(res.data);
-    } catch (_) {
+      if (pedido === ultimoPedido.current) setResumen(res.data);
+    } catch (err) {
+      if (pedido === ultimoPedido.current) {
+        setError(extraerMensajeError(err, 'No se pudo generar el resumen. Probá de nuevo en unos segundos.'));
+      }
     } finally {
-      setCargando(false);
+      if (pedido === ultimoPedido.current) setCargando(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { fetchResumen(mes, anio); }, []);
+  useEffect(() => { fetchResumen(inicial.mes, inicial.anio); }, [fetchResumen, inicial]);
 
-  const anios = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i);
+  const anios = Array.from({ length: 5 }, (_, i) => inicial.anio - 2 + i);
 
   return (
     <Layout activeSection="Resumen IA">
@@ -76,6 +99,14 @@ export default function ResumenIA() {
       {cargando ? (
         <div style={{ textAlign: 'center', color: '#64748b', fontSize: '14px', padding: '48px' }}>
           Generando resumen...
+        </div>
+      ) : error ? (
+        <div style={{
+          background: '#1f0d0d', border: '1px solid #4d1a1a', borderLeft: '3px solid #f87171',
+          borderRadius: '12px', padding: '20px 24px', maxWidth: '700px',
+          color: '#fca5a5', fontSize: '14px', lineHeight: 1.6,
+        }}>
+          {error}
         </div>
       ) : resumen && resumen.sin_datos ? (
         <div style={{
@@ -112,20 +143,27 @@ export default function ResumenIA() {
             <span style={{ fontSize: '13px', color: '#64748b' }}>{resumen.periodo}</span>
           </div>
 
-          {/* Texto */}
+          {/* Texto (el backend ya lo entrega como un párrafo de texto plano) */}
           <p style={{
             margin: 0, fontSize: '15px', color: '#e2e8f0',
             lineHeight: 1.8, fontStyle: 'italic',
           }}>
-            "{resumen.resumen.replace(/\*\*/g, '')}"
+            {/* espacio no separable tras "$": el monto no se parte entre renglones */}
+            "{resumen.resumen.replace(/\$ /g, '$\u00a0')}"
           </p>
+
+          {!resumen.generado_con_ia && MOTIVO_RESERVA[resumen.motivo_reserva] && (
+            <p style={{ margin: '14px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+              {MOTIVO_RESERVA[resumen.motivo_reserva]}
+            </p>
+          )}
         </div>
       ) : (
         <div style={{ textAlign: 'center', color: '#475569', fontSize: '14px', padding: '48px' }}>
           Seleccioná un período y hacé click en Generar resumen.
         </div>
       )}
-      <AvisoAlcance detalle="Este resumen lo redacta un modelo de lenguaje a partir de totales calculados por el sistema; verifique las cifras antes de tomar decisiones." />
+      <AvisoAlcance detalle="Este resumen lo redacta un modelo de lenguaje a partir de totales calculados por el sistema (nunca recibe descripciones ni nombres de clientes). Cada cifra del texto se verifica contra esos totales antes de mostrarlo; aun así, verifique los datos antes de tomar decisiones." />
     </Layout>
   );
 }
