@@ -2,8 +2,10 @@
 Router de Recomendaciones — consejos financieros para el freelancer.
 
 Expone GET /recomendaciones. Las recomendaciones son determinísticas: se
-calculan a partir de los datos reales del usuario (ingresos, gastos, facturas,
-monotributo) con reglas definidas en ia_service, sin texto generado por IA.
+calculan a partir de los datos reales del usuario (facturas, estado fiscal y
+proyección, tendencia de ingresos, resultado de los meses cerrados, alertas de
+auditoría y gastos) con las reglas de recomendaciones_service, sin IA. Cada
+una trae la regla y el dato que la produjo.
 """
 
 from fastapi import APIRouter, Depends
@@ -11,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.dependencies import get_current_user
-from app.services.ia_service import generar_recomendaciones
+from app.services.recomendaciones_service import generar_recomendaciones
 
 router = APIRouter(prefix="/recomendaciones", tags=["Recomendaciones"])
 

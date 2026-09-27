@@ -1,18 +1,16 @@
 """
-Servicio de IA — resumen financiero y recomendaciones.
+Servicio de IA — resumen financiero y clasificación de gastos.
 
-Reúne dos funcionalidades:
+Reúne:
   - generar_resumen_financiero(): arma un resumen mensual en lenguaje natural
     usando el modelo de Groq. Por privacidad, a la IA solo se le envían datos
     numéricos agregados, nunca descripciones libres del usuario. La respuesta
     se controla (formato, largo, cifras) antes de mostrarla; si no pasa o si
     Groq no responde, se usa una plantilla local.
-  - generar_recomendaciones(): consejos determinísticos calculados con reglas
-    sobre los datos reales (sin IA), para que sean siempre explicables.
 También expone clasificar_gasto(), usado al crear gastos.
 """
 
-# PATRÓN: Facade — punto único de entrada a clasificación, resumen y recomendaciones.
+# PATRÓN: Facade — punto único de entrada a clasificación y resumen (las recomendaciones, que no usan IA, viven en recomendaciones_service).
 # PATRÓN: Cache-Aside — clasificar_gasto() consulta la corrección del usuario antes de invocar el modelo.
 # PATRÓN: Chain of Responsibility — corrección explícita → modelo ML → 'Otros' + revisión manual.
 # PATRÓN: Fallback determinístico — si no hay API de IA disponible, el resumen se arma con reglas locales.
@@ -394,136 +392,6 @@ def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int
     if texto:
         return ResultadoResumen(texto, True, False)
     return ResultadoResumen(_plantilla_local(datos), False, False, motivo)
-
-
-AHORRO_PCT_MIN = 0.10  # meta sana de ahorro: 10%–20% de los ingresos (regla 50/30/20)
-AHORRO_PCT_MAX = 0.20
-
-
-def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
-    from datetime import datetime
-    hoy = datetime.now()
-    mes_actual = hoy.month
-    anio_actual = hoy.year
-    mes_anterior = mes_actual - 1 if mes_actual > 1 else 12
-    anio_anterior = anio_actual if mes_actual > 1 else anio_actual - 1
-
-    # Alertas no resueltas
-    alertas = db.query(AlertaAuditoria).filter(
-        AlertaAuditoria.usuario_id == usuario_id,
-        AlertaAuditoria.resuelta == False,
-    ).all()
-
-    # Facturas pendientes y vencidas
-    marcar_vencidas(db, usuario_id)
-    facturas_pend = db.query(Factura).filter(
-        Factura.usuario_id == usuario_id,
-        Factura.estado == EstadoFactura.PENDIENTE,
-    ).all()
-    facturas_venc = db.query(Factura).filter(
-        Factura.usuario_id == usuario_id,
-        Factura.estado == EstadoFactura.VENCIDA,
-    ).all()
-
-    # Gastos mes actual vs mes anterior por categoría
-    def gastos_por_cat(mes, anio):
-        rows = db.query(
-            Gasto.categoria,
-            func.sum(Gasto.monto).label("total"),
-        ).filter(
-            Gasto.usuario_id == usuario_id,
-            extract("month", Gasto.fecha) == mes,
-            extract("year", Gasto.fecha) == anio,
-        ).group_by(Gasto.categoria).all()
-        return {r.categoria: r.total for r in rows}
-
-    gastos_actual = gastos_por_cat(mes_actual, anio_actual)
-    gastos_anterior = gastos_por_cat(mes_anterior, anio_anterior)
-
-    aumentos = []
-    for cat, total_actual in gastos_actual.items():
-        total_prev = gastos_anterior.get(cat, Decimal("0"))
-        if total_prev > 0:
-            pct = float((total_actual - total_prev) / total_prev * 100)
-            if pct >= 30:
-                aumentos.append((cat, pct))
-    aumentos.sort(key=lambda x: x[1], reverse=True)
-
-    # Superávit promedio mensual (ventana de 6 meses) para el consejo de ahorro.
-    from datetime import timedelta
-    from app.services.formato import formato_pesos_ar
-    desde = hoy - timedelta(days=180)
-    ingresos_win = db.query(Ingreso).filter(
-        Ingreso.usuario_id == usuario_id, Ingreso.fecha >= desde,
-    ).all()
-    gastos_win = db.query(Gasto).filter(
-        Gasto.usuario_id == usuario_id, Gasto.fecha >= desde,
-    ).all()
-    meses_set = (
-        {(i.fecha.year, i.fecha.month) for i in ingresos_win}
-        | {(g.fecha.year, g.fecha.month) for g in gastos_win}
-    )
-    n_meses = max(len(meses_set), 1)
-    prom_ing = float(sum(i.monto for i in ingresos_win) or 0) / n_meses
-    prom_gas = float(sum(g.monto for g in gastos_win) or 0) / n_meses
-    superavit = prom_ing - prom_gas
-
-    # Recomendaciones determinísticas (sin IA): reglas sobre los datos. Estables,
-    # reproducibles y dinámicas (desaparecen cuando el problema se resuelve).
-    # Cada situación genera su propia recomendación, ordenadas por urgencia.
-    recs: list[str] = []
-
-    if facturas_venc:
-        total = sum(f.monto for f in facturas_venc)
-        recs.append(
-            f"Tenés {len(facturas_venc)} factura(s) vencida(s) por {formato_pesos_ar(total)} sin cobrar. "
-            f"Contactá a esos clientes: es plata que ya deberías haber recibido."
-        )
-    if alertas:
-        recs.append(
-            f"Tenés {len(alertas)} alerta(s) de auditoría sin resolver. "
-            f"Revisalas en la sección Auditoría para mantener tus datos sanos."
-        )
-    if facturas_pend:
-        total = sum(f.monto for f in facturas_pend)
-        recs.append(
-            f"Tenés {len(facturas_pend)} factura(s) pendiente(s) de cobro por {formato_pesos_ar(total)}. "
-            f"Hacé seguimiento para no cortar tu flujo de caja."
-        )
-
-    # Picos de gasto: valor agregado, no se ve en otro módulo.
-    for cat, pct in aumentos[:2]:
-        recs.append(
-            f"Tus gastos en {cat} subieron {pct:.0f}% respecto al mes anterior. "
-            f"Revisá si es un gasto necesario o si podés recortarlo."
-        )
-
-    # (3) Consejo de ahorro: SIEMPRE presente cuando hay ingresos. Dos casos.
-    if prom_ing > 0:
-        ahorro_min = prom_ing * AHORRO_PCT_MIN
-        ahorro_max = prom_ing * AHORRO_PCT_MAX
-        rango_pct = f"{int(AHORRO_PCT_MIN * 100)}%–{int(AHORRO_PCT_MAX * 100)}%"
-        if superavit > 0:
-            recs.append(
-                f"Este período te quedó superávit ({formato_pesos_ar(superavit)} por mes: cobrás más de lo que gastás). "
-                f"Aprovechalo y destiná entre el {rango_pct} de tus ingresos "
-                f"({formato_pesos_ar(ahorro_min)} a {formato_pesos_ar(ahorro_max)} por mes) a un fondo de reserva "
-                f"o una inversión conservadora como un plazo fijo."
-            )
-        else:
-            recs.append(
-                f"⚠️ No te quedó superávit: en promedio gastás tanto o más de lo que ingresás "
-                f"(déficit de {formato_pesos_ar(abs(superavit))} por mes). Ajustá tus gastos y apuntá a ahorrar al menos "
-                f"el {rango_pct} de lo que generás cada mes ({formato_pesos_ar(ahorro_min)} a {formato_pesos_ar(ahorro_max)})."
-            )
-
-    if not recs:
-        recs.append(
-            "Tu situación financiera está en orden: sin pendientes y con los gastos controlados. "
-            "Seguí registrando tus movimientos para mantener el control."
-        )
-
-    return {"recomendaciones": recs, "generado_con_ia": False}
 
 
 UMBRAL_CONFIANZA_ML = 0.30

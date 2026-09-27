@@ -210,7 +210,7 @@ export default function Dashboard() {
             </div>
             <span style={{ fontSize: '11px', background: '#1e3a5f', color: '#3b82f6', borderRadius: '4px', padding: '2px 8px', fontWeight: 600 }}>IA</span>
           </div>
-          <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0' }}>{primeraRec}</p>
+          <p style={{ fontSize: '13px', color: '#e2e8f0', lineHeight: 1.6, margin: '0 0 12px 0' }}>{primeraRec.replace(/\$ /g, '$\u00a0')}</p>
           <span style={{ display: 'inline-block', fontSize: '11px', background: '#1e3a5f', color: '#93c5fd', borderRadius: '4px', padding: '2px 10px' }}>
             {genConIA ? 'generado con IA' : 'generado sin IA'}
           </span>
