@@ -142,7 +142,6 @@ def test_mes_anterior_al_cambio_usa_la_escala_de_ese_momento(client, auth_header
     assert "vigente desde el 01/02/2026" in texto
     assert "Tope anual de la categoría $ 26.212.853,42" in texto
     assert "Cuota del período Pagada ($ 72.414,10)" in texto
-    assert "$ 2.160.000,00 (8,2 % del tope)" in texto
 
 
 def test_pago_parcial_se_informa_con_lo_registrado(client, auth_headers, escalas, reloj):
@@ -165,19 +164,23 @@ def test_mes_sin_escala_cargada_no_inventa_valores(client, auth_headers, escalas
     assert "Tope anual" not in texto
 
 
-def test_facturado_al_cierre_no_suma_meses_posteriores(client, auth_headers, escalas, reloj):
+def test_el_reporte_no_incluye_el_facturado_anual(client, auth_headers, escalas, reloj):
+    # Decisión de diseño: el PDF es la foto del mes. El acumulado anual y el
+    # % del tope (con proyección y semáforo) viven en la pantalla Monotributo.
     _categoria_d(client, auth_headers)
     _mov(client, auth_headers, "ingresos", 1_000_000, "2026-05-10")
     _mov(client, auth_headers, "ingresos", 5_000_000, "2026-08-10")
-    assert "Facturado en el año al cierre del período $ 1.000.000,00" in _pdf(client, auth_headers, 5)
-    assert "Facturado en el año al cierre del período $ 6.000.000,00" in _pdf(client, auth_headers, 8)
+    texto = _pdf(client, auth_headers, 8)
+    assert "Total ingresos $ 5.000.000,00" in texto
+    assert "Facturado en el año" not in texto
+    assert "del tope" not in texto
+    assert "$ 6.000.000,00" not in texto
 
 
 def test_mes_en_curso_se_marca_como_parcial(client, auth_headers, escalas, reloj):
     _categoria_d(client, auth_headers)
     texto = _pdf(client, auth_headers, 9)
     assert "Período en curso: datos parciales al 27/09/2026" in texto
-    assert "Facturado en el año al 27/09/2026" in texto
 
 
 def test_hora_de_argentina(client, auth_headers, reloj):

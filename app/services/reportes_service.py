@@ -12,8 +12,7 @@ por línea cómo se construye cada sección durante la defensa.
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
 from io import BytesIO
-from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 from decimal import Decimal
 from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
@@ -158,7 +157,7 @@ def _facturacion_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
     }
 
 
-def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int, hoy: date) -> dict:
+def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
     """Estado fiscal evaluado con la escala que regía en el período.
 
     No se reusa monotributo_service.verificar_pago_monotributo porque ese
@@ -197,31 +196,17 @@ def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int, ho
     else:
         estado_cuota, registrado = "sin_registrar", None
 
-    # Facturado del año hasta el cierre del período (o hasta hoy, si el
-    # período está en curso), contra el tope de la escala de ese período.
-    fin_periodo = date(anio, mes, monthrange(anio, mes)[1])
-    corte = min(fin_periodo, hoy)
-    desde = datetime(anio, 1, 1, tzinfo=timezone.utc)
-    hasta = datetime(corte.year, corte.month, corte.day, tzinfo=timezone.utc) + timedelta(days=1)
-    facturado = Decimal(sum(i.monto for i in db.query(Ingreso).filter(
-        Ingreso.usuario_id == usuario_id,
-        Ingreso.fecha >= desde,
-        Ingreso.fecha < hasta,
-    ).all()))
-    limite = Decimal(datos_cat.limite_anual)
-
+    # El reporte es la foto del mes: no incluye el facturado anual acumulado
+    # ni el % consumido del tope (decisión de diseño). Ese panorama anual,
+    # con la proyección y el semáforo, vive en la pantalla Monotributo.
     return {
         "tiene_categoria": True,
         "categoria": letra,
         "vigencia": datos_cat.fecha_vigencia,
-        "limite_anual": limite,
+        "limite_anual": Decimal(datos_cat.limite_anual),
         "cuota_mensual": cuota,
         "estado_cuota": estado_cuota,
         "registrado": registrado,
-        "facturado_anio": facturado,
-        "porcentaje_tope": float(facturado / limite * 100) if limite > 0 else 0.0,
-        "corte": corte,
-        "corte_es_fin_de_mes": corte == fin_periodo,
     }
 
 
@@ -403,10 +388,6 @@ def _seccion_monotributo(fiscal: dict, estilos) -> list:
     else:
         cuota_periodo = "Sin registrar"
 
-    etiqueta_facturado = (
-        "Facturado en el año al cierre del período" if fiscal["corte_es_fin_de_mes"]
-        else f"Facturado en el año al {fiscal['corte'].strftime('%d/%m/%Y')}"
-    )
     filas = [
         ["Concepto", "Valor"],
         ["Categoría declarada (actual)", fiscal["categoria"]],
@@ -414,8 +395,6 @@ def _seccion_monotributo(fiscal: dict, estilos) -> list:
         ["Tope anual de la categoría", _fmt_pesos(fiscal["limite_anual"])],
         ["Cuota mensual", _fmt_pesos(fiscal["cuota_mensual"])],
         ["Cuota del período", cuota_periodo],
-        [etiqueta_facturado,
-         f"{_fmt_pesos(fiscal['facturado_anio'])} ({_fmt_porcentaje(fiscal['porcentaje_tope'])} del tope)"],
     ]
     tabla = _tabla_estandar(filas, col_widths=[7 * cm, 10 * cm])
     tabla.setStyle(TableStyle([("ALIGN", (0, 1), (0, -1), "LEFT")]))
@@ -555,7 +534,7 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
     previo = _totales_mes(db, usuario_id, mes_prev, anio_prev)
     cats = _gastos_por_categoria(db, usuario_id, mes, anio)
     fact = _facturacion_mes(db, usuario_id, mes, anio)
-    fiscal = _estado_fiscal_periodo(db, usuario_id, mes, anio, hoy)
+    fiscal = _estado_fiscal_periodo(db, usuario_id, mes, anio)
     alertas = _alertas_pendientes(db, usuario_id)
 
     # SimpleDocTemplate escribe a un buffer en memoria; después devolvemos
