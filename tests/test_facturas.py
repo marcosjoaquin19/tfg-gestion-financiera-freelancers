@@ -136,7 +136,7 @@ def test_factura_vencida_puede_cobrarse(client, auth_headers):
     assert client.patch(f"/facturas/{fid}/estado", json={"estado": "vencida"},
                         headers=auth_headers).status_code == 200
     cobrada = client.patch(f"/facturas/{fid}/estado",
-                           json={"estado": "pagada", "fecha_pago": "2026-10-05"},
+                           json={"estado": "pagada", "fecha_pago": "2026-04-05"},
                            headers=auth_headers)
     assert cobrada.status_code == 200
     assert cobrada.json()["estado"] == "pagada"
@@ -147,7 +147,10 @@ from datetime import datetime, timedelta, timezone
 
 
 def _en_dias(dias: int) -> str:
-    return (datetime.now(timezone.utc) + timedelta(days=dias)).strftime("%Y-%m-%dT00:00:00")
+    # Día calendario de Argentina, como lo manda la pantalla: con el día UTC,
+    # entre las 21 y las 24 h "ayer" caía en el hoy local.
+    from app.services.facturas_estado import hoy_ar
+    return (hoy_ar() + timedelta(days=dias)).strftime("%Y-%m-%dT00:00:00")
 
 
 FACTURA_A_FUTURO = {**FACTURA_BASE, "fecha_emision": _en_dias(-5), "fecha_vencimiento": _en_dias(30)}
@@ -282,3 +285,17 @@ def test_factura_que_vence_hoy_sigue_pendiente(client, auth_headers, monkeypatch
         }, headers=auth_headers)
     estados = {f["cliente_nombre"]: f["estado"] for f in client.get("/facturas/", headers=auth_headers).json()}
     assert estados == {"2026-09-26": "vencida", "2026-09-27": "pendiente", "2026-09-28": "pendiente"}
+
+
+def test_factura_de_contado_vence_el_mismo_dia(client, auth_headers):
+    response = client.post("/facturas/", json={**FACTURA_BASE, "fecha_vencimiento": FACTURA_BASE["fecha_emision"]},
+                           headers=auth_headers)
+    assert response.status_code == 201
+
+
+def test_fecha_de_pago_futura(client, auth_headers):
+    fid = client.post("/facturas/", json=FACTURA_A_FUTURO, headers=auth_headers).json()["id"]
+    response = client.patch(f"/facturas/{fid}/estado", json={"estado": "pagada", "fecha_pago": _en_dias(1)},
+                            headers=auth_headers)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "La fecha de pago no puede ser posterior a hoy"

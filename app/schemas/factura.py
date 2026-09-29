@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from typing import Optional
 from app.models.factura import EstadoFactura
+from app.schemas.validaciones import validar_fecha, validar_monto
 
 
 # Campos y reglas comunes a emitir y editar una factura.
@@ -41,17 +42,21 @@ class _FacturaDatos(BaseModel):
     @field_validator("monto")
     @classmethod
     def monto_debe_ser_positivo(cls, v):
-        if v <= 0:
-            raise ValueError("El monto debe ser mayor a cero")
-        # La columna es Numeric(12, 2): admite hasta 10 dígitos enteros.
-        if v >= 10 ** 10:
-            raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
-        return v
+        # Mayor a cero, de al menos un centavo y que entre en Numeric(12, 2)
+        # (ver app/schemas/validaciones.py).
+        return validar_monto(v)
+
+    @field_validator("fecha_emision", "fecha_vencimiento")
+    @classmethod
+    def fechas_razonables(cls, v):
+        return validar_fecha(v)
 
     @model_validator(mode="after")
-    def vencimiento_debe_ser_posterior(self):
-        if self.fecha_vencimiento <= self.fecha_emision:
-            raise ValueError("La fecha de vencimiento debe ser posterior a la fecha de emisión")
+    def vencimiento_no_anterior_a_emision(self):
+        # Puede vencer el mismo día que se emite (factura de contado): antes
+        # se exigía un día posterior y esa factura no se podía cargar.
+        if self.fecha_vencimiento < self.fecha_emision:
+            raise ValueError("La fecha de vencimiento no puede ser anterior a la fecha de emisión")
         return self
 
 
@@ -71,6 +76,11 @@ class FacturaEstadoUpdate(BaseModel):
     # fecha_pago es obligatoria si el nuevo estado es PAGADA (se valida en el
     # router, junto con que no sea anterior a la emisión) y no se admite en
     # los demás estados: una factura sin cobrar no tiene fecha de cobro.
+
+    @field_validator("fecha_pago")
+    @classmethod
+    def fecha_pago_razonable(cls, v):
+        return validar_fecha(v) if v is not None else v
 
     @model_validator(mode="after")
     def fecha_pago_solo_si_pagada(self):

@@ -23,7 +23,7 @@ from app.models.usuario import Usuario
 from app.models.factura import Factura, EstadoFactura
 from app.schemas.factura import FacturaCreate, FacturaUpdate, FacturaEstadoUpdate, FacturaResponse
 from app.dependencies import get_current_user
-from app.services.facturas_estado import marcar_vencidas, ya_vencio
+from app.services.facturas_estado import hoy_ar, marcar_vencidas, ya_vencio
 
 
 router = APIRouter(prefix="/facturas", tags=["Facturas"])
@@ -202,6 +202,12 @@ def actualizar_estado_factura(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="La fecha de pago no puede ser anterior a la fecha de emisión",
+            )
+        if _en_utc(datos.fecha_pago).date() > hoy_ar():
+            # Una factura no puede figurar cobrada en una fecha que todavía no llegó.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="La fecha de pago no puede ser posterior a hoy",
             )
 
     factura.estado = datos.estado
