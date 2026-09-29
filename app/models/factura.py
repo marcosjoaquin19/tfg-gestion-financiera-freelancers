@@ -5,7 +5,7 @@ Representa la tabla `facturas` de la base de datos. Cada fila es una factura
 emitida por el freelancer a un cliente, con su monto, fechas y estado de cobro.
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Enum, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -19,6 +19,9 @@ class EstadoFactura(enum.Enum):
 
 class Factura(Base):
     __tablename__ = "facturas"
+    # Índice (usuario, fecha) creado por la migración 0005: acelera los
+    # filtros por mes y por ventana de 12 meses de cada usuario.
+    __table_args__ = (Index("ix_facturas_usuario_emision", "usuario_id", "fecha_emision"),)
 
     id = Column(Integer, primary_key=True, index=True)
     

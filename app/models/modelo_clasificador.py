@@ -23,8 +23,8 @@ class ModeloClasificador(Base):
     # algoritmo usado: "naive_bayes" o "svm"
     precision = Column(Float, nullable=True)
     # precisión estimada del modelo (validación cruzada) al entrenarlo
-    n_ejemplos = Column(Integer, default=0)
+    n_ejemplos = Column(Integer, default=0, nullable=False)
     # cantidad de ejemplos con los que se entrenó
-    fecha_entrenamiento = Column(DateTime(timezone=True), server_default=func.now())
-    activo = Column(Boolean, default=True)
+    fecha_entrenamiento = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    activo = Column(Boolean, default=True, nullable=False)
     # solo un modelo por usuario queda activo a la vez (el último entrenado)

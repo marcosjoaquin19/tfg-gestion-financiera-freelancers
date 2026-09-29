@@ -6,13 +6,16 @@ categoría (que puede asignarse automáticamente con el clasificador de ML) y un
 flag que el módulo de auditoría usa para marcar posibles duplicados.
 """
 
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
 class Gasto(Base):
     __tablename__ = "gastos"
+    # Índice (usuario, fecha) creado por la migración 0005: acelera los
+    # filtros por mes y por ventana de 12 meses de cada usuario.
+    __table_args__ = (Index("ix_gastos_usuario_fecha", "usuario_id", "fecha"),)
 
     id = Column(Integer, primary_key=True, index=True)
     

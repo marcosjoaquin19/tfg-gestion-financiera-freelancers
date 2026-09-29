@@ -36,7 +36,7 @@ class CacheClasificacion(Base):
 
     descripcion_normalizada = Column(String, index=True, nullable=False)
     categoria = Column(String, nullable=False)
-    fecha_creacion = Column(DateTime, server_default=func.now(), nullable=False)
+    fecha_creacion = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         # Una corrección por (usuario, descripción): si el usuario vuelve a

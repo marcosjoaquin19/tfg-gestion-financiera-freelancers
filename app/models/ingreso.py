@@ -5,13 +5,16 @@ Representa la tabla `ingresos`. Cada fila es un cobro registrado por el
 freelancer (monto, categoría y fecha), asociado al usuario dueño.
 """
 
-from sqlalchemy import Boolean, Column, Integer, String, Numeric, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, Numeric, DateTime, ForeignKey, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
 
 class Ingreso(Base):
     __tablename__ = "ingresos"
+    # Índice (usuario, fecha) creado por la migración 0005: acelera los
+    # filtros por mes y por ventana de 12 meses de cada usuario.
+    __table_args__ = (Index("ix_ingresos_usuario_fecha", "usuario_id", "fecha"),)
 
     id = Column(Integer, primary_key=True, index=True)
 
