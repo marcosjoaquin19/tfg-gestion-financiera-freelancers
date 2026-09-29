@@ -204,3 +204,24 @@ def test_contrasena_de_mas_de_72_bytes(client):
 
 def test_nombre_solo_con_espacios(client):
     assert _registrar(client, "blanco@correo.com", nombre="   ").status_code == 422
+
+
+def test_login_con_correo_inexistente_tambien_verifica_la_contrasena(client, monkeypatch):
+    # Si bcrypt solo corriera cuando el correo existe, el login respondería
+    # mucho más rápido para los correos no registrados y el tiempo delataría
+    # qué cuentas existen (HU-02). Tiene que verificar igual, contra el hash
+    # de relleno, y responder el mismo mensaje.
+    from app.routers import auth as router_auth
+    llamadas = []
+    original = router_auth.verificar_password
+    monkeypatch.setattr(router_auth, "verificar_password",
+                        lambda pw, h: llamadas.append(h) or original(pw, h))
+    _registrar(client, "existe@correo.com")
+
+    inexistente = client.post("/auth/login", data={"username": "nadie@correo.com", "password": "clave12345"})
+    mala = client.post("/auth/login", data={"username": "existe@correo.com", "password": "otraclave99"})
+
+    assert llamadas[0] == router_auth.HASH_DE_RELLENO
+    assert len(llamadas) == 2 and llamadas[1].startswith("$2b$12$")
+    assert inexistente.status_code == mala.status_code == 401
+    assert inexistente.json() == mala.json() == {"detail": "Email o contraseña incorrectos"}

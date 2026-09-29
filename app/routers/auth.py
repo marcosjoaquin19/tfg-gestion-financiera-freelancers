@@ -32,6 +32,7 @@ from app.services.auth import (
     crear_usuario,
     verificar_password,
     crear_token,
+    HASH_DE_RELLENO,
 )
 # las funciones de lógica de negocio que implementamos en services/auth.py
 
@@ -100,19 +101,19 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     # esto activa el botón Authorize de Swagger automáticamente
 
     usuario = obtener_usuario_por_email(db, form_data.username)
-    if not usuario:
+
+    # bcrypt corre siempre, exista o no el correo (contra un hash de relleno
+    # si no existe): si no, la respuesta rápida delataría qué correos están
+    # registrados aunque el mensaje sea el mismo.
+    password_valido = verificar_password(
+        form_data.password, usuario.password_hash if usuario else HASH_DE_RELLENO
+    )
+    if not usuario or not password_valido:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email o contraseña incorrectos",
             # intencionalmente no decimos si el email no existe o el password es incorrecto
             # dar esa info ayudaría a un atacante a enumerar usuarios válidos
-        )
-
-    password_valido = verificar_password(form_data.password, usuario.password_hash)
-    if not password_valido:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Email o contraseña incorrectos",
         )
 
     if not usuario.es_activo:
