@@ -23,16 +23,21 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
-# 1) Crear .env si no existe (valores que coinciden con docker-compose.yml)
+# 1) Crear .env si no existe. Las claves se generan al azar en cada equipo:
+#    ninguna queda escrita en el repositorio. La de la base se usa una sola
+#    vez, cuando Docker crea la base; por eso, si ya existe una base de una
+#    instalación anterior, no borres el .env (o borrá también la base con
+#    "docker compose down -v").
 if [ ! -f .env ]; then
   echo "-> Generando archivo .env ..."
-  # Clave aleatoria de 64 caracteres (la API no arranca con menos de 32).
   # openssl viene con macOS; si faltara, se usa el generador del sistema.
-  SECRET=$(openssl rand -hex 32 2>/dev/null || LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 64)
+  aleatoria() { openssl rand -hex "$1" 2>/dev/null || LC_ALL=C tr -dc 'a-f0-9' < /dev/urandom | head -c $(( $1 * 2 )); }
+  SECRET=$(aleatoria 32)     # 64 caracteres (la API no arranca con menos de 32)
+  DB_PASSWORD=$(aleatoria 16)
   cat > .env <<EOF
-DATABASE_URL=postgresql://marcos:marcos123@db:5432/tfg_freelancers
-POSTGRES_USER=marcos
-POSTGRES_PASSWORD=marcos123
+DATABASE_URL=postgresql://freelancecontrol:$DB_PASSWORD@db:5432/tfg_freelancers
+POSTGRES_USER=freelancecontrol
+POSTGRES_PASSWORD=$DB_PASSWORD
 POSTGRES_DB=tfg_freelancers
 SECRET_KEY=$SECRET
 ALGORITHM=HS256

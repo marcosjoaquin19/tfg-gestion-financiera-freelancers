@@ -483,7 +483,7 @@ class TipoAlerta(str, Enum):
 
 ```python
 DATABASE_URL = os.getenv("DATABASE_URL")
-engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10)
+engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 ```
@@ -494,18 +494,22 @@ Base = declarative_base()
 ### Variables de entorno (`.env`)
 
 ```
-POSTGRES_USER=marcos
-POSTGRES_PASSWORD=marcos123
+POSTGRES_USER=<usuario de la base>
+POSTGRES_PASSWORD=<clave de la base>
 POSTGRES_DB=tfg_freelancers
-DATABASE_URL=postgresql://marcos:marcos123@db:5432/tfg_freelancers
+DATABASE_URL=postgresql://<usuario>:<clave>@db:5432/tfg_freelancers
 
-SECRET_KEY=supersecretkey123cambiarenproducccion
+SECRET_KEY=<clave aleatoria de 32 caracteres o más>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=10080   # 7 días
 
-GROQ_API_KEY=<clave expuesta — ver notas de seguridad>
+GROQ_API_KEY=<clave de Groq, opcional>
 GROQ_MODEL=openai/gpt-oss-120b
 ```
+
+Docker Compose crea la base con `POSTGRES_USER`, `POSTGRES_PASSWORD` y
+`POSTGRES_DB` del `.env`: no hay credenciales escritas en `docker-compose.yml`.
+Los lanzadores (`start.command`, `start.bat`) generan las dos claves al azar.
 
 ### Alembic (`alembic.ini` + `alembic/env.py`)
 

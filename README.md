@@ -56,11 +56,16 @@ En la raíz del proyecto, copiar la plantilla y luego editarla:
 cp .env.example .env
 ```
 
-Abrir el `.env` y dejarlo con **exactamente** estos valores (coinciden con la base
-de datos que crea Docker Compose):
+Abrir el `.env` y completarlo. Docker Compose crea la base de datos con el
+usuario, la clave y el nombre que figuren acá (no hay ninguna credencial escrita
+en `docker-compose.yml`), y `DATABASE_URL` tiene que repetir esos mismos tres
+valores. Para la clave conviene usar solo letras y números:
 
 ```env
-DATABASE_URL=postgresql://marcos:marcos123@db:5432/tfg_freelancers
+POSTGRES_USER=freelancecontrol
+POSTGRES_PASSWORD=elegir_una_clave
+POSTGRES_DB=tfg_freelancers
+DATABASE_URL=postgresql://freelancecontrol:elegir_una_clave@db:5432/tfg_freelancers
 
 SECRET_KEY=pegar_aca_una_clave_aleatoria
 ALGORITHM=HS256

@@ -21,14 +21,23 @@ if errorlevel 1 (
   exit /b 1
 )
 
-REM La SECRET_KEY se arma con numeros al azar en cada equipo: la API no
-REM arranca con una clave fija o publica (ni con menos de 32 caracteres).
+REM La SECRET_KEY y la clave de la base se arman con numeros al azar en cada
+REM equipo: ninguna queda escrita en el repositorio (y la API no arranca con
+REM una clave fija o publica, ni con menos de 32 caracteres). La clave de la
+REM base se usa una sola vez, cuando Docker crea la base: si ya existe una
+REM base de una instalacion anterior, no borres el .env (o borra tambien la
+REM base con "docker compose down -v").
 if not exist .env (
   echo -^> Generando archivo .env ...
+  set DB_PASSWORD=fc%RANDOM%%RANDOM%%RANDOM%%RANDOM%%RANDOM%%RANDOM%
+)
+REM Bloque aparte: Windows reemplaza %DB_PASSWORD% al leer cada bloque, asi
+REM que en el mismo bloque del "set" todavia estaria vacia.
+if not exist .env (
   (
-    echo DATABASE_URL=postgresql://marcos:marcos123@db:5432/tfg_freelancers
-    echo POSTGRES_USER=marcos
-    echo POSTGRES_PASSWORD=marcos123
+    echo DATABASE_URL=postgresql://freelancecontrol:%DB_PASSWORD%@db:5432/tfg_freelancers
+    echo POSTGRES_USER=freelancecontrol
+    echo POSTGRES_PASSWORD=%DB_PASSWORD%
     echo POSTGRES_DB=tfg_freelancers
     echo SECRET_KEY=freelancecontrol_local_%RANDOM%%RANDOM%%RANDOM%%RANDOM%_%RANDOM%%RANDOM%%RANDOM%%RANDOM%_%RANDOM%%RANDOM%%RANDOM%%RANDOM%
     echo ALGORITHM=HS256
