@@ -60,7 +60,7 @@ def listar_alertas(
     if solo_pendientes:
         query = query.filter(AlertaAuditoria.resuelta == False)
 
-    return query.order_by(AlertaAuditoria.fecha_deteccion.desc()).offset(offset).limit(limite).all()
+    return query.order_by(AlertaAuditoria.fecha_deteccion.desc(), AlertaAuditoria.id.desc()).offset(offset).limit(limite).all()
 
 
 @router.get("/{alerta_id}", response_model=AlertaResponse)

@@ -134,8 +134,10 @@ def listar_ingresos(
     if solo_duplicados:
         query = query.filter(Ingreso.es_duplicado.is_(True))
 
-    ingresos = query.order_by(Ingreso.fecha.desc()).offset(offset).limit(limite).all()
-    # order_by fecha descendente → los más recientes primero
+    ingresos = query.order_by(Ingreso.fecha.desc(), Ingreso.id.desc()).offset(offset).limit(limite).all()
+    # order_by fecha descendente → los más recientes primero. El id desempata
+    # los del mismo día: sin él, la base podía devolverlos en otro orden en
+    # cada pedido y al paginar uno aparecía dos veces y otro nunca.
 
     return ingresos
 

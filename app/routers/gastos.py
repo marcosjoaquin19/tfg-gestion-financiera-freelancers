@@ -205,7 +205,7 @@ def listar_gastos(
     if solo_duplicados:
         query = query.filter(Gasto.es_duplicado == True)
 
-    return query.order_by(Gasto.fecha.desc()).offset(offset).limit(limite).all()
+    return query.order_by(Gasto.fecha.desc(), Gasto.id.desc()).offset(offset).limit(limite).all()
 
 
 @router.get("/{gasto_id}", response_model=GastoResponse)

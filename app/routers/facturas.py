@@ -110,7 +110,7 @@ def listar_facturas(
         query = query.filter(Factura.cliente_nombre.ilike(f"%{cliente_nombre}%"))
         # ilike → búsqueda case-insensitive, ej: "acme" matchea "Acme Corp"
 
-    return query.order_by(Factura.fecha_emision.desc()).offset(offset).limit(limite).all()
+    return query.order_by(Factura.fecha_emision.desc(), Factura.id.desc()).offset(offset).limit(limite).all()
 
 
 @router.get("/{factura_id}", response_model=FacturaResponse)

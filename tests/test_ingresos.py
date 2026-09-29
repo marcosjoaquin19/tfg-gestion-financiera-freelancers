@@ -365,3 +365,26 @@ def test_monto_se_valida_ya_redondeado_a_centavos(client, auth_headers, monto, e
     assert r.status_code == esperado
     if esperado == 201:
         assert r.json()["monto"] == 9_999_999_999.99
+
+
+def test_los_listados_paginados_desempatan_por_id(client, auth_headers):
+    # Registros con la misma fecha: si el ORDER BY no desempata, PostgreSQL
+    # los devuelve en cualquier orden y al paginar uno se repite y otro nunca
+    # aparece (reproducido en la revisión final con tres cobros del mismo día).
+    # SQLite los devuelve siempre igual, así que se verifica la consulta.
+    from sqlalchemy import event
+    from tests.conftest import engine
+    consultas = []
+
+    def anotar(conn, cursor, sql, *args):
+        consultas.append(sql)
+
+    event.listen(engine, "before_cursor_execute", anotar)
+    try:
+        for ruta in ("/ingresos/", "/gastos/", "/facturas/", "/alertas/"):
+            assert client.get(ruta, headers=auth_headers).status_code == 200
+    finally:
+        event.remove(engine, "before_cursor_execute", anotar)
+    ordenes = " | ".join(s.split("ORDER BY")[1] for s in consultas if "ORDER BY" in s)
+    for tabla in ("ingresos", "gastos", "facturas", "alertas_auditoria"):
+        assert f"{tabla}.id DESC" in ordenes, tabla
