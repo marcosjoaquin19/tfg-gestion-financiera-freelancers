@@ -379,11 +379,8 @@ def test_resolver_monotributo_de_un_mes_no_silencia_el_siguiente(client, auth_he
     client.patch("/monotributo/categoria", json={"categoria_monotributo": "A"}, headers=auth_headers)
 
     def fijar_hoy(dia):
-        class Fija(datetime):
-            @classmethod
-            def now(cls, tz=None):
-                return dia
-        monkeypatch.setattr(ms, "datetime", Fija)
+        # El mes en curso sale de una sola función (calendario de Argentina).
+        monkeypatch.setattr(ms, "inicio_mes_en_curso", lambda: datetime(dia.year, dia.month, 1))
 
     fijar_hoy(datetime(2026, 9, 10))
     client.post("/alertas/ejecutar-auditoria", headers=auth_headers)

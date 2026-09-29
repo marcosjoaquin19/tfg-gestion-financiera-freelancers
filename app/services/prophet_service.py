@@ -12,7 +12,9 @@ Solo se entrena con meses cerrados y siempre se proyecta desde el mes que viene.
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import hashlib
+import logging
 import statistics
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
@@ -22,6 +24,8 @@ import cmdstanpy  # noqa: F401 — debe importarse antes que Prophet para que us
 from prophet import Prophet
 from app.models.ingreso import Ingreso
 from app.models.proyeccion import Proyeccion
+
+logger = logging.getLogger(__name__)
 
 MIN_INGRESOS_PROPHET = 10
 # por debajo de este umbral Prophet no tiene suficientes datos → usamos media móvil
@@ -52,10 +56,19 @@ def ahora_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+ZONA_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+
 def inicio_mes_en_curso() -> datetime:
-    """Primer día del mes actual (UTC), sin zona: el mismo criterio con el que
-    se agrupan los ingresos (las fechas se guardan en UTC)."""
-    ahora = ahora_utc()
+    """Primer día del mes en curso según el calendario de Argentina, sin zona.
+
+    Las fechas se cargan como día calendario (guardado a las 00:00 UTC), así
+    que el mes que las agrupa es el del calendario local. Con el reloj en UTC,
+    desde las 21 h del último día del mes el sistema ya creía estar en el mes
+    siguiente: la cuota recién pagada figuraba impaga y el resumen por
+    defecto era de un mes vacío.
+    """
+    ahora = datetime.now(ZONA_AR)
     return datetime(ahora.year, ahora.month, 1)
 
 
@@ -188,7 +201,16 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = HORIZONTE
     montos = [total for _, total in serie]
 
     if cantidad_cerrados >= MIN_INGRESOS_PROPHET and len(serie) >= MIN_MESES_PROPHET:
-        nuevas = _proyecciones_prophet(usuario_id, serie, periodos)
+        try:
+            nuevas = _proyecciones_prophet(usuario_id, serie, periodos)
+        except Exception:
+            # Si Prophet falla (por ejemplo, el optimizador no converge), la
+            # pantalla no se cae: se proyecta con la media móvil, la misma
+            # estrategia del arranque en frío, y el método guardado lo dice.
+            logger.exception("Prophet falló para el usuario %s; se usa la media móvil", usuario_id)
+            nuevas = _proyecciones_media_movil(
+                usuario_id, montos[-VENTANA_MEDIA_MOVIL:], periodos, METODO_MEDIA_MOVIL,
+            )
     elif serie:
         nuevas = _proyecciones_media_movil(
             usuario_id, montos[-VENTANA_MEDIA_MOVIL:], periodos, METODO_MEDIA_MOVIL,

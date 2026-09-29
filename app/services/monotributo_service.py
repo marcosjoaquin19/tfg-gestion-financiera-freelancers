@@ -227,9 +227,9 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
     Un registro menor cuenta como pago PARCIAL: se informa aparte y la
     auditoría sigue alertando que la cuota no está cubierta.
     """
-    now = datetime.now()
-    mes = now.month
-    anio = now.year
+    mes_actual = inicio_mes_en_curso()
+    mes = mes_actual.month
+    anio = mes_actual.year
 
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     cat = usuario.categoria_monotributo if usuario else None

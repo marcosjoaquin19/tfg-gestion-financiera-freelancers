@@ -7,13 +7,13 @@ Groq) e informa si pudo generarse con IA, por qué se usó la plantilla local
 si no, o si no hay datos en el período.
 """
 
-from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.usuario import Usuario
 from app.dependencies import get_current_user
 from app.services.ia_service import generar_resumen_financiero
+from app.services.prophet_service import inicio_mes_en_curso
 
 # Nombres de los meses en español para mostrar el período en la respuesta.
 MESES_ES = {
@@ -35,7 +35,7 @@ def resumen_financiero(
     current_user: Usuario = Depends(get_current_user),
 ):
     # Si el frontend no especifica período, se usa el mes y año actuales.
-    hoy = datetime.now()
+    hoy = inicio_mes_en_curso()
     mes_final = mes or hoy.month
     anio_final = anio or hoy.year
 

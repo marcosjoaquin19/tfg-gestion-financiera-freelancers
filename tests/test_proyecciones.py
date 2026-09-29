@@ -301,3 +301,31 @@ def test_historico_no_muestra_ingresos_de_otro_usuario(client, auth_headers):
     token = client.post("/auth/login", data={"username": "otra@test.com", "password": "Prueba1234"}).json()["access_token"]
     h = client.get("/proyecciones/historico", headers={"Authorization": f"Bearer {token}"}).json()
     assert h["meses"] == [] and h["total_mes_en_curso"] == 0
+
+
+# ── Casos bisagra de la revisión final ───────────────────────────────────────
+
+def test_si_prophet_falla_se_usa_la_media_movil(client, auth_headers, monkeypatch):
+    _historia(client, auth_headers, [(2026, 5), (2026, 6), (2026, 7), (2026, 8)])
+
+    def falla(*a, **k):
+        raise RuntimeError("el optimizador no convergió")
+    monkeypatch.setattr(ps, "_proyecciones_prophet", falla)
+    r = _generar(client, auth_headers)
+    assert r.status_code == 201
+    assert {p["metodo"] for p in r.json()} == {"media_movil"}
+    assert _meses(r.json()) == MESES_ESPERADOS
+
+
+def test_mes_en_curso_con_el_calendario_de_argentina(monkeypatch):
+    # 30/09 a las 23:30 en Argentina ya es 1/10 en UTC: el mes en curso tiene
+    # que seguir siendo septiembre.
+    from datetime import timezone
+    instante = datetime(2026, 10, 1, 2, 30, tzinfo=timezone.utc)
+
+    class Reloj(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instante.astimezone(tz) if tz else instante.replace(tzinfo=None)
+    monkeypatch.setattr(ps, "datetime", Reloj)
+    assert ps.inicio_mes_en_curso() == datetime(2026, 9, 1)
