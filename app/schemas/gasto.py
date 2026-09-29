@@ -10,6 +10,7 @@ Validar acá evita que datos inválidos (ej: monto negativo) lleguen a la BD.
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
+from app.schemas.validaciones import validar_fecha, validar_monto
 from app.services.categorias_gasto import CATEGORIAS_GASTO
 
 
@@ -45,12 +46,14 @@ class GastoCreate(BaseModel):
     @field_validator("monto")
     @classmethod
     def monto_debe_ser_positivo(cls, v):
-        if v <= 0:
-            raise ValueError("El monto debe ser mayor a cero")
-        # La columna es Numeric(12, 2): admite hasta 10 dígitos enteros.
-        if v >= 10 ** 10:
-            raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
-        return v
+        # Mayor a cero, de al menos un centavo y que entre en Numeric(12, 2)
+        # (ver app/schemas/validaciones.py).
+        return validar_monto(v)
+
+    @field_validator("fecha")
+    @classmethod
+    def fecha_razonable(cls, v):
+        return validar_fecha(v)
 
     @field_validator("categoria")
     @classmethod

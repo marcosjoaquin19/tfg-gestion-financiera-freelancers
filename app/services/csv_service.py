@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
+from app.schemas.validaciones import fecha_en_rango
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +347,12 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
             try:
                 texto_fecha = str(fecha_raw).strip().split(" ")[0].split("T")[0]
                 fecha = pd.to_datetime(texto_fecha, format=fmt_fecha)
+            except pd.errors.OutOfBoundsDatetime:
+                # La fecha existe, pero con un año que pandas no representa
+                # (0026, 1026, 3000): casi siempre un año mal tipeado. Se
+                # informa como fuera de rango, no como ilegible.
+                omitir(numero, descripcion, f"fecha fuera de rango: '{fecha_raw}'")
+                continue
             except (ValueError, TypeError):
                 fecha = None
             if fecha is None or pd.isna(fecha):
@@ -357,6 +364,10 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
                 if pd.isna(fecha):
                     omitir(numero, descripcion, f"fecha ilegible: '{fecha_raw}'")
                     continue
+            if not fecha_en_rango(fecha):
+                # Mismo rango que la carga manual (app/schemas/validaciones.py).
+                omitir(numero, descripcion, f"fecha fuera de rango: '{fecha_raw}'")
+                continue
 
             if col_debito and col_credito:
                 debito_raw, credito_raw = row.get(col_debito), row.get(col_credito)

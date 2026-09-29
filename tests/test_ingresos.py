@@ -326,3 +326,29 @@ def test_meses_no_incluye_ingresos_de_otro_usuario(client, auth_headers):
     client.post("/auth/register", json={"nombre": "Otra", "email": "otra_meses@test.com", "password": "Prueba1234"})
     token = client.post("/auth/login", data={"username": "otra_meses@test.com", "password": "Prueba1234"}).json()["access_token"]
     assert client.get("/ingresos/meses", headers={"Authorization": f"Bearer {token}"}).json() == []
+
+
+# ── Casos bisagra de la revisión final ───────────────────────────────────────
+
+def _alta(client, headers, **cambios):
+    datos = {"descripcion": "Cobro", "monto": 1000, "categoria": "Desarrollo", "fecha": "2026-09-10", **cambios}
+    return client.post("/ingresos/", json=datos, headers=headers)
+
+
+def test_monto_menor_a_un_centavo(client, auth_headers):
+    # Se guardaría como $ 0,00 (la columna tiene dos decimales).
+    r = _alta(client, auth_headers, monto=0.001)
+    assert r.status_code == 422
+    assert r.json()["detail"][0]["msg"] == "El monto mínimo es $ 0,01"
+    assert _alta(client, auth_headers, monto=0.01).status_code == 201
+
+
+@pytest.mark.parametrize("fecha", ["1026-01-15", "0026-09-10", "2150-01-01"])
+def test_fecha_fuera_de_rango(client, auth_headers, fecha):
+    r = _alta(client, auth_headers, fecha=fecha)
+    assert r.status_code == 422
+    assert "entre los años 2000 y 2100" in r.json()["detail"][0]["msg"]
+
+
+def test_descripcion_solo_con_espacios(client, auth_headers):
+    assert _alta(client, auth_headers, descripcion="   ").status_code == 422

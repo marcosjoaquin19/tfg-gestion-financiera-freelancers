@@ -266,3 +266,11 @@ def test_meses_con_gastos_no_cruza_usuarios(client, auth_headers):
     token = client.post("/auth/login", data={"username": "otra@test.com", "password": "password123"}).json()["access_token"]
     response = client.get("/gastos/meses", headers={"Authorization": f"Bearer {token}"})
     assert response.json() == []
+
+
+# ── Casos bisagra de la revisión final ───────────────────────────────────────
+
+def test_gasto_con_fecha_fuera_de_rango_o_monto_sin_centavos(client, auth_headers):
+    base = {"descripcion": "AWS hosting", "monto": 1000, "fecha": "2026-09-10"}
+    assert client.post("/gastos/", json={**base, "fecha": "0026-09-10"}, headers=auth_headers).status_code == 422
+    assert client.post("/gastos/", json={**base, "monto": 0.004}, headers=auth_headers).status_code == 422

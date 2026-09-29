@@ -9,6 +9,7 @@ Validan y dan forma a los datos de ingresos en la API:
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
+from app.schemas.validaciones import validar_fecha, validar_monto
 from app.services.categorias_ingreso import CATEGORIAS_INGRESO
 
 
@@ -38,18 +39,27 @@ class IngresoCreate(BaseModel):
     # el cliente manda un string ISO 8601 y Pydantic lo convierte automáticamente
     # ej: "2026-03-08T14:00:00"
 
+    @field_validator("descripcion")
+    @classmethod
+    def descripcion_no_vacia(cls, v):
+        # Solo espacios pasaba el mínimo de 1 carácter y quedaba un ingreso
+        # sin descripción (misma regla que en gastos).
+        v = v.strip()
+        if not v:
+            raise ValueError("La descripción no puede estar vacía")
+        return v
+
     @field_validator("monto")
     @classmethod
     def monto_debe_ser_positivo(cls, v):
-        # validación custom → un ingreso no puede ser negativo ni cero
-        if v <= 0:
-            raise ValueError("El monto debe ser mayor a cero")
-        # La columna es Numeric(12, 2): admite hasta 10 dígitos enteros.
-        # Un importe mayor no entra en la base, así que se rechaza acá con un
-        # mensaje entendible en lugar de dejar que falle el INSERT.
-        if v >= 10 ** 10:
-            raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
-        return v
+        # Mayor a cero, de al menos un centavo y que entre en Numeric(12, 2)
+        # (ver app/schemas/validaciones.py).
+        return validar_monto(v)
+
+    @field_validator("fecha")
+    @classmethod
+    def fecha_razonable(cls, v):
+        return validar_fecha(v)
 
     @field_validator("categoria")
     @classmethod

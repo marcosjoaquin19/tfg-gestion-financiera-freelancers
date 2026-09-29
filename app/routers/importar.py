@@ -23,6 +23,7 @@ from app.models.gasto import Gasto
 from app.dependencies import get_current_user
 from app.services.duplicados_ingreso import _actualizar_marca_duplicado
 from app.services.duplicados_gasto import marcar_duplicado_si_corresponde
+from app.schemas.validaciones import ANIO_MAXIMO, ANIO_MINIMO, fecha_en_rango, validar_monto
 from app.services.categorias_ingreso import CATEGORIAS_INGRESO
 from app.services.ml_service import CATEGORIAS_VALIDAS as CATEGORIAS_GASTO
 from app.services.csv_service import (
@@ -72,11 +73,7 @@ class MovimientoImportar(BaseModel):
     @field_validator("monto")
     @classmethod
     def monto_valido(cls, v):
-        if v <= 0:
-            raise ValueError("El monto debe ser mayor a cero")
-        if v >= 10 ** 10:
-            raise ValueError("El monto supera el máximo admitido (10.000.000.000)")
-        return v
+        return validar_monto(v)
 
     @model_validator(mode="after")
     def categoria_valida_segun_el_tipo(self):
@@ -279,6 +276,15 @@ def confirmar_importacion(
                 detail=(
                     f"El movimiento {i + 1} ('{mov.get('descripcion', '')[:60]}') tiene una "
                     f"fecha ilegible: '{mov.get('fecha')}'. No se importó ningún registro."
+                ),
+            )
+        if not fecha_en_rango(fechas[i]):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"El movimiento {i + 1} ('{mov.get('descripcion', '')[:60]}') tiene una fecha "
+                    f"fuera de rango ({mov.get('fecha', '')[:10]}): tiene que estar entre los años "
+                    f"{ANIO_MINIMO} y {ANIO_MAXIMO}. No se importó ningún registro."
                 ),
             )
 

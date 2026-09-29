@@ -1076,3 +1076,32 @@ def test_extracto_con_solo_dos_cobros_no_avisa(client, auth_headers):
                  b"15/09/2026;TRANSFERENCIA CLIENTE BETA;300.000,00\n")
     data = _preview(client, auth_headers, contenido).json()
     assert data["avisos"] == []
+
+
+# ── Casos bisagra de la revisión final ───────────────────────────────────────
+
+def test_confirmar_con_una_fecha_fuera_de_rango_no_guarda_nada(client, auth_headers):
+    mov = {"fecha": "2026-09-28T00:00:00", "descripcion": "Uber", "monto": 8900, "tipo": "gasto", "categoria": "Transporte"}
+    r = client.post("/importar/confirmar", json={
+        "movimientos": [mov, {**mov, "descripcion": "Otro", "fecha": "0026-09-28T00:00:00"}], "mapeo": {},
+    }, headers=auth_headers)
+    assert r.status_code == 422
+    assert "fuera de rango" in r.json()["detail"]
+    assert client.get("/gastos/", headers=auth_headers).json() == []
+
+
+@pytest.mark.parametrize("anio", ["0026", "1026", "2150", "3000"])
+def test_preview_omite_filas_con_fecha_fuera_de_rango(client, auth_headers, anio):
+    csv = f"Fecha;Concepto;Importe\n28/09/{anio};Tipeo;-100\n28/09/2026;Uber;-8900\n".encode()
+    r = client.post("/importar/preview", files={"archivo": ("x.csv", io.BytesIO(csv), "text/csv")}, headers=auth_headers)
+    assert r.status_code == 200
+    assert len(r.json()["preview"]) == 1
+    assert "fuera de rango" in r.json()["filas_omitidas"][0]["motivo"]
+
+
+def test_preview_fecha_inexistente_sigue_siendo_ilegible(client, auth_headers):
+    # 31 de febrero no existe en ningún año: no es un problema de rango.
+    csv = b"Fecha;Concepto;Importe\n31/02/2026;Tipeo;-100\n28/09/2026;Uber;-8900\n"
+    r = client.post("/importar/preview", files={"archivo": ("x.csv", io.BytesIO(csv), "text/csv")}, headers=auth_headers)
+    assert r.status_code == 200
+    assert "ilegible" in r.json()["filas_omitidas"][0]["motivo"]
