@@ -314,6 +314,14 @@ def _regla_resultado(db: Session, usuario_id: int) -> list[Recomendacion]:
         f"gastos {pesos(total_gas)} ({pesos(prom_gas)} por mes)."
     )
 
+    if saldo > 0 and n == 1:
+        texto = (
+            f"{periodo} te quedó un superávit de {pesos(saldo)} (cobraste {pesos(prom_ing)} y gastaste "
+            f"{pesos(prom_gas)}). Podrías destinar ese excedente, o una parte, a ahorro o "
+            f"inversión en el instrumento que prefieras —por ejemplo plazo fijo, fondos comunes de inversión o "
+            f"acciones—, según tu perfil de riesgo."
+        )
+        return [Recomendacion(4, "resultado_superavit", texto, dato + f" Superávit {pesos(saldo)}.")]
     if saldo > 0:
         texto = (
             f"{periodo} te quedó un superávit promedio de {pesos(saldo)} por mes (cobraste {pesos(prom_ing)} y "
@@ -327,9 +335,14 @@ def _regla_resultado(db: Session, usuario_id: int) -> list[Recomendacion]:
         for g in gastos:
             por_rubro[g.categoria] = por_rubro.get(g.categoria, 0) + g.monto
         top = sorted(por_rubro.items(), key=lambda x: x[1], reverse=True)[:2]
+        if n == 1:
+            resultado = (f"{periodo} gastaste {pesos(prom_gas)} y cobraste {pesos(prom_ing)}: un déficit de "
+                         f"{pesos(-saldo)}.")
+        else:
+            resultado = (f"{periodo} gastaste en promedio {pesos(prom_gas)} por mes y cobraste {pesos(prom_ing)}: "
+                         f"un déficit de {pesos(-saldo)} por mes.")
         texto = (
-            f"{periodo} gastaste en promedio {pesos(prom_gas)} por mes y cobraste {pesos(prom_ing)}: un déficit de "
-            f"{pesos(-saldo)} por mes. Te sugerimos revisar tus rubros de mayor gasto ({_lista([c for c, _ in top])}) "
+            f"{resultado} Te sugerimos revisar tus rubros de mayor gasto ({_lista([c for c, _ in top])}) "
             f"para equilibrar tus números."
         )
         dato += (f" Déficit promedio {pesos(-saldo)} por mes. Rubros de mayor gasto: "

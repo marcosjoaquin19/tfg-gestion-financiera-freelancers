@@ -216,7 +216,9 @@ def test_deficit_nombra_los_rubros_de_mayor_gasto(client, auth_headers):
     _gasto(client, auth_headers, 8, 50_000, "Software", dia=12)
     d = next(d for d in _recs(client, auth_headers)["detalle"] if d["regla"] == "resultado_deficit")
     assert d["prioridad"] == 2
-    assert "un déficit de $ 200.000,00 por mes" in d["texto"]
+    # Con un solo mes cerrado no se habla de "promedio por mes".
+    assert d["texto"].startswith("En agosto de 2026 gastaste $ 300.000,00 y cobraste $ 100.000,00: un déficit de $ 200.000,00.")
+    assert "por mes" not in d["texto"]
     assert "(Hardware y Software)" in d["texto"]
     assert "Hardware $ 250.000,00; Software $ 50.000,00" in d["dato"]
 
