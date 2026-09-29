@@ -172,3 +172,35 @@ def test_clave_de_firma_valida_se_acepta():
     import secrets
     validar_clave_de_firma(secrets.token_urlsafe(48))   # no lanza
     validar_clave_de_firma("x" * 32)                     # justo en el mínimo
+
+
+# ── Casos bisagra de la revisión final ───────────────────────────────────────
+
+def _registrar(client, email, password="clave12345", nombre="Caso"):
+    return client.post("/auth/register", json={"nombre": nombre, "email": email, "password": password})
+
+
+def test_el_correo_no_distingue_mayusculas(client):
+    assert _registrar(client, "maria@correo.com").status_code == 201
+    # Misma cuenta escrita con otras mayúsculas: no se puede registrar dos veces…
+    repetido = _registrar(client, "Maria@Correo.com")
+    assert repetido.status_code == 400
+    # …y el login funciona como lo escriba el usuario (el celular pone la mayúscula).
+    for como in ("Maria@Correo.com", "  maria@correo.com "):
+        r = client.post("/auth/login", data={"username": como, "password": "clave12345"})
+        assert r.status_code == 200, como
+
+
+def test_el_correo_se_guarda_en_minusculas(client):
+    assert _registrar(client, "JUAN@Correo.com").json()["email"] == "juan@correo.com"
+
+
+def test_contrasena_de_mas_de_72_bytes(client):
+    # bcrypt ignora lo que pasa de 72 bytes: se rechaza en lugar de truncar.
+    r = _registrar(client, "largo@correo.com", password="A" * 73)
+    assert r.status_code == 422
+    assert _registrar(client, "justo@correo.com", password="A" * 72).status_code == 201
+
+
+def test_nombre_solo_con_espacios(client):
+    assert _registrar(client, "blanco@correo.com", nombre="   ").status_code == 422

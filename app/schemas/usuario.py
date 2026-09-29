@@ -7,7 +7,7 @@ actualización de la categoría de monotributo (UsuarioUpdateMonotributo).
 La contraseña nunca se incluye en las respuestas.
 """
 
-from pydantic import BaseModel, EmailStr, ConfigDict, Field
+from pydantic import BaseModel, EmailStr, ConfigDict, Field, field_validator
 # BaseModel → clase base de Pydantic, valida los datos automáticamente
 # EmailStr → tipo especial que verifica que el string sea un email válido
 # ConfigDict → reemplaza class Config en Pydantic V2
@@ -35,6 +35,31 @@ class UsuarioCreate(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     # el password en texto plano que manda el usuario
     # NUNCA se guarda así en la BD → el servicio lo hashea antes de guardarlo
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, v):
+        # Solo espacios pasaba el mínimo de 1 carácter.
+        v = v.strip()
+        if not v:
+            raise ValueError("El nombre no puede estar vacío")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_en_minusculas(cls, v):
+        # El correo se guarda en minúsculas: "Demo@..." y "demo@..." son la
+        # misma cuenta (el teclado del celular pone la mayúscula solo).
+        return v.strip().lower()
+
+    @field_validator("password")
+    @classmethod
+    def password_hasta_72_bytes(cls, v):
+        # bcrypt solo usa los primeros 72 bytes: con una contraseña más larga,
+        # cualquier otra que compartiera esos 72 bytes también entraba.
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("La contraseña puede tener hasta 72 caracteres (menos si usa tildes o símbolos)")
+        return v
 
 
 # -------------------------------------------------------------------

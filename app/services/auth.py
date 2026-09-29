@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 # timedelta → para calcular cuándo vence el token, ej: "en 7 días"
 # timezone → para trabajar con fechas UTC (evita bugs de zona horaria)
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 # Session → tipo de la conexión a la BD que recibimos por inyección de dependencia
 
@@ -150,7 +151,9 @@ def decodificar_token(token: str) -> dict | None:
 def obtener_usuario_por_email(db: Session, email: str) -> Usuario | None:
     # busca un usuario en la BD por su email
     # devuelve el objeto Usuario si existe, None si no
-    return db.query(Usuario).filter(Usuario.email == email).first()
+    # Sin distinguir mayúsculas ni espacios alrededor: el login con
+    # "Demo@freelancecontrol.com" tiene que encontrar la cuenta.
+    return db.query(Usuario).filter(func.lower(Usuario.email) == (email or "").strip().lower()).first()
 
 
 def crear_usuario(db: Session, nombre: str, email: str, password: str) -> Usuario:
@@ -162,7 +165,7 @@ def crear_usuario(db: Session, nombre: str, email: str, password: str) -> Usuari
 
     nuevo_usuario = Usuario(
         nombre=nombre,
-        email=email,
+        email=email.strip().lower(),
         password_hash=password_hash,
     )
 
