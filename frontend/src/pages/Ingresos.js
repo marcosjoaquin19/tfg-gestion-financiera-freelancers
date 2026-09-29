@@ -16,6 +16,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api, { extraerMensajeError } from '../api';
+import { todayISO } from '../fechas';
 
 const CATEGORIAS = [
   'Desarrollo', 'Desarrollo Web', 'Desarrollo Mobile', 'Diseño',
@@ -56,10 +57,6 @@ function formatFecha(str) {
 
 function fmtMonto(n) {
   return '+$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
 }
 
 const inputStyle = {

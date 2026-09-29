@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api, { extraerMensajeError } from '../api';
+import { todayISO } from '../fechas';
 
 const CATEGORIAS = [
   'Software', 'Hardware', 'Infraestructura', 'Marketing', 'Servicios',
@@ -53,10 +54,6 @@ function formatFecha(str) {
 
 function fmtMonto(n) {
   return '-$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
 }
 
 const inputStyle = {

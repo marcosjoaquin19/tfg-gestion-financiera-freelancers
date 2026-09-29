@@ -9,6 +9,7 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import api, { extraerMensajeError } from '../api';
+import { todayISO } from '../fechas';
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -22,10 +23,6 @@ function formatFecha(str) {
 
 function fmtMonto(n) {
   return '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
 }
 
 function toDateInput(str) {
