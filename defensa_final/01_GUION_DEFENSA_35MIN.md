@@ -608,7 +608,7 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **414 automáticas**, que corren contra una base
+> Eso me dio dos cosas. Pruebas: **419 automáticas**, que corren contra una base
 > en memoria, sin tocar la real. Y reutilización: la función que verifica la
 > cuota del monotributo la usan el módulo fiscal y la auditoría, sin duplicarla."
 
@@ -929,7 +929,7 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **414** del backend + 8 de pantalla |
+| Pruebas automatizadas | **419** del backend + 10 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
