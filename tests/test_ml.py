@@ -231,3 +231,16 @@ def test_correccion_de_un_usuario_no_afecta_a_otro(client, auth_headers):
                         headers={"Authorization": f"Bearer {token}"}).json()
     assert ajena["fuente"] != "correccion_usuario"
     assert ajena["categoria_sugerida"] != "Marketing"
+
+
+def test_reentrenamientos_del_mismo_usuario_no_se_pisan(monkeypatch):
+    # Dos reentrenamientos simultáneos dejaban varios modelos activos: ahora
+    # cada usuario tiene un candado y se ejecutan de a uno.
+    from app.services import ml_service
+    assert ml_service._candado_de(7) is ml_service._candado_de(7)
+    assert ml_service._candado_de(7) is not ml_service._candado_de(8)
+    visto = {}
+    monkeypatch.setattr(ml_service, "_reentrenar_modelo_usuario",
+                        lambda db, uid: visto.setdefault("bloqueado", ml_service._candado_de(uid).locked()))
+    ml_service.reentrenar_modelo_usuario(None, 7)
+    assert visto["bloqueado"] is True

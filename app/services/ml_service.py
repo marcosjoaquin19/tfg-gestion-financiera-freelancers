@@ -20,6 +20,7 @@ y obtener_estado_modelo().
 import base64
 import logging
 import re
+import threading
 import unicodedata
 from io import BytesIO
 from typing import Optional
@@ -918,7 +919,26 @@ def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id:
         db.rollback()
 
 
+# Un reentrenamiento a la vez por usuario. Las correcciones y los gastos nuevos
+# disparan reentrenamientos en segundo plano; si dos corrían a la vez, cada uno
+# desactivaba el modelo anterior e insertaba el suyo, y el usuario quedaba con
+# varios modelos "activos". La API corre en un solo proceso, así que un candado
+# en memoria alcanza para ordenarlos.
+_candados_reentrenamiento: dict[int, threading.Lock] = {}
+_candado_registro = threading.Lock()
+
+
+def _candado_de(usuario_id: int) -> threading.Lock:
+    with _candado_registro:
+        return _candados_reentrenamiento.setdefault(usuario_id, threading.Lock())
+
+
 def reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
+    with _candado_de(usuario_id):
+        return _reentrenar_modelo_usuario(db, usuario_id)
+
+
+def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
     gastos = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.descripcion.isnot(None),
