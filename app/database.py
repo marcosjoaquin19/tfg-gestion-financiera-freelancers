@@ -25,7 +25,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Motor de conexión a la base de datos. El pool reutiliza hasta 5 conexiones
 # abiertas (más 10 extra bajo demanda) para no abrir una nueva por cada request.
-engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10)
+# pool_pre_ping verifica cada conexión antes de usarla: si la base se reinició,
+# descarta la conexión muerta y abre otra, en lugar de responder un error 500.
+engine = create_engine(DATABASE_URL, pool_size=5, max_overflow=10, pool_pre_ping=True)
 
 # Fábrica de sesiones: cada sesión representa una unidad de trabajo con la BD.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
