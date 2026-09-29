@@ -22,6 +22,11 @@ ANIO_MAXIMO = 2100
 def validar_monto(v: float) -> float:
     if v <= 0:
         raise ValueError("El monto debe ser mayor a cero")
+    # La columna guarda dos decimales: se redondea antes de validar para que
+    # lo validado sea lo que se guarda. Sin esto, 9.999.999.999,995 pasaba
+    # el tope, se redondeaba a 10.000.000.000,00 al guardar y la base
+    # respondía con un error 500.
+    v = round(v, 2)
     if v < MONTO_MINIMO:
         # Los montos se guardan con dos decimales: $ 0,001 terminaba en $ 0,00.
         raise ValueError("El monto mínimo es $ 0,01")

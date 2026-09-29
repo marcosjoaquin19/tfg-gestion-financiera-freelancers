@@ -352,3 +352,16 @@ def test_fecha_fuera_de_rango(client, auth_headers, fecha):
 
 def test_descripcion_solo_con_espacios(client, auth_headers):
     assert _alta(client, auth_headers, descripcion="   ").status_code == 422
+
+
+@pytest.mark.parametrize("monto, esperado", [
+    (9_999_999_999.994, 201),   # redondea a 9.999.999.999,99: entra
+    (9_999_999_999.995, 422),   # redondea a 10.000.000.000,00: no entra en la columna
+    (0.004, 422),               # redondea a $ 0,00
+])
+def test_monto_se_valida_ya_redondeado_a_centavos(client, auth_headers, monto, esperado):
+    # Antes 9.999.999.999,995 pasaba la validación y la base respondía 500.
+    r = _alta(client, auth_headers, monto=monto)
+    assert r.status_code == esperado
+    if esperado == 201:
+        assert r.json()["monto"] == 9_999_999_999.99
