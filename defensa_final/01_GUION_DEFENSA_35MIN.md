@@ -608,7 +608,7 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **407 automáticas**, que corren contra una base
+> Eso me dio dos cosas. Pruebas: **414 automáticas**, que corren contra una base
 > en memoria, sin tocar la real. Y reutilización: la función que verifica la
 > cuota del monotributo la usan el módulo fiscal y la auditoría, sin duplicarla."
 
@@ -667,7 +667,7 @@ dónde quedan los datos. Al final decís **lo que no hace**: eso suma, no resta.
 > ninguna forma de recuperarla, ni siquiera para mí. Si alguien se roba la base,
 > se lleva hashes que no se pueden revertir."
 
-**2. La sesión: un token firmado** (`auth.py:116` y `dependencies.py:40`)
+**2. La sesión: un token firmado** (`auth.py:123` y `dependencies.py:40`)
 
 > "Al iniciar sesión, el servidor entrega un token firmado con HMAC-SHA256.
 > Adentro lleva solo dos datos: el número de usuario y el vencimiento, a los
@@ -691,12 +691,16 @@ dónde quedan los datos. Al final decís **lo que no hace**: eso suma, no resta.
 > el número de otro usuario, se ignora. Si pide un dato ajeno, recibe 'no
 > encontrado', que ni siquiera confirma que existe. Y si se equivoca al iniciar
 > sesión, el mensaje es siempre el mismo, para no revelar qué correos están
-> registrados."
+> registrados; y tarda lo mismo: si el correo no existe, igual se hace el
+> cálculo de bcrypt contra una contraseña de relleno. Si no, midiendo cuánto
+> tarda la respuesta se sabría qué cuentas existen."
 
 **4. Los datos: por dónde viajan y dónde quedan**
 
 > "El prototipo corre completo en la máquina del usuario: el tráfico entre la
-> pantalla, la API y la base no sale a internet. Lo único que sale es el pedido
+> pantalla, la API y la base no sale a internet, y ni siquiera a la red: los
+> puertos se abren solo para esta computadora. La clave de la base está en el
+> archivo de entorno de cada instalación, no en el código. Lo único que sale es el pedido
 > del resumen a Groq, por HTTPS, y lleva **solo totales**. El clasificador se
 > entrena y corre adentro."
 
@@ -727,6 +731,14 @@ dónde quedan los datos. Al final decís **lo que no hace**: eso suma, no resta.
   que empezara igual."
 - *¿"Demo@…" y "demo@…" son dos cuentas distintas?* → "No: el correo se guarda
   en minúsculas, es la misma cuenta."
+- *¿Se puede averiguar si un correo existe midiendo cuánto tarda el login?* →
+  "No: tarda lo mismo. Lo medí: antes eran 2 milisegundos con un correo
+  inexistente contra 170 con uno registrado, y lo corregí haciendo el cálculo
+  de bcrypt en los dos casos. Ahora son 168 contra 168."
+- *¿La clave de la base está en GitHub?* → "No. Docker la toma del archivo de
+  entorno, que no se sube, y el lanzador genera una al azar en cada
+  instalación. Además la base solo acepta conexiones desde la misma
+  computadora."
 - *¿Por qué "no encontrado" y no "prohibido" ante un dato ajeno?* → "'Prohibido'
   confirmaría que ese dato existe."
 - *¿Si se roban la base?* → "Las contraseñas no se recuperan. Los movimientos sí
@@ -917,7 +929,7 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **407** del backend + 8 de pantalla |
+| Pruebas automatizadas | **414** del backend + 8 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
