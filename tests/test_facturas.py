@@ -299,3 +299,31 @@ def test_fecha_de_pago_futura(client, auth_headers):
                             headers=auth_headers)
     assert response.status_code == 422
     assert response.json()["detail"] == "La fecha de pago no puede ser posterior a hoy"
+
+
+def test_a_las_22_30_de_argentina_el_dia_sigue_siendo_hoy(client, auth_headers, monkeypatch):
+    # 29/09 a las 22:30 en Argentina = 30/09 a la 01:30 en UTC, la hora del
+    # servidor. Se congela el reloj (no la fecha de hoy) para ejercitar el
+    # cálculo completo: vencimientos y fecha de cobro siguen en el 29/09.
+    from app.services import facturas_estado
+    instante = datetime(2026, 9, 30, 1, 30, tzinfo=timezone.utc)
+
+    class Reloj(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instante.astimezone(tz) if tz else instante.replace(tzinfo=None)
+    monkeypatch.setattr(facturas_estado, "datetime", Reloj)
+
+    ids = {}
+    for vencimiento in ("2026-09-28", "2026-09-29", "2026-09-30"):
+        ids[vencimiento] = client.post("/facturas/", json={
+            **FACTURA_BASE, "cliente_nombre": vencimiento,
+            "fecha_emision": "2026-09-01T00:00:00", "fecha_vencimiento": f"{vencimiento}T00:00:00",
+        }, headers=auth_headers).json()["id"]
+    estados = {f["cliente_nombre"]: f["estado"] for f in client.get("/facturas/", headers=auth_headers).json()}
+    assert estados == {"2026-09-28": "vencida", "2026-09-29": "pendiente", "2026-09-30": "pendiente"}
+
+    cobrar = lambda fid, dia: client.patch(f"/facturas/{fid}/estado", json={"estado": "pagada", "fecha_pago": dia},
+                                           headers=auth_headers)
+    assert cobrar(ids["2026-09-30"], "2026-09-30").status_code == 422   # mañana en Argentina
+    assert cobrar(ids["2026-09-30"], "2026-09-29").status_code == 200   # hoy
