@@ -355,12 +355,12 @@ def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
             f"No se registró el pago del monotributo de {estado['mes']} {estado['anio']}. "
             f"Cuota esperada: {formato_pesos_ar(estado['monto_esperado'], decimales=0)}"
         )
-        # Si hubo un registro que no llega a cubrir la cuota, lo aclaramos:
+        # Si hubo registros que no llegan a cubrir la cuota, lo aclaramos:
         # ayuda a distinguir "me olvidé de pagar" de "pagué de menos".
-        if estado.get("pago_parcial") and estado.get("gasto_encontrado"):
+        if estado.get("pago_parcial"):
             detalle += (
-                f". Se encontró un registro de {formato_pesos_ar(estado['gasto_encontrado']['monto'], decimales=0)} "
-                f"que no cubre la cuota"
+                f". Lo registrado en el mes ({formato_pesos_ar(estado['total_registrado'], decimales=0)}) "
+                f"no cubre la cuota"
             )
         alerta = _crear_alerta(
             usuario_id,

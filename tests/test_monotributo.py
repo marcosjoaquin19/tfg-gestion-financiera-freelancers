@@ -136,15 +136,12 @@ def test_pago_monotributo_valida_monto_cuota(client, auth_headers):
     # cuota pagada sin importar el monto. Ahora el registro tiene que cubrir
     # la cuota de la categoría (tolerancia 1%); un registro menor se informa
     # como pago parcial y el estado sigue siendo impago.
-    from datetime import datetime
-
     client.patch(
         "/monotributo/categoria",
         json={"categoria_monotributo": "A"},  # cuota fixture: 5000
         headers=auth_headers,
     )
-    hoy = datetime.now()
-    fecha = f"{hoy.year}-{hoy.month:02d}-03T10:00:00"
+    fecha = _dia_del_mes_en_curso(3)
 
     # Pago parcial: no cubre la cuota.
     client.post(
@@ -167,3 +164,37 @@ def test_pago_monotributo_valida_monto_cuota(client, auth_headers):
     data = client.get("/monotributo/pago", headers=auth_headers).json()
     assert data["pagado"] is True
     assert data["pago_parcial"] is False
+
+
+def _dia_del_mes_en_curso(dia: int) -> str:
+    # Con el calendario de Argentina, como la API: con la hora UTC, entre las
+    # 21 h y la medianoche del último día el "mes en curso" ya era el siguiente.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    hoy = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires"))
+    return f"{hoy.year}-{hoy.month:02d}-{dia:02d}"
+
+
+def _gasto_monotributo(client, headers, monto, dia):
+    r = client.post("/gastos/", json={"descripcion": "Pago monotributo", "monto": monto,
+                                      "categoria": "Monotributo", "fecha": _dia_del_mes_en_curso(dia)}, headers=headers)
+    assert r.status_code == 201, r.text
+
+
+def test_cuota_en_dos_pagos_que_juntos_la_cubren(client, auth_headers):
+    # Regresión: ningún pago por separado cubría la cuota, así que figuraba
+    # "parcial" y la auditoría avisaba que no estaba paga.
+    client.patch("/monotributo/categoria", json={"categoria_monotributo": "A"}, headers=auth_headers)
+    _gasto_monotributo(client, auth_headers, 2500, dia=2)
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert (data["pagado"], data["pago_parcial"], data["total_registrado"]) == (False, True, 2500)
+    aud = client.post("/alertas/ejecutar-auditoria", headers=auth_headers).json()
+    assert aud["detalle"]["monotributo_impago"] == 1
+    alerta = client.get("/alertas/", headers=auth_headers).json()[0]["descripcion"]
+    assert "Lo registrado en el mes ($ 2.500) no cubre la cuota" in alerta
+
+    _gasto_monotributo(client, auth_headers, 2500, dia=3)
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert (data["pagado"], data["pago_parcial"], data["total_registrado"]) == (True, False, 5000)
+    aud = client.post("/alertas/ejecutar-auditoria", headers=auth_headers).json()
+    assert aud["detalle"]["monotributo_impago"] == 0

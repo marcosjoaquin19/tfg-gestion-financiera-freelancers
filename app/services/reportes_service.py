@@ -185,16 +185,16 @@ def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int) ->
         extract("year", Gasto.fecha) == anio,
     ).all()
     # Misma regla que monotributo_service.verificar_pago_monotributo: la cuota
-    # está pagada si algún registro del mes la cubre (tolerancia 1 %). Si hay
-    # registros que no alcanzan, es un pago parcial y se informa el mayor.
+    # está pagada si lo registrado en el mes la cubre (tolerancia 1 %), en uno
+    # o en varios pagos. Si no alcanza, es un pago parcial.
     umbral = cuota * Decimal(str(TOLERANCIA_CUOTA))
-    cubre = [g for g in gastos_mes if Decimal(g.monto) >= umbral]
-    if cubre:
-        estado_cuota, registrado = "pagada", max(Decimal(g.monto) for g in cubre)
-    elif gastos_mes:
-        estado_cuota, registrado = "parcial", max(Decimal(g.monto) for g in gastos_mes)
-    else:
+    registrado = sum((Decimal(g.monto) for g in gastos_mes), Decimal("0"))
+    if not gastos_mes:
         estado_cuota, registrado = "sin_registrar", None
+    elif registrado >= umbral:
+        estado_cuota = "pagada"
+    else:
+        estado_cuota = "parcial"
 
     # El reporte es la foto del mes: no incluye el facturado anual acumulado
     # ni el % consumido del tope (decisión de diseño). Ese panorama anual,

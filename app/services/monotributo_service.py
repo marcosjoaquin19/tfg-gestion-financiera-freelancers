@@ -234,9 +234,11 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
 
     Antes alcanzaba con que existiera CUALQUIER gasto de categoría
     "Monotributo" en el mes; ahora, si el usuario tiene categoría cargada,
-    el gasto tiene que cubrir la cuota esperada (con tolerancia del 1%).
-    Un registro menor cuenta como pago PARCIAL: se informa aparte y la
-    auditoría sigue alertando que la cuota no está cubierta.
+    lo registrado en el mes tiene que cubrir la cuota esperada (con
+    tolerancia del 1%). Cuenta la suma: la cuota se puede pagar en más de un
+    débito, y con dos pagos que juntos la cubrían se avisaba que no estaba
+    paga. Si lo registrado no alcanza es un pago PARCIAL: se informa aparte y
+    la auditoría sigue alertando que la cuota no está cubierta.
     """
     mes_actual = inicio_mes_en_curso()
     mes = mes_actual.month
@@ -254,22 +256,18 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
         extract("year", Gasto.fecha) == anio,
     ).all()
 
-    pago_parcial = False
+    total_registrado = round(sum(float(g.monto) for g in gastos_mes), 2)
     if monto_esperado is None:
         # Sin categoría cargada no hay cuota contra la cual validar:
         # cualquier registro de la categoría cuenta como pago.
-        gasto_pago = gastos_mes[0] if gastos_mes else None
+        pagado = bool(gastos_mes)
     else:
-        umbral = monto_esperado * TOLERANCIA_CUOTA
-        gasto_pago = next((g for g in gastos_mes if float(g.monto) >= umbral), None)
-        if gasto_pago is None and gastos_mes:
-            pago_parcial = True
+        pagado = total_registrado >= monto_esperado * TOLERANCIA_CUOTA
+    pago_parcial = bool(gastos_mes) and not pagado
 
-    # Si no hay un pago que cubra la cuota, mostramos el registro más alto
-    # del mes (si existe) para que el usuario entienda qué se detectó.
-    gasto_mostrado = gasto_pago or (
-        max(gastos_mes, key=lambda g: float(g.monto)) if gastos_mes else None
-    )
+    # El registro más alto del mes (si existe), para que el usuario entienda
+    # qué se detectó.
+    gasto_mostrado = max(gastos_mes, key=lambda g: float(g.monto)) if gastos_mes else None
 
     gasto_encontrado = None
     if gasto_mostrado:
@@ -281,10 +279,11 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
         }
 
     return {
-        "pagado": gasto_pago is not None,
+        "pagado": pagado,
         "pago_parcial": pago_parcial,
         "mes": MESES_ES[mes],
         "anio": anio,
         "monto_esperado": monto_esperado,
+        "total_registrado": total_registrado,
         "gasto_encontrado": gasto_encontrado,
     }

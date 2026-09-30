@@ -200,8 +200,8 @@ def _regla_monotributo(db: Session, usuario_id: int) -> list[Recomendacion]:
     cuota = None
     if not pago["pagado"] and pago["monto_esperado"]:
         mes_cuota = f"{pago['mes'].lower()} {pago['anio']}"
-        if pago["pago_parcial"] and pago["gasto_encontrado"]:
-            registrado = pesos(pago["gasto_encontrado"]["monto"])
+        if pago["pago_parcial"]:
+            registrado = pesos(pago["total_registrado"])
             cuota = (f"El pago registrado de la cuota de {mes_cuota} ({registrado}) no cubre los "
                      f"{pesos(pago['monto_esperado'])} de tu categoría.")
             dato += f" Cuota de {mes_cuota}: {pesos(pago['monto_esperado'])}; registrado {registrado}."

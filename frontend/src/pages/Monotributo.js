@@ -205,8 +205,8 @@ export default function Monotributo() {
             {!pago.pagado && pago.monto_esperado && (
               <p style={{ margin: 0, fontSize: '13px', color: '#94a3b8' }}>
                 Cuota esperada: <strong style={{ color: '#fbbf24' }}>${fmt(pago.monto_esperado)}</strong>
-                {pago.pago_parcial && pago.gasto_encontrado && (
-                  <> · Registrado: <strong style={{ color: '#fbbf24' }}>${fmt(pago.gasto_encontrado.monto)}</strong></>
+                {pago.pago_parcial && (
+                  <> · Registrado en el mes: <strong style={{ color: '#fbbf24' }}>${fmt(pago.total_registrado)}</strong></>
                 )}
               </p>
             )}

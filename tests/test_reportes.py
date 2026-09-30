@@ -152,6 +152,15 @@ def test_pago_parcial_se_informa_con_lo_registrado(client, auth_headers, escalas
     assert "Parcial: $ 72.414,10 de $ 84.612,93" in texto
 
 
+def test_cuota_pagada_en_dos_pagos(client, auth_headers, escalas, reloj):
+    # Regresión: cada pago por separado no cubría la cuota y el reporte decía
+    # "Parcial" aunque entre los dos estaba paga.
+    _categoria_d(client, auth_headers)
+    _mov(client, auth_headers, "gastos", 42306.47, "2026-08-05", "Monotributo", "Pago monotributo 1/2")
+    _mov(client, auth_headers, "gastos", 42306.46, "2026-08-20", "Monotributo", "Pago monotributo 2/2")
+    assert "Cuota del período Pagada ($ 84.612,93)" in _pdf(client, auth_headers, 8)
+
+
 def test_cuota_sin_registrar(client, auth_headers, escalas, reloj):
     _categoria_d(client, auth_headers)
     assert "Cuota del período Sin registrar" in _pdf(client, auth_headers, 8)
