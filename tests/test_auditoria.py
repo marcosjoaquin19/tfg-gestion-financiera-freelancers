@@ -435,3 +435,21 @@ def test_factura_que_vence_hoy_no_es_discrepancia(client, auth_headers, monkeypa
                                     "fecha_vencimiento": "2026-09-26T00:00:00"}, headers=auth_headers)
     response = client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
     assert response.json()["detalle"]["discrepancias"] == 1
+
+
+def test_las_alertas_muestran_la_fecha_como_la_lee_el_usuario(client, auth_headers):
+    # Regresión: las alertas decían "venció el 2026-04-01", en formato ISO,
+    # mientras el resto de la aplicación muestra 01/04/2026.
+    client.post("/facturas/", json={
+        "cliente_nombre": "Estudio Norte", "descripcion": "Servicio", "monto": 50000,
+        "fecha_emision": "2026-03-01", "fecha_vencimiento": "2026-04-01",
+    }, headers=auth_headers)
+    for fecha in (D0, D1):
+        client.post("/gastos/", json={**GASTO_BASE, "fecha": fecha}, headers=auth_headers)
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    textos = [a["descripcion"] for a in client.get("/alertas/", headers=auth_headers).json()]
+
+    assert any("venció el 01/04/2026" in t for t in textos)
+    dia = lambda iso: f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}"
+    assert any(f"registrado el {dia(D0)} y el {dia(D1)}" in t for t in textos)
+    assert not any("2026-" in t for t in textos)

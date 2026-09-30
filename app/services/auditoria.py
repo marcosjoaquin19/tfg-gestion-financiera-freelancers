@@ -20,7 +20,7 @@ from app.models.factura import Factura, EstadoFactura
 from app.services.facturas_estado import inicio_de_hoy, marcar_vencidas
 from app.models.alerta_auditoria import AlertaAuditoria, TipoAlerta
 from app.services.monotributo_service import verificar_pago_monotributo
-from app.services.formato import formato_pesos_ar
+from app.services.formato import formato_fecha_ar, formato_pesos_ar
 import statistics
 
 
@@ -281,7 +281,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             usuario_id,
             TipoAlerta.GASTO_DUPLICADO,
             f"Posible gasto duplicado: {formato_pesos_ar(gasto_a.monto)} en '{gasto_a.categoria}' "
-            f"registrado el {gasto_a.fecha.date()} y el {gasto_b.fecha.date()}",
+            f"registrado el {formato_fecha_ar(gasto_a.fecha)} y el {formato_fecha_ar(gasto_b.fecha)}",
             monto=gasto_a.monto,
             # referencia directa al gasto repetido (el más reciente del par):
             # permite que "eliminar duplicado" borre exactamente este gasto,
@@ -312,7 +312,7 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             usuario_id,
             TipoAlerta.DISCREPANCIA_FACTURACION,
             f"Factura vencida sin cobrar: {formato_pesos_ar(factura.monto)} a '{factura.cliente_nombre}' "
-            f"(venció el {factura.fecha_vencimiento.date()})",
+            f"(venció el {formato_fecha_ar(factura.fecha_vencimiento)})",
             monto=factura.monto,
         ))
 
@@ -329,8 +329,8 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             usuario_id,
             TipoAlerta.TRANSFERENCIA_PROPIA,
             f"Posible transferencia entre cuentas propias: {formato_pesos_ar(ingreso.monto)} "
-            f"ingresó el {ingreso.fecha.date()} ('{ingreso.descripcion[:60]}') y salió el "
-            f"{gasto.fecha.date()} ('{gasto.descripcion[:60]}'). Si es un movimiento entre tus "
+            f"ingresó el {formato_fecha_ar(ingreso.fecha)} ('{ingreso.descripcion[:60]}') y salió el "
+            f"{formato_fecha_ar(gasto.fecha)} ('{gasto.descripcion[:60]}'). Si es un movimiento entre tus "
             f"cuentas, no representa facturación real: descartalo para no inflar tu monotributo.",
             monto=ingreso.monto,
             gasto_id_duplicado=gasto.id,

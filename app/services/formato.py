@@ -1,4 +1,4 @@
-"""Formato de moneda argentina, compartido entre servicios.
+"""Formato de moneda y de fechas en argentino, compartido entre servicios.
 
 Centralizado acá para que las descripciones de alertas (auditoria) y las
 tablas del reporte PDF (reportes_service) usen exactamente la misma
@@ -25,3 +25,12 @@ def formato_pesos_ar(valor, decimales: int = 2) -> str:
         entero, dec = s.split(".")
         return f"$ {entero.replace(',', '.')},{dec}"
     return f"$ {s.replace(',', '.')}"
+
+
+def formato_fecha_ar(fecha) -> str:
+    """Fecha como la lee el usuario: 29/09/2026 (no 2026-09-29).
+
+    Las fechas se guardan como día calendario a las 00:00 UTC, así que el día
+    que se muestra es el de la fecha guardada, sin convertir de zona.
+    """
+    return fecha.strftime("%d/%m/%Y")
