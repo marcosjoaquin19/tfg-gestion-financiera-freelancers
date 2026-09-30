@@ -13,7 +13,7 @@ que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
 """
 
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
 from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -21,6 +21,7 @@ from app.models.usuario import Usuario
 from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.dependencies import get_current_user
+from app.routers import gastos as gastos_router
 from app.services.duplicados_ingreso import _actualizar_marca_duplicado
 from app.services.duplicados_gasto import marcar_duplicado_si_corresponde
 from app.schemas.validaciones import ANIO_MAXIMO, ANIO_MINIMO, fecha_en_rango, validar_monto
@@ -246,6 +247,7 @@ async def preview_csv(
 @router.post("/confirmar")
 def confirmar_importacion(
     datos: ConfirmarRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
@@ -345,6 +347,13 @@ def confirmar_importacion(
         db.commit()
     ingresos_marcados = sum(1 for i in ingresos_nuevos if i.es_duplicado)
     gastos_marcados = sum(1 for g in gastos_nuevos if g.es_duplicado)
+
+    # Los gastos importados son ejemplos nuevos para el clasificador: se
+    # evalúa la misma regla que en el alta manual (primer modelo a los 20
+    # gastos, después cada 10 nuevos), en segundo plano. Sin esto, un
+    # extracto de 26 gastos no reentrenaba hasta el próximo gasto a mano.
+    if gastos_nuevos:
+        background_tasks.add_task(gastos_router._reentrenar_en_background, current_user.id, "creacion")
 
     return {
         "importados": len(ingresos_nuevos) + len(gastos_nuevos),

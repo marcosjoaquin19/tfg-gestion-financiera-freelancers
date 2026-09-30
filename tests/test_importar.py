@@ -1119,3 +1119,19 @@ def test_preview_no_informa_las_filas_vacias(client, auth_headers):
     r = client.post("/importar/preview", files={"archivo": ("x.csv", io.BytesIO(csv), "text/csv")}, headers=auth_headers)
     assert r.json()["total_filas"] == 1
     assert r.json()["filas_omitidas"] == []
+
+
+def test_importar_gastos_evalua_el_reentrenamiento(client, auth_headers, monkeypatch):
+    # Los gastos importados son ejemplos nuevos para el clasificador: se evalúa
+    # la misma regla que en el alta manual. Antes un extracto no reentrenaba
+    # hasta el próximo gasto cargado a mano.
+    from app.routers import gastos as gastos_router
+    llamadas = []
+    monkeypatch.setattr(gastos_router, "_reentrenar_en_background", lambda *a: llamadas.append(a))
+    gasto = {"fecha": "2026-09-28T00:00:00", "descripcion": "Uber", "monto": 8900, "tipo": "gasto", "categoria": "Transporte"}
+    ingreso = {**gasto, "descripcion": "Cobro", "tipo": "ingreso", "categoria": "Desarrollo"}
+
+    client.post("/importar/confirmar", json={"movimientos": [ingreso], "mapeo": {}}, headers=auth_headers)
+    assert llamadas == []                       # solo ingresos: nada que aprender
+    client.post("/importar/confirmar", json={"movimientos": [gasto], "mapeo": {}}, headers=auth_headers)
+    assert len(llamadas) == 1 and llamadas[0][1] == "creacion"
