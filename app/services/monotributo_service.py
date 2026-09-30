@@ -155,6 +155,18 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     # ¿En qué mes de ESTE año se cruzaría el tope? El modelo es anual: si no
     # se cruza antes de diciembre, no hay fecha que informar.
     limite_superado = facturado_anual > limite_anual
+
+    # Los porcentajes se muestran con un decimal. Redondeados sin más, 69,99 %
+    # se leía "70 %" en verde, 90,01 % "90 %" en rojo y 100,04 % "100 %" con
+    # el tope ya superado: se acotan al rango de su color (y del aviso de tope
+    # superado) para que el número que se ve nunca contradiga al semáforo.
+    if estado == "verde":
+        porcentaje_proyectado = min(porcentaje_proyectado, 69.9)
+    elif estado == "rojo":
+        porcentaje_proyectado = max(porcentaje_proyectado, 90.1)
+    if limite_superado:
+        porcentaje_usado = max(porcentaje_usado, 100.1)
+
     meses_para_limite = None
     mes_limite = None
     if limite_superado:

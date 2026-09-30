@@ -359,3 +359,29 @@ def test_bordes_del_semaforo(client, auth_headers, hoy, mensual, meses, esperado
     for mes in meses:
         _ingreso(client, auth_headers, 2026, mes, mensual)
     assert _estado(client, auth_headers)["estado"] == esperado
+
+
+@pytest.mark.parametrize("enero, esperado, porcentaje", [
+    (139_880, "verde", 69.9),       # 69,99 %: redondeado se leía "70 %" en verde
+    (140_000, "amarillo", 70.0),    # 70 % exacto
+    (380_000, "amarillo", 90.0),    # 90 % exacto
+    (380_120, "rojo", 90.1),        # 90,01 %: redondeado se leía "90 %" en rojo
+])
+def test_el_porcentaje_que_se_ve_no_contradice_al_color(client, auth_headers, hoy, enero, esperado, porcentaje):
+    # Enero + $ 100.000 en jun, jul y ago: el promedio proyectado es 100.000 y
+    # la proyección anual queda en enero + 7 × 100.000 (tope de la A: 1,2 M).
+    _categoria(client, auth_headers, "A")
+    _ingreso(client, auth_headers, 2026, 1, enero)
+    for mes in (6, 7, 8):
+        _ingreso(client, auth_headers, 2026, mes, 100_000)
+    e = _estado(client, auth_headers)
+    assert (e["estado"], e["porcentaje_proyectado"]) == (esperado, porcentaje)
+
+
+def test_tope_apenas_superado_no_se_lee_como_100(client, auth_headers, hoy):
+    _categoria(client, auth_headers, "A")
+    for mes in (6, 7, 8):
+        _ingreso(client, auth_headers, 2026, mes, 400_160)       # 1.200.480: 100,04 %
+    e = _estado(client, auth_headers)
+    assert e["limite_superado"] is True
+    assert e["porcentaje_usado"] == 100.1
