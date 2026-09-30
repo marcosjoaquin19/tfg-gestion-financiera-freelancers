@@ -142,24 +142,16 @@ def eliminar_gasto_duplicado(
             detail="Esta acción solo aplica a alertas de gasto duplicado",
         )
 
-    # Localizamos el gasto repetido a eliminar. Las alertas nuevas guardan la
-    # referencia directa (gasto_id_duplicado, migración 0006), lo que evita
-    # borrar el par equivocado cuando dos pares comparten el mismo monto.
-    objetivo = None      # el gasto repetido a eliminar (el más reciente del par)
+    # Se borra solo el gasto repetido que la alerta referencia (el más reciente
+    # del par, migración 0006). Si ya no existe, no se borra nada: antes se
+    # buscaba otro par con el mismo monto y, si el usuario había borrado el
+    # repetido a mano, se eliminaba un gasto de un par distinto.
+    objetivo = None
     if alerta.gasto_id_duplicado is not None:
         objetivo = db.query(Gasto).filter(
             Gasto.id == alerta.gasto_id_duplicado,
             Gasto.usuario_id == current_user.id,
         ).first()
-
-    if objetivo is None:
-        # Compatibilidad: alertas previas a la migración (sin referencia) o
-        # cuyo gasto referenciado ya fue borrado a mano → match por monto.
-        pares = detectar_gastos_duplicados(db, current_user.id)
-        for gasto_a, gasto_b in pares:
-            if alerta.monto_involucrado is not None and float(gasto_a.monto) == float(alerta.monto_involucrado):
-                objetivo = gasto_b
-                break
 
     if objetivo is not None:
         db.delete(objetivo)

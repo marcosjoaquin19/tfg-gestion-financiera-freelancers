@@ -316,6 +316,30 @@ def test_eliminar_duplicado_no_confunde_pares_con_mismo_monto(client, auth_heade
     assert mayo[0]["es_duplicado"] is False
 
 
+def test_eliminar_duplicado_ya_borrado_a_mano_no_toca_otro_par(client, auth_headers):
+    # Regresión: si el usuario borraba a mano el gasto repetido y después
+    # apretaba "Eliminar duplicado" en la alerta, se buscaba otro par con el
+    # mismo monto y se borraba un gasto de ese otro par.
+    par = {"descripcion": "Hosting mensual", "monto": 5000, "categoria": "Infraestructura"}
+    client.post("/gastos/", json={**par, "fecha": _hace(60)}, headers=auth_headers)
+    repetido_abril = client.post("/gastos/", json={**par, "fecha": _hace(59)}, headers=auth_headers).json()["id"]
+    ids_mayo = {
+        client.post("/gastos/", json={**par, "fecha": _hace(30)}, headers=auth_headers).json()["id"],
+        client.post("/gastos/", json={**par, "fecha": _hace(29)}, headers=auth_headers).json()["id"],
+    }
+    client.post("/alertas/ejecutar-auditoria", headers=auth_headers)
+    alerta_abril = next(
+        a for a in client.get("/alertas/", headers=auth_headers).json()
+        if a["gasto_id_duplicado"] == repetido_abril
+    )
+    assert client.delete(f"/gastos/{repetido_abril}", headers=auth_headers).status_code == 204
+
+    resp = client.delete(f"/alertas/{alerta_abril['id']}/gasto-duplicado", headers=auth_headers)
+    assert resp.status_code == 200 and resp.json()["resuelta"] is True
+    ids = {g["id"] for g in client.get("/gastos/", headers=auth_headers).json()}
+    assert ids_mayo <= ids          # el par de mayo quedó intacto
+
+
 # --- Huella de alertas resueltas: silencia SOLO la condición resuelta ---
 
 def _resolver_pendientes(client, auth_headers, tipo):
