@@ -5,6 +5,7 @@ Verifican el resumen financiero (con la llamada a Groq mockeada) y las
 recomendaciones determinísticas, incluido el caso sin datos suficientes.
 """
 
+import pytest
 from unittest.mock import patch
 
 
@@ -88,6 +89,18 @@ def test_clasificar_gasto_baja_confianza_marca_revision(client, auth_headers):
     assert data["categoria_sugerida"] == "Otros"
     assert data["requiere_revision"] is True
 
+
+
+@pytest.mark.parametrize("confianza, categoria, revision", [
+    (0.30, "Software", False),     # justo en el umbral: clasifica
+    (0.2999, "Otros", True),       # apenas debajo: "Otros" y revisión (HU-04)
+])
+def test_umbral_de_confianza_exacto(client, auth_headers, confianza, categoria, revision):
+    mock_ml = {"categoria": "Software", "confianza": confianza, "fuente": "ml_base", "algoritmo": "svm"}
+    with patch("app.services.ml_service.clasificar_gasto", return_value=mock_ml):
+        data = client.post("/gastos/clasificar", json={"descripcion": "licencia"}, headers=auth_headers).json()
+    assert (data["categoria_sugerida"], data["requiere_revision"]) == (categoria, revision)
+    assert data["confianza"] == confianza
 
 def test_resumen_financiero_sin_auth(client):
     response = client.get("/resumen/financiero")
