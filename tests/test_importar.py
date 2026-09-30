@@ -663,6 +663,9 @@ from app.services.csv_service import _parse_monto
     ("12500.00", 12500.0),
     ("1,234.56", 1234.56),          # formato inglés
     ("1,250,000", 1250000.0),
+    ("15,000", 15000.0),            # una coma + tres dígitos: de miles (formato inglés)
+    ("-15,000", -15000.0),
+    ("1,50", 1.5),                  # una coma + dos dígitos: decimal
     ("$ 1.500,00", 1500.0),
     ("(1.234,56)", -1234.56),       # negativo entre paréntesis
     ("1.234,56-", -1234.56),        # negativo con el signo al final
@@ -717,7 +720,7 @@ def test_preview_informa_las_filas_que_no_pudo_leer(client, auth_headers):
     assert data["resumen"]["omitidas"] == 3
     motivos = {f["fila"]: f["motivo"] for f in data["filas_omitidas"]}
     assert motivos[2] == "sin fecha"
-    assert motivos[3].startswith("fecha ilegible")
+    assert motivos[3].startswith("fecha inexistente")   # 32/13 no existe
     assert motivos[4].startswith("importe ilegible")
 
 
@@ -1099,9 +1102,20 @@ def test_preview_omite_filas_con_fecha_fuera_de_rango(client, auth_headers, anio
     assert "fuera de rango" in r.json()["filas_omitidas"][0]["motivo"]
 
 
-def test_preview_fecha_inexistente_sigue_siendo_ilegible(client, auth_headers):
-    # 31 de febrero no existe en ningún año: no es un problema de rango.
-    csv = b"Fecha;Concepto;Importe\n31/02/2026;Tipeo;-100\n28/09/2026;Uber;-8900\n"
+@pytest.mark.parametrize("fecha", ["31/02/2026", "31/09/2026", "29/02/2025"])
+def test_preview_informa_la_fecha_inexistente(client, auth_headers, fecha):
+    # Se lee bien pero ese día no existe: se dice "inexistente", no "ilegible"
+    # (el 31/09 del extracto de la demo). Tampoco es un problema de rango.
+    csv = f"Fecha;Concepto;Importe\n{fecha};Tipeo;-100\n28/09/2026;Uber;-8900\n".encode()
     r = client.post("/importar/preview", files={"archivo": ("x.csv", io.BytesIO(csv), "text/csv")}, headers=auth_headers)
     assert r.status_code == 200
-    assert "ilegible" in r.json()["filas_omitidas"][0]["motivo"]
+    assert r.json()["filas_omitidas"][0]["motivo"] == f"fecha inexistente: '{fecha}'"
+
+
+def test_preview_no_informa_las_filas_vacias(client, auth_headers):
+    # Muchos bancos dejan ";;;" al final del archivo: no son movimientos
+    # omitidos y no se avisan.
+    csv = b"Fecha;Concepto;Importe\n28/09/2026;Uber;-8900\n;;\n;;\n"
+    r = client.post("/importar/preview", files={"archivo": ("x.csv", io.BytesIO(csv), "text/csv")}, headers=auth_headers)
+    assert r.json()["total_filas"] == 1
+    assert r.json()["filas_omitidas"] == []

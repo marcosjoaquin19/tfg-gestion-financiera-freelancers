@@ -299,6 +299,10 @@ MAX_DESCRIPCION = 255
 MONTO_MAXIMO = 10 ** 10
 
 
+# Texto con forma de fecha: día, mes y año en números con / - o . entre medio.
+_FORMA_DE_FECHA = re.compile(r"^\d{1,4}[/.\-]\d{1,2}[/.\-]\d{1,4}$")
+
+
 def _celda_vacia(valor) -> bool:
     return valor is None or (isinstance(valor, float) and pd.isna(valor)) or str(valor).strip() == ""
 
@@ -330,7 +334,13 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
 
     movimientos = []
 
+    columnas_mapeadas = [c for c in (col_fecha, col_desc, col_monto, col_debito, col_credito) if c]
+
     for numero, (_, row) in enumerate(df.iterrows(), start=1):
+        if all(_celda_vacia(row.get(c)) for c in columnas_mapeadas):
+            # Fila completamente vacía (muchos bancos dejan ";;;" al final):
+            # no es un movimiento omitido, se saltea sin avisar.
+            continue
         # numero: posición del movimiento en la tabla (1 = primera fila de datos).
         descripcion = ""
         try:
@@ -362,7 +372,11 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
                 # prioriza igual el orden día/mes que usan los bancos locales.
                 fecha = pd.to_datetime(str(fecha_raw), errors="coerce", dayfirst=True)
                 if pd.isna(fecha):
-                    omitir(numero, descripcion, f"fecha ilegible: '{fecha_raw}'")
+                    # Con forma de fecha (números separados por / - .) pero
+                    # imposible de leer, es un día que no existe (31/09,
+                    # 29/02/2025): se lo dice así en vez de "ilegible".
+                    motivo = "fecha inexistente" if _FORMA_DE_FECHA.match(texto_fecha) else "fecha ilegible"
+                    omitir(numero, descripcion, f"{motivo}: '{fecha_raw}'")
                     continue
             if not fecha_en_rango(fecha):
                 # Mismo rango que la carga manual (app/schemas/validaciones.py).
@@ -431,6 +445,7 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
 
 
 _MILES_CON_PUNTO = re.compile(r"^\d{1,3}(\.\d{3})+$")
+_MILES_CON_COMA = re.compile(r"^\d{1,3}(,\d{3})+$")
 
 
 def _parse_monto(valor) -> float | None:
@@ -439,8 +454,9 @@ def _parse_monto(valor) -> float | None:
     Los bancos argentinos escriben "1.234,56": punto de miles y coma decimal.
     Otros exportan "1234.56" o "1,234.56". La regla:
       - Si hay punto y coma, el separador que aparece ÚLTIMO es el decimal.
-      - Si hay solo comas: una sola es decimal ("3500,50"); varias son de
-        miles ("1,250,000").
+      - Si hay solo comas: varias son de miles ("1,250,000"), y una sola
+        seguida de exactamente tres dígitos también ("15,000" = quince mil,
+        en extractos con formato en inglés); si no, es decimal ("3500,50").
       - Si hay solo puntos: varios son de miles ("1.250.000"), y uno solo
         seguido de exactamente tres dígitos también ("15.000" = quince mil).
         Un importe bancario nunca tiene tres decimales.
@@ -473,7 +489,8 @@ def _parse_monto(valor) -> float | None:
         else:
             s = s.replace(",", "")                     # 1,234.56
     elif "," in s:
-        s = s.replace(",", "") if s.count(",") > 1 else s.replace(",", ".")
+        es_de_miles = s.count(",") > 1 or _MILES_CON_COMA.match(s)
+        s = s.replace(",", "") if es_de_miles else s.replace(",", ".")
     elif "." in s and (s.count(".") > 1 or _MILES_CON_PUNTO.match(s)):
         s = s.replace(".", "")
 
