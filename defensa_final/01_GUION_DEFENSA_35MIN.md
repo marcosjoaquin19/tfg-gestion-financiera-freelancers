@@ -563,7 +563,7 @@ plantilla local" y seguí.
 
 > "Las recomendaciones, en cambio, no usan ninguna IA: salen de reglas fijas
 > sobre los datos. Son siempre entre tres y cinco, ordenadas por urgencia."
-> *(Tocá "Por qué" en una.)* "Cada una muestra la regla y el dato exacto que la
+> *(Señalá el "Por qué" de una: está siempre a la vista.)* "Cada una muestra la regla y el dato exacto que la
 > disparó: la factura vencida, el 109,4 % del tope, los ingresos que crecieron
 > un 54,1 %."
 
@@ -578,16 +578,26 @@ plantilla local" y seguí.
 **Casos bisagra:**
 
 - *¿Las recomendaciones las hace Groq?* → "No, reglas locales. La HU-12 dice
-  justamente 'reglas aplicadas de forma local, sin intervención de servicios
-  externos'. Mismos datos, misma respuesta: hay pruebas que lo verifican."
-- *¿Qué recibe un usuario sin datos?* → "Pasos para empezar, como 'registrá tus
-  ingresos'. Nunca un diagnóstico inventado."
+  justamente 'reglas aplicadas de forma local sobre mis datos agregados, sin
+  intervención de servicios externos'. Mismos datos, misma respuesta: hay
+  pruebas que lo verifican."
+- *¿Y por qué están en el menú 'Inteligencia artificial'?* → "Es la sección de
+  lo que interpreta los datos, junto con el resumen. La tesis lo aclara en la
+  Figura 23: el rótulo es el nombre de la sección y el contenido se genera de
+  manera determinística."
+- *¿Qué recibe un usuario sin datos?* → "Pasos para empezar, como 'te sugerimos
+  cargar tus cobros'. Nunca un diagnóstico inventado."
 - *¿Qué diferencia hay entre el Resumen y las Recomendaciones?* → "El resumen
   cuenta cómo te fue en un mes: describe. Las recomendaciones sugieren qué mirar
   ahora. Uno con IA sobre totales; las otras con reglas."
 - *¿Cómo sabés que la IA no inventa números?* → "No le creo: el sistema extrae
   cada monto del texto y lo compara con los que le mandé. Si aparece uno que no
   mandé, lo descarta, reintenta una vez y, si vuelve a fallar, usa la plantilla."
+- *¿Y una frase falsa que no sea un número?* → "Esa no la detecto. En una prueba
+  escribió 'el resto quedó en otras partidas menores' con solo dos rubros. El
+  control verifica las cifras y que no aconseje; una frase de relleno se le
+  puede escapar. Por eso el resumen solo describe, el aviso pide verificar los
+  datos, y ninguna decisión del sistema depende de ese texto."
 - *¿Y si Groq da de baja el modelo?* → "Ya pasó. Se cambió una variable de
   entorno, sin tocar código."
 
@@ -917,7 +927,7 @@ pantalla dice por qué.
 |---|---|
 | La tesis nombra **Llama 3.3 70B** y el sistema usa otro modelo | "Groq dio de baja ese modelo después de entregar la tesis. Cambiarlo fue editar una variable de entorno: el código no tiene el nombre del modelo fijo." |
 | La escala del monotributo es la de **agosto de 2026** | "Es el riesgo R2 de la matriz, que se cumplió. La escala nueva se cargó como dato, sin tocar la lógica de la aplicación. Después, con una migración, las dos quedaron guardadas con su fecha: cada mes se evalúa con la que regía." |
-| En algunos capítulos la tesis dice que Groq genera **resúmenes y recomendaciones** | "La HU-12 dice que las recomendaciones se construyen con 'reglas aplicadas de forma local, sin intervención de servicios externos', y el sprint 7 registra la separación entre el resumen generado y las recomendaciones determinísticas. La IA externa quedó en una sola función: sale menos información, nunca más." |
+| Los alcances nombran juntos "**resúmenes financieros y recomendaciones**" y la Figura 23 muestra el rótulo «Recomendación IA» | "La tesis dice que Groq 'se utiliza exclusivamente para la generación del resumen financiero mensual'. La HU-12 pide 'reglas aplicadas de forma local sobre mis datos agregados, sin intervención de servicios externos', el sprint 7 registra la 'separación del resumen generado y las recomendaciones determinísticas', y la nota de la Figura 23 aclara que el rótulo es el nombre de la sección y el contenido es determinístico. Código y tesis dicen lo mismo: la IA externa está en una sola función." |
 | La HU-09 dice "diez o más ingresos → Prophet" y el código pide además **tres meses cerrados** | "Con menos de diez, siempre media móvil, como dice la HU. Agregué un piso más porque con dos meses Prophet traza una recta que se dispara: con 1 y 3 millones proyectaba 13 millones a seis meses." |
 | La HU-10 dice que sugiere "la categoría **siguiente**" y el sistema puede sugerir otra | "Hace las dos cosas. Si la proyección todavía no pasa el tope, muestra la siguiente. Si lo pasa, sugiere la primera que la cubre: con $ 36 millones en la A sugiere la E, porque la B no alcanzaría y el dato no le serviría al usuario." |
 | ARCA mira los **últimos 12 meses** y el semáforo mira el año calendario | "El semáforo sigue la HU-10: año en curso más la proyección al cierre. Los 12 meses móviles se calculan aparte, como complemento." |
