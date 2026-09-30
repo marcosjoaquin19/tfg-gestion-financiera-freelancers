@@ -11,7 +11,7 @@ Solo se entrena con meses cerrados y siempre se proyecta desde el mes que viene.
 # PATRÓN: Strategy + Degradación elegante — Prophet si hay historial suficiente, media móvil si no.
 # Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import hashlib
 import logging
@@ -51,12 +51,20 @@ METODO_MES_EN_CURSO = "mes_en_curso"
 METODO_SIN_DATOS = "sin_datos"
 
 
-def ahora_utc() -> datetime:
-    """Reloj único de proyecciones y monotributo (UTC, como las fechas guardadas)."""
-    return datetime.now(timezone.utc)
-
-
 ZONA_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+
+
+def inicio_de_manana() -> datetime:
+    """Primer instante de mañana según el calendario de Argentina, con la
+    convención de las fechas guardadas (día calendario a las 00:00 UTC).
+
+    Un cobro ya pasó si su fecha es anterior a este instante. Comparar contra
+    la hora UTC fallaba desde las 21 h: en UTC ya era mañana, así que un cobro
+    fechado al día siguiente sumaba como facturado real y, el 31/12 a la
+    noche, uno del 1/1 se sumaba al año que terminaba.
+    """
+    hoy = datetime.now(ZONA_AR)
+    return datetime(hoy.year, hoy.month, hoy.day, tzinfo=timezone.utc) + timedelta(days=1)
 
 
 def inicio_mes_en_curso() -> datetime:

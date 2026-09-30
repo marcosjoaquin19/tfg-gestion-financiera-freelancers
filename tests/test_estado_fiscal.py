@@ -219,6 +219,64 @@ def test_facturacion_12_meses_excluye_fechas_futuras(client, auth_headers):
     assert client.get("/monotributo/facturacion-12-meses", headers=auth_headers).json()["facturacion_12_meses"] == 0
 
 
+@pytest.fixture
+def instante(monkeypatch):
+    """Fija el reloj en un instante real (UTC): a diferencia de `hoy`, la
+    hora de Argentina y la de UTC quedan tres horas corridas, como en el
+    servidor."""
+    from datetime import timezone
+
+    def fijar(momento_utc: datetime):
+        momento = momento_utc.replace(tzinfo=timezone.utc)
+
+        class Reloj(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return momento.astimezone(tz) if tz else momento.replace(tzinfo=None)
+        monkeypatch.setattr(ps, "datetime", Reloj)
+    return fijar
+
+
+def _ingreso_del_dia(client, headers, fecha, monto):
+    # Como lo manda la pantalla: solo el día, sin hora.
+    r = client.post("/ingresos/", json={
+        "descripcion": "Honorarios", "monto": monto, "categoria": "Servicios", "fecha": fecha,
+    }, headers=headers)
+    assert r.status_code == 201, r.text
+
+
+def test_cobro_de_manana_a_las_22_no_es_facturacion(client, auth_headers, instante):
+    # 31/10 a las 22 h de Argentina ya es 1/11 en UTC. Regresión: el cobro
+    # fechado el 1/11 sumaba como facturado real y la ventana de 12 meses
+    # terminaba "mañana".
+    instante(datetime(2026, 11, 1, 1, 0))
+    _categoria(client, auth_headers, "A")
+    _ingreso_del_dia(client, auth_headers, "2026-10-31", 100_000)
+    _ingreso_del_dia(client, auth_headers, "2026-11-01", 500_000)
+    assert _estado(client, auth_headers)["facturado_anual"] == 100_000
+    f12 = client.get("/monotributo/facturacion-12-meses", headers=auth_headers).json()
+    assert f12["facturacion_12_meses"] == 100_000
+    assert (f12["desde"], f12["hasta"]) == ("2025-11-01", "2026-10-31")
+
+
+def test_31_de_diciembre_a_la_noche_el_cobro_del_1_de_enero_no_suma_al_anio(client, auth_headers, instante):
+    instante(datetime(2027, 1, 1, 1, 0))          # 31/12/2026 22 h en Argentina
+    _categoria(client, auth_headers, "A")
+    _ingreso_del_dia(client, auth_headers, "2026-12-10", 100_000)
+    _ingreso_del_dia(client, auth_headers, "2027-01-01", 700_000)
+    assert _estado(client, auth_headers)["facturado_anual"] == 100_000
+
+
+def test_el_cobro_de_hoy_cuenta_aunque_sea_temprano(client, auth_headers, instante):
+    instante(datetime(2026, 10, 14, 3, 30))       # 14/10 00:30 en Argentina
+    _categoria(client, auth_headers, "A")
+    _ingreso_del_dia(client, auth_headers, "2026-10-14", 100_000)
+    assert _estado(client, auth_headers)["facturado_anual"] == 100_000
+    f12 = client.get("/monotributo/facturacion-12-meses", headers=auth_headers).json()
+    assert f12["facturacion_12_meses"] == 100_000
+    assert f12["hasta"] == "2026-10-14"
+
+
 # --- Mes en curso y meses hasta diciembre -----------------------------------------
 
 def test_mes_en_curso_suma_lo_esperado_si_todavia_se_cobro_menos(client, auth_headers, hoy):

@@ -114,8 +114,11 @@ def test_facturacion_12_meses_incluye_categoria_y_porcentaje(client, auth_header
         headers=auth_headers,
     )
 
+    # El día de hoy en Argentina, como lo manda la pantalla (con la hora UTC,
+    # entre las 21 h y la medianoche el cobro quedaba fechado mañana).
     from datetime import datetime
-    hoy = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    from zoneinfo import ZoneInfo
+    hoy = datetime.now(ZoneInfo("America/Argentina/Buenos_Aires")).strftime("%Y-%m-%d")
     client.post("/ingresos/", json={
         "descripcion": "Cobro", "monto": 100000,
         "categoria": "Servicios", "fecha": hoy,

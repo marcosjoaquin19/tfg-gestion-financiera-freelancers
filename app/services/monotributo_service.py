@@ -18,7 +18,7 @@ from app.models.ingreso import Ingreso
 from app.models.gasto import Gasto
 from app.models.proyeccion import Proyeccion
 from app.models.categoria_monotributo import CategoriaMonotributo
-from app.services.prophet_service import ahora_utc, asegurar_proyecciones_vigentes, inicio_mes_en_curso
+from app.services.prophet_service import asegurar_proyecciones_vigentes, inicio_de_manana, inicio_mes_en_curso
 
 logger = logging.getLogger(__name__)
 
@@ -95,16 +95,15 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
         logger.exception("No se pudo regenerar la proyección del usuario %s", usuario_id)
         db.rollback()
 
-    ahora = ahora_utc()
     mes_actual = inicio_mes_en_curso()                      # 1° del mes, sin zona
     inicio_anio = datetime(mes_actual.year, 1, 1, tzinfo=timezone.utc)
 
-    # Facturado real: ingresos del año con fecha hasta hoy. Un cobro cargado
-    # con fecha futura todavía no es facturación.
+    # Facturado real: ingresos del año con fecha hasta hoy (calendario de
+    # Argentina). Un cobro cargado con fecha futura todavía no es facturación.
     ingresos_anio = db.query(Ingreso).filter(
         Ingreso.usuario_id == usuario_id,
         Ingreso.fecha >= inicio_anio,
-        Ingreso.fecha <= ahora,
+        Ingreso.fecha < inicio_de_manana(),
     ).all()
     facturado_anual = round(float(sum(i.monto for i in ingresos_anio)), 2)
     facturado_mes_en_curso = float(sum(

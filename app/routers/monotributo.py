@@ -14,8 +14,9 @@ Endpoints:
   GET   /monotributo/facturacion-12-meses  → facturación móvil de 12 meses.
 """
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
+from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ from app.services.monotributo_service import (
     verificar_pago_monotributo,
     get_categoria,
 )
+from app.services.prophet_service import inicio_de_manana
 
 router = APIRouter(prefix="/monotributo", tags=["Monotributo"])
 
@@ -123,13 +125,16 @@ def facturacion_12_meses(
     que evita un seq scan sobre toda la tabla `ingresos` y mantiene la
     consulta en O(log n) aunque la plataforma escale a muchos usuarios.
     """
-    hasta = datetime.now()
-    desde = hasta - timedelta(days=365)
+    # Doce meses corridos que terminan hoy, con el calendario de Argentina:
+    # el 30/09/2026 va del 01/10/2025 al 30/09/2026, ambos incluidos.
+    manana = inicio_de_manana()
+    hasta = manana - timedelta(days=1)
+    desde = hasta - relativedelta(years=1) + timedelta(days=1)
     total = db.query(func.coalesce(func.sum(Ingreso.monto), 0)).filter(
         Ingreso.usuario_id == current_user.id,
         Ingreso.fecha >= desde,
         # un cobro con fecha futura todavía no es facturación
-        Ingreso.fecha <= hasta,
+        Ingreso.fecha < manana,
     ).scalar()
     total = float(total or 0)
 
