@@ -286,6 +286,18 @@ def test_cuota_impaga_y_estado_fiscal_en_una_recomendacion(client, auth_headers)
     assert "Cuota de septiembre 2026: $ 10.000,00; sin pago registrado." in d["dato"]
 
 
+def test_cuota_parcial_informa_lo_registrado_en_el_mes(client, auth_headers):
+    # Dos pagos que no llegan a la cuota: se informa la suma, no uno solo.
+    _categoria(client, auth_headers, "A")
+    for mes in (6, 7, 8):
+        _ingreso(client, auth_headers, mes, 300_000)
+    _gasto(client, auth_headers, 9, 3_000, cat="Monotributo", dia=5, desc="Pago monotributo")
+    _gasto(client, auth_headers, 9, 2_000, cat="Monotributo", dia=20, desc="Pago monotributo")
+    d = next(d for d in _recs(client, auth_headers)["detalle"] if "cuota" in d["regla"])
+    assert "Lo registrado de la cuota de septiembre 2026 ($ 5.000,00) no cubre los $ 10.000,00" in d["texto"]
+    assert "Cuota de septiembre 2026: $ 10.000,00; registrado $ 5.000,00." in d["dato"]
+
+
 def test_tope_superado_sugiere_consultar_al_contador(client, auth_headers):
     _categoria(client, auth_headers, "A")
     for mes in (6, 7, 8):

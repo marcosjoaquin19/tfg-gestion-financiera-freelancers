@@ -199,7 +199,7 @@ export default function Monotributo() {
               {pago.pagado
                 ? `✓ Monotributo de ${pago.mes} ${pago.anio} registrado como pagado`
                 : pago.pago_parcial
-                ? `⚠️ El pago registrado de ${pago.mes} ${pago.anio} no cubre la cuota`
+                ? `⚠️ Lo registrado de ${pago.mes} ${pago.anio} no cubre la cuota`
                 : `⚠️ No registramos el pago del monotributo de ${pago.mes} ${pago.anio}`}
             </p>
             {!pago.pagado && pago.monto_esperado && (
