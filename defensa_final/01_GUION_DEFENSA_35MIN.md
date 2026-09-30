@@ -263,7 +263,7 @@ No te quedes. Treinta segundos y seguís.
 
 **Hacé:**
 
-1. Gastos → nuevo gasto → `licencia jetbrains anual` → sugiere **Software** (≈ 81 %).
+1. Gastos → nuevo gasto → `licencia jetbrains anual` → sugiere **Software** (≈ 78 %).
    > "No elegí la categoría: la sugirió el modelo leyendo el texto."
 2. Nuevo gasto → `servicio mensual` → confianza baja → pide revisar.
    > "Y acá está el límite, a la vista: 'servicio mensual' puede ser muchas
@@ -273,7 +273,8 @@ No te quedes. Treinta segundos y seguís.
    clasificarla → sale con la corrección.
    > "Corregí una vez. Desde ahora esa descripción usa mi corrección, que es un
    > dato real, y además queda como ejemplo para reentrenar mi modelo personal."
-4. Estado ML → ahora dice **modelo propio**, con unos **666 ejemplos**.
+4. Estado ML → ahora dice **modelo propio**, con **667 ejemplos**: los 600 de
+   base, sus 66 gastos y la corrección.
    > "Cuando cargué el primer gasto, como la usuaria ya tenía más de veinte
    > gastos propios, el sistema le entrenó su modelo personal en segundo plano.
    > No toqué nada."
@@ -297,9 +298,9 @@ primera categoría a la segunda: si empatan, vale 0. Lo explicás en 5.4.
 - *¿Qué pasa justo en 0,30?* → "Con 0,30 o más, clasifica. Con menos, va a
   'Otros' y pide revisión."
 - *La misma descripción, ¿da lo mismo para todos los usuarios?* → "No: cada uno
-  tiene su modelo. Lo probamos: la misma frase dio 0,323 con el modelo de un
-  usuario que ya había entrenado —clasifica— y 0,292 con el modelo base —pide
-  revisión—."
+  tiene su modelo. Se ve en esta misma demo: 'servicio' con el modelo base da
+  0,28 —pide revisión—; con el modelo de esta usuaria, después de la demo, da
+  0,51 y lo clasifica como Servicios."
 - *¿Y si corrijo con la descripción vacía?* → "La rechaza. Antes se guardaba la
   regla 'vacío = Software' y lo corregimos."
 - *¿Y si mando una categoría que no existe?* → "La rechaza: la lista es cerrada.
@@ -357,6 +358,15 @@ primera categoría a la segunda: si empatan, vale 0. Lo explicás en 5.4.
 - *¿Una fila rota en el medio del archivo?* → "En el análisis te dice cuál y por
   qué. Al confirmar, si algún registro es inválido no se guarda ninguno: todo o
   nada."
+- *¿Los nueve bancos están probados?* → "El diccionario tiene los nombres de
+  columna de los nueve. Con extractos reales lo probé en cuatro: Galicia,
+  Santander, Mercado Pago y Brubank. Si un banco usa un nombre que no está,
+  agregarlo es sumar un sinónimo."
+- *¿El modelo aprende de lo importado?* → "Sí: los gastos importados también
+  entrenan. Después de este extracto el modelo pasa a 693 ejemplos, en segundo
+  plano."
+- *¿Y "15,000", con coma?* → "Quince mil: un importe bancario nunca tiene tres
+  decimales, con punto o con coma."
 - *¿Y el resumen de la tarjeta de crédito?* → "Avisa. La tarjeta ya entra por el
   banco como 'PAGO TARJETA'; importarla compra por compra la contaría dos
   veces. Está fuera del alcance: es trabajo futuro."
@@ -608,7 +618,7 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **419 automáticas**, que corren contra una base
+> Eso me dio dos cosas. Pruebas: **428 automáticas**, que corren contra una base
 > en memoria, sin tocar la real. Y reutilización: la función que verifica la
 > cuota del monotributo la usan el módulo fiscal y la auditoría, sin duplicarla."
 
@@ -785,7 +795,8 @@ Cuatro desafíos, en este orden:
 
 **4. Reentrenar sin trabar la aplicación**
 
-> "Cada corrección, o cada diez gastos nuevos, reentrena el modelo del usuario.
+> "Cada corrección, o cada diez gastos nuevos —cargados a mano o importados—,
+> reentrena el modelo del usuario.
 > Si eso pasara mientras el usuario espera, la pantalla se colgaría: corre **en
 > segundo plano**, como pide la HU-05, y de a uno por usuario, para que dos
 > entrenamientos a la vez no dejen dos modelos activos. Y cada ejemplo se valida
@@ -804,8 +815,9 @@ reales: ampliarlos con datos reales es trabajo futuro".
   tendría que mandar la descripción de cada gasto a un tercero, y eso rompe la
   soberanía de los datos."
 - *¿Con pocos datos no gana Naive Bayes?* → "Es lo que sugiere la literatura y
-  por eso la tesis lo prevé. En mi conjunto lo medí con 96 ejemplos y tampoco:
-  SVM 46 %, Naive Bayes 42 %. Como el modelo siempre tiene los 600 de base,
+  por eso la tesis lo prevé. En mi conjunto lo medí con 96 ejemplos, en 50
+  sorteos distintos, y tampoco: SVM 46 %, Naive Bayes 44 %; SVM ganó en 34 de
+  los 50. Como el modelo siempre tiene los 600 de base,
   Naive Bayes no llega a activarse y no cambia ningún resultado."
 - *¿El 76 % se puede reproducir?* → "Sí: el script `evaluar_modelo.py` da
   exactamente 76,00 %, con la tabla por categoría del Anexo A."
@@ -917,6 +929,7 @@ técnica más que una respuesta forzada.
 | Exactitud del clasificador | **76 %** (meta: 70 %) |
 | Conjunto de evaluación | **600 ejemplos**, 50 por categoría, validación cruzada de 5 partes |
 | SVM contra Naive Bayes (600 ejemplos) | **76 % contra 74 %** |
+| SVM contra Naive Bayes (96 ejemplos, 50 sorteos) | **46 % contra 44 %** (SVM gana 34 de 50) |
 | Punto de partida del conjunto | 216 ejemplos → 57 % |
 | Mejor y peor categoría (F1) | Monotributo **0,96** · Marketing **0,58** |
 | Categorías | **12** |
@@ -929,11 +942,11 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **419** del backend + 10 de pantalla |
+| Pruebas automatizadas | **428** del backend + 10 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
-| Bancos soportados | **9** |
+| Bancos soportados | **9** en el diccionario · 4 probados con extractos reales |
 | Detectores de auditoría | **5** |
 | Costo de desarrollo | **$ 4.400.000** |
 | Trabajo por cuenta propia (INDEC 2025) | **24,5 %** del empleo · 3,3 millones de personas |
