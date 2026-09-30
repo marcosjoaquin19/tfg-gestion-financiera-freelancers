@@ -20,7 +20,7 @@ class ProyeccionResponse(BaseModel):
     monto_upper: float
     # límite superior del intervalo de confianza (escenario optimista)
     metodo: str | None = None
-    # "prophet", "media_movil", "mes_en_curso" o "sin_datos" (ver prophet_service)
+    # "prophet", "media_movil", "respaldo", "mes_en_curso" o "sin_datos" (ver prophet_service)
     fecha_generacion: datetime
 
     class Config:

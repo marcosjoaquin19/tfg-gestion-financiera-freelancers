@@ -49,6 +49,9 @@ METODO_MEDIA_MOVIL = "media_movil"
 METODO_MES_EN_CURSO = "mes_en_curso"
 # solo hay ingresos del mes que todavía no terminó: estimación provisoria
 METODO_SIN_DATOS = "sin_datos"
+METODO_RESPALDO = "respaldo"
+# había historial para Prophet pero falló: la misma media móvil, con otro
+# nombre para que la pantalla no lo explique como falta de datos
 
 
 ZONA_AR = ZoneInfo("America/Argentina/Buenos_Aires")
@@ -217,7 +220,7 @@ def generar_proyecciones(db: Session, usuario_id: int, periodos: int = HORIZONTE
             # estrategia del arranque en frío, y el método guardado lo dice.
             logger.exception("Prophet falló para el usuario %s; se usa la media móvil", usuario_id)
             nuevas = _proyecciones_media_movil(
-                usuario_id, montos[-VENTANA_MEDIA_MOVIL:], periodos, METODO_MEDIA_MOVIL,
+                usuario_id, montos[-VENTANA_MEDIA_MOVIL:], periodos, METODO_RESPALDO,
             )
     elif serie:
         nuevas = _proyecciones_media_movil(

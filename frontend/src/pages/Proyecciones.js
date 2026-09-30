@@ -68,6 +68,12 @@ function describirMetodo(metodo, mesesHistoricos) {
         detalle: `Promedio de los últimos ${Math.min(mesesHistoricos, 3)} meses cerrados. Prophet se usa a partir de 10 ingresos en al menos 3 meses cerrados.`,
         color: '#fbbf24',
       };
+    case 'respaldo':
+      return {
+        titulo: 'Promedio simple (Prophet no pudo calcular)',
+        detalle: `Hay historial suficiente, pero Prophet no pudo ajustar la serie: se usó el promedio de los últimos ${Math.min(mesesHistoricos, 3)} meses cerrados.`,
+        color: '#fbbf24',
+      };
     case 'mes_en_curso':
       return {
         titulo: 'Estimación provisoria',

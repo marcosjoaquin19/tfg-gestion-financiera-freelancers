@@ -313,8 +313,11 @@ def test_si_prophet_falla_se_usa_la_media_movil(client, auth_headers, monkeypatc
     monkeypatch.setattr(ps, "_proyecciones_prophet", falla)
     r = _generar(client, auth_headers)
     assert r.status_code == 201
-    assert {p["metodo"] for p in r.json()} == {"media_movil"}
+    # Media móvil, pero con su propio nombre: no es falta de datos y la
+    # pantalla no tiene que explicarlo como arranque en frío.
+    assert {p["metodo"] for p in r.json()} == {"respaldo"}
     assert _meses(r.json()) == MESES_ESPERADOS
+    assert r.json()[0]["monto_proyectado"] == 3_000_000     # promedio de jun, jul y ago
 
 
 def test_mes_en_curso_con_el_calendario_de_argentina(monkeypatch):

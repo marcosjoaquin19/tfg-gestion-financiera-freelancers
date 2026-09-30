@@ -33,8 +33,9 @@ class Proyeccion(Base):
     # límite superior de la predicción (optimista)
     
     metodo = Column(String(20), nullable=True)
-    # con qué se calculó: "prophet", "media_movil" (pocos datos), "mes_en_curso"
-    # (solo hay ingresos del mes que todavía no terminó) o "sin_datos".
+    # con qué se calculó: "prophet", "media_movil" (pocos datos), "respaldo"
+    # (media móvil porque Prophet falló), "mes_en_curso" (solo hay ingresos del
+    # mes que todavía no terminó) o "sin_datos".
     # Se guarda para que la pantalla lo declare. NULL en filas anteriores a la
     # migración 0010.
 
