@@ -462,20 +462,27 @@ proyectado.
 **Casos bisagra:**
 
 - *¿El 90 % exacto es amarillo o rojo?* → "Amarillo: rojo es 'por encima del
-  90 %', como dice la historia de usuario. Y el 70 % exacto ya es amarillo."
+  90 %', como dice la historia de usuario. Y el 70 % exacto ya es amarillo. El
+  número en pantalla nunca contradice al color: un 90,01 % se muestra 90,1 %,
+  no '90 %' en rojo."
 - *¿Por qué año calendario, si ARCA mira los últimos 12 meses?* → "Porque la
   HU-10 lo define así: año en curso más la proyección al cierre. Los 12 meses
   móviles también se calculan, aparte. Por eso el aviso dice que decide ARCA."
-- *Importaste $ 3,46 millones y el porcentaje casi no se movió. ¿Por qué?* → "El
+- *Importaste $ 3,46 millones y el porcentaje no se movió. ¿Por qué?* → "El
   mes en curso cuenta lo mayor entre lo cobrado y lo esperado para un mes. Se
   esperaban unos $ 7,1 millones: hasta cobrar más que eso, manda lo esperado.
-  Es conservador, que en un riesgo fiscal es lo correcto."
+  Es conservador, que en un riesgo fiscal es lo correcto." (Antes y después de
+  importar da 109,4 %: el facturado real sí pasa del 69,1 % al 75,5 %.)
 - *¿Y si ya superé el tope?* → "Dice 'ya superaste el límite anual' y qué
-  categoría cubriría lo facturado. Si ni la K alcanza, advierte el riesgo de
-  exclusión del régimen."
-- *¿Un cobro con fecha futura suma?* → "No como facturado real: todavía no pasó."
+  categoría cubriría la proyección del año. Si ni la K alcanza, advierte el
+  riesgo de exclusión del régimen."
+- *¿Un cobro con fecha futura suma?* → "No como facturado real: todavía no pasó.
+  Y 'hoy' es el día de Argentina: un cobro de mañana no suma aunque sean las
+  once de la noche."
 - *¿Y si pagué la cuota de menos?* → "Cuenta como pago parcial y la auditoría
   sigue avisando."
+- *¿Y si la pagué en dos partes?* → "Cuenta lo registrado en el mes: si entre
+  los dos pagos cubren la cuota, figura pagada."
 
 ---
 
@@ -496,8 +503,8 @@ proyectado.
 
 **Los límites, en voz alta (pedido 3):**
 
-> "Y quiero mostrar sus límites. **Uno:** miren el ancho de la banda, va de 3,6
-> a 10,7 millones. Esta freelancer alterna meses de proyecto grande y meses
+> "Y quiero mostrar sus límites. **Uno:** miren el ancho de la banda: para
+> noviembre va de 3,6 a 10,7 millones. Esta freelancer alterna meses de proyecto grande y meses
 > flojos; con nueve meses de historia el modelo ve la tendencia, pero no puede
 > saber si noviembre trae un proyecto grande, y lo dice. **Dos:** son montos
 > nominales, no contempla la inflación. **Tres:** necesita historia: al menos
@@ -518,7 +525,8 @@ siempre "encaja" y se dispara. Por eso pide tres.
 - *¿Con un solo mes de datos?* → "Promedio con una banda de ±20 %: con un solo
   dato no hay desvío, y una banda de ancho cero sería una falsa certeza."
 - *¿Puede proyectar ingresos negativos?* → "Prophet sí; los recortamos a cero."
-- *¿Y si Prophet falla?* → "Pasa al promedio y lo informa. La pantalla no se cae."
+- *¿Y si Prophet falla?* → "Pasa al promedio y lo informa: 'Prophet no pudo
+  calcular'. La pantalla no se cae."
 - *¿Por qué seis meses y no un año?* → "Es lo que fija la HU-09. Más lejos, el
   error pesa más que la tendencia."
 
@@ -618,7 +626,7 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **428 automáticas**, que corren contra una base
+> Eso me dio dos cosas. Pruebas: **438 automáticas**, que corren contra una base
 > en memoria, sin tocar la real. Y reutilización: la función que verifica la
 > cuota del monotributo la usan el módulo fiscal y la auditoría, sin duplicarla."
 
@@ -832,9 +840,14 @@ reales: ampliarlos con datos reales es trabajo futuro".
 
 > "En la matriz de riesgos puse el R2: que ARCA cambiara la escala durante el
 > desarrollo. Pasó: el 1 de agosto de 2026 salió una escala nueva. La incorporé
-> **cargando datos, sin tocar código**, y las dos quedaron guardadas con su
-> fecha: un reporte de mayo se sigue evaluando con la escala de febrero, que
-> era la que regía."
+> **cargando los valores nuevos en el catálogo, sin tocar el código de la
+> aplicación**. Después hice que las dos escalas convivan con su fecha, para
+> que un reporte de mayo se siga evaluando con la de febrero, que era la que
+> regía."
+
+**Para vos:** si preguntan por la migración 0012 → "Eso fue después y es otra
+cosa: la escala nueva entró como dato (14/09). La migración hizo que la vieja
+no se pisara, para evaluar bien los meses anteriores (27/09)." 
 
 > ⏱ **33:00**
 
@@ -892,10 +905,10 @@ pantalla dice por qué.
 | Si notan… | Respondé |
 |---|---|
 | La tesis nombra **Llama 3.3 70B** y el sistema usa otro modelo | "Groq dio de baja ese modelo después de entregar la tesis. Cambiarlo fue editar una variable de entorno: el código no tiene el nombre del modelo fijo." |
-| La escala del monotributo es la de **agosto de 2026** | "Es el riesgo R2 de la matriz, que se cumplió. Las dos escalas están guardadas con su fecha y la carga fue solo de datos." |
+| La escala del monotributo es la de **agosto de 2026** | "Es el riesgo R2 de la matriz, que se cumplió. La escala nueva se cargó como dato, sin tocar la lógica de la aplicación. Después, con una migración, las dos quedaron guardadas con su fecha: cada mes se evalúa con la que regía." |
 | En algunos capítulos la tesis dice que Groq genera **resúmenes y recomendaciones** | "La HU-12 dice que las recomendaciones se construyen con 'reglas aplicadas de forma local, sin intervención de servicios externos', y el sprint 7 registra la separación entre el resumen generado y las recomendaciones determinísticas. La IA externa quedó en una sola función: sale menos información, nunca más." |
 | La HU-09 dice "diez o más ingresos → Prophet" y el código pide además **tres meses cerrados** | "Con menos de diez, siempre media móvil, como dice la HU. Agregué un piso más porque con dos meses Prophet traza una recta que se dispara: con 1 y 3 millones proyectaba 13 millones a seis meses." |
-| La HU-10 dice que sugiere "la categoría **siguiente**" y el sistema puede sugerir otra | "Sugiere la primera categoría que cubre la proyección. Si sugiriera la letra de al lado y tampoco alcanzara, el dato no le serviría al usuario." |
+| La HU-10 dice que sugiere "la categoría **siguiente**" y el sistema puede sugerir otra | "Hace las dos cosas. Si la proyección todavía no pasa el tope, muestra la siguiente. Si lo pasa, sugiere la primera que la cubre: con $ 36 millones en la A sugiere la E, porque la B no alcanzaría y el dato no le serviría al usuario." |
 | ARCA mira los **últimos 12 meses** y el semáforo mira el año calendario | "El semáforo sigue la HU-10: año en curso más la proyección al cierre. Los 12 meses móviles se calculan aparte, como complemento." |
 
 ---
@@ -942,7 +955,7 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **428** del backend + 10 de pantalla |
+| Pruebas automatizadas | **438** del backend + 10 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
@@ -953,5 +966,6 @@ técnica más que una respuesta forzada.
 
 Cifras de la demo (simulación del 14/10): 29 movimientos importados (3 cobros y
 26 gastos), $ 3.460.000 cobrados en octubre, semáforo rojo 109,4 % con lo
-facturado real en 75,5 %, supera en diciembre, sugiere la H, banda de 3,6 a
-10,7 millones, ingresos +54,1 %.
+facturado real en 75,5 % ($ 40.760.000), supera en diciembre, sugiere la H,
+se esperan $ 7,1 millones por mes, banda de noviembre de 3,6 a 10,7 millones,
+ingresos +54,1 %.
