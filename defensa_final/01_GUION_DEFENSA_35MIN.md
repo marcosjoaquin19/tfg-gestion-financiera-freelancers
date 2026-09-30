@@ -483,6 +483,17 @@ proyectado.
   sigue avisando."
 - *¿Y si la pagué en dos partes?* → "Cuenta lo registrado en el mes: si entre
   los dos pagos cubren la cuota, figura pagada."
+- *¿Qué pasa el 1 de enero? ¿Arranca de cero o sigue con lo del año pasado?* →
+  "Lo facturado vuelve a cero, porque la HU-10 mide el año en curso. Pero la
+  proyección conserva la historia: si el año pasado me pasé de la D, en enero
+  el semáforo sigue en rojo y me dice en qué mes me volvería a pasar y qué
+  categoría me cubre. La categoría la cambio yo: la recategorización es un
+  trámite en ARCA. Y como ARCA recategoriza en enero y julio con los últimos
+  12 meses, el sistema también calcula esa ventana. Mostrarla en pantalla, con
+  un aviso en esas fechas, es trabajo futuro."
+  (Simulado: D con $ 3,2 M por mes en 2026. El 31/12: rojo 125,4 %, sugiere F.
+  El 05/01/2027: facturado $ 0, pero rojo 125,4 %, "te pasarías en octubre",
+  sugiere F; los 12 meses dan $ 36,8 M.)
 
 ---
 
