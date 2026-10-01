@@ -10,6 +10,7 @@ monotributo y también el de auditoría (para la alerta de monotributo impago).
 
 import logging
 from datetime import datetime, timezone
+from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
@@ -229,6 +230,14 @@ TOLERANCIA_CUOTA = 0.99
 # banco/billetera debita efectivamente (centavos, ajustes).
 
 
+def cuota_cubierta(registrado, cuota) -> bool:
+    """Regla única de "cuota pagada": lo registrado en el mes cubre la cuota
+    (con la tolerancia del 1 %), en uno o en varios pagos. La usan la pantalla
+    Monotributo y la auditoría (vía verificar_pago_monotributo) y el reporte
+    PDF, que la aplica con la cuota de la escala del mes del reporte."""
+    return Decimal(str(registrado)) >= Decimal(str(cuota)) * Decimal(str(TOLERANCIA_CUOTA))
+
+
 def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
     """Verifica si la cuota del mes en curso está cubierta.
 
@@ -262,7 +271,7 @@ def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
         # cualquier registro de la categoría cuenta como pago.
         pagado = bool(gastos_mes)
     else:
-        pagado = total_registrado >= monto_esperado * TOLERANCIA_CUOTA
+        pagado = cuota_cubierta(total_registrado, monto_esperado)
     pago_parcial = bool(gastos_mes) and not pagado
 
     # El registro más alto del mes (si existe), para que el usuario entienda

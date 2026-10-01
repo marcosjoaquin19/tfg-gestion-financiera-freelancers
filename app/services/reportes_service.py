@@ -160,12 +160,13 @@ def _facturacion_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
 def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
     """Estado fiscal evaluado con la escala que regía en el período.
 
-    No se reusa monotributo_service.verificar_pago_monotributo porque ese
-    consulta siempre el mes corriente con la escala vigente. Para un mes
-    anterior a un cambio de escala (por ejemplo, mayo de 2026, antes del
-    ajuste del 1/8/2026) la cuota y el tope tienen que ser los de ese momento.
+    No se llama a monotributo_service.verificar_pago_monotributo porque esa
+    consulta siempre el mes corriente con la escala vigente; sí se reusa su
+    regla, cuota_cubierta. Para un mes anterior a un cambio de escala (por
+    ejemplo, mayo de 2026, antes del ajuste del 1/8/2026) la cuota y el tope
+    tienen que ser los de ese momento.
     """
-    from app.services.monotributo_service import TOLERANCIA_CUOTA, escala_vigente_en
+    from app.services.monotributo_service import cuota_cubierta, escala_vigente_en
 
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario or not usuario.categoria_monotributo:
@@ -184,14 +185,13 @@ def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int) ->
         extract("month", Gasto.fecha) == mes,
         extract("year", Gasto.fecha) == anio,
     ).all()
-    # Misma regla que monotributo_service.verificar_pago_monotributo: la cuota
-    # está pagada si lo registrado en el mes la cubre (tolerancia 1 %), en uno
-    # o en varios pagos. Si no alcanza, es un pago parcial.
-    umbral = cuota * Decimal(str(TOLERANCIA_CUOTA))
+    # La misma regla que la pantalla Monotributo y la auditoría
+    # (monotributo_service.cuota_cubierta), con la cuota de la escala del
+    # período. Si lo registrado no alcanza, es un pago parcial.
     registrado = sum((Decimal(g.monto) for g in gastos_mes), Decimal("0"))
     if not gastos_mes:
         estado_cuota, registrado = "sin_registrar", None
-    elif registrado >= umbral:
+    elif cuota_cubierta(registrado, cuota):
         estado_cuota = "pagada"
     else:
         estado_cuota = "parcial"
@@ -272,6 +272,9 @@ def _estilos():
         spaceBefore=14,
         spaceAfter=8,
         textColor=colors.HexColor("#1f3a5f"),
+        # El título va en la misma página que su tabla: sin esto, en el reporte
+        # de septiembre del demo "Auditoría" quedaba solo al pie de la página 1.
+        keepWithNext=1,
     ))
     base.add(ParagraphStyle(
         name="Celda",
@@ -396,7 +399,7 @@ def _seccion_monotributo(fiscal: dict, estilos) -> list:
         ["Cuota mensual", _fmt_pesos(fiscal["cuota_mensual"])],
         ["Cuota del período", cuota_periodo],
     ]
-    tabla = _tabla_estandar(filas, col_widths=[7 * cm, 10 * cm])
+    tabla = _tabla_estandar(filas, col_widths=[7 * cm, 9 * cm])
     tabla.setStyle(TableStyle([("ALIGN", (0, 1), (0, -1), "LEFT")]))
     nota = Paragraph(
         "La cuota y el tope corresponden a la escala que regía en el período. La categoría es la "

@@ -198,3 +198,16 @@ def test_cuota_en_dos_pagos_que_juntos_la_cubren(client, auth_headers):
     assert (data["pagado"], data["pago_parcial"], data["total_registrado"]) == (True, False, 5000)
     aud = client.post("/alertas/ejecutar-auditoria", headers=auth_headers).json()
     assert aud["detalle"]["monotributo_impago"] == 0
+
+
+def test_cuota_justo_en_el_99_por_ciento(client, auth_headers):
+    # Borde de la tolerancia del 1 %: con la cuota A de $ 5.000, $ 4.949,99
+    # es un pago parcial y $ 4.950,00 (el 99 % justo) ya cuenta como pagada.
+    client.patch("/monotributo/categoria", json={"categoria_monotributo": "A"}, headers=auth_headers)
+    _gasto_monotributo(client, auth_headers, 4949.99, dia=2)
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert (data["pagado"], data["pago_parcial"]) == (False, True)
+
+    _gasto_monotributo(client, auth_headers, 0.01, dia=3)
+    data = client.get("/monotributo/pago", headers=auth_headers).json()
+    assert (data["pagado"], data["pago_parcial"], data["total_registrado"]) == (True, False, 4950)

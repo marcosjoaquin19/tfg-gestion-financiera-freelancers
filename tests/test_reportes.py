@@ -161,6 +161,16 @@ def test_cuota_pagada_en_dos_pagos(client, auth_headers, escalas, reloj):
     assert "Cuota del período Pagada ($ 84.612,93)" in _pdf(client, auth_headers, 8)
 
 
+def test_cuota_justo_en_el_99_por_ciento(client, auth_headers, escalas, reloj):
+    # Misma regla y mismo borde que la pantalla Monotributo: el 99 % de la
+    # cuota D de agosto ($ 84.612,93) es $ 83.766,80; un centavo menos es parcial.
+    _categoria_d(client, auth_headers)
+    _mov(client, auth_headers, "gastos", 83766.80, "2026-08-05", "Monotributo", "Pago monotributo")
+    assert "Parcial: $ 83.766,80 de $ 84.612,93" in _pdf(client, auth_headers, 8)
+    _mov(client, auth_headers, "gastos", 0.01, "2026-08-06", "Monotributo", "Ajuste monotributo")
+    assert "Cuota del período Pagada ($ 83.766,81)" in _pdf(client, auth_headers, 8)
+
+
 def test_cuota_sin_registrar(client, auth_headers, escalas, reloj):
     _categoria_d(client, auth_headers)
     assert "Cuota del período Sin registrar" in _pdf(client, auth_headers, 8)
@@ -270,3 +280,46 @@ def test_incluye_el_descargo(client, auth_headers, reloj):
     texto = _pdf(client, auth_headers, 8)
     # Criterio textual de la HU-13.
     assert "no reemplaza el asesoramiento de un contador matriculado" in texto
+
+
+def _paginas(historia) -> list[str]:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate
+
+    buffer = io.BytesIO()
+    SimpleDocTemplate(buffer, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm,
+                      topMargin=2 * cm, bottomMargin=2 * cm).build(historia)
+    return [re.sub(r"\s+", " ", p.extract_text()) for p in PdfReader(io.BytesIO(buffer.getvalue())).pages]
+
+
+def test_ningun_titulo_de_seccion_queda_solo_al_pie_de_la_pagina():
+    # Regresión: en el reporte de septiembre del demo, "Auditoría — alertas
+    # pendientes…" quedaba como última línea de la página 1 y su contenido
+    # arrancaba en la página 2. Se empuja cada sección hacia el pie, a distintas
+    # alturas, y el título tiene que estar en la misma página que su contenido.
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Spacer
+
+    estilos = rs._estilos()
+    fila = {"categoria": "Software", "monto": Decimal("1000"), "cantidad": 1, "porcentaje": 100.0}
+    totales = {"total_ingresos": Decimal("1000"), "total_gastos": Decimal("500"),
+               "balance": Decimal("500"), "cant_ingresos": 1, "cant_gastos": 1}
+    vacia = (0, Decimal("0"))
+    # Cada sección se arma de nuevo en cada intento: ReportLab consume los
+    # bloques al construir el documento y no se pueden reusar.
+    secciones = {
+        "Resumen ejecutivo": (lambda: rs._seccion_resumen_ejecutivo(totales, totales, estilos), "Total ingresos"),
+        "Estado fiscal — Monotributo": (lambda: rs._seccion_monotributo({"tiene_categoria": False}, estilos),
+                                        "no tiene cargada"),
+        "Distribución de gastos por categoría": (lambda: rs._seccion_categorias([fila], estilos), "Software"),
+        "Facturación del período": (lambda: rs._seccion_facturacion(dict.fromkeys(
+            ["emitidas", "pagadas", "pendientes", "vencidas"], vacia), estilos), "Emitidas"),
+        "Auditoría — alertas pendientes al generar el reporte": (lambda: rs._seccion_auditoria([], estilos),
+                                                                 "Sin alertas pendientes"),
+    }
+    for titulo, (armar, contenido) in secciones.items():
+        for alto in range(180, 250, 3):  # de 18 a 24,9 cm de espacio previo (el área útil mide 25,3)
+            for pagina in _paginas([Spacer(1, alto / 10 * cm)] + armar()):
+                if titulo in pagina:
+                    assert contenido in pagina, f"'{titulo}' quedó solo al pie con {alto / 10} cm previos"
