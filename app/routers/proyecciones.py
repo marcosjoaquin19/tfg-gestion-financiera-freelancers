@@ -7,7 +7,7 @@ frontend, valida el usuario autenticado y devuelve/consulta las proyecciones.
 
 Endpoints:
   POST /proyecciones/generar  → calcula y guarda N períodos de proyección.
-  GET  /proyecciones/         → lista las proyecciones guardadas del usuario.
+  GET  /proyecciones/         → lista las proyecciones vigentes del usuario.
   GET  /proyecciones/historico → serie mensual con la que se entrena el modelo.
   GET  /proyecciones/{id}     → devuelve una proyección puntual.
 """
@@ -22,6 +22,7 @@ from app.schemas.proyeccion import ProyeccionResponse, ProyeccionGenerarRequest,
 from app.dependencies import get_current_user
 from app.models.ingreso import Ingreso
 from app.services.prophet_service import (
+    asegurar_proyecciones_vigentes,
     generar_proyecciones as _generar_proyecciones,
     inicio_mes_en_curso,
     serie_mensual,
@@ -43,7 +44,10 @@ def generar(
 
 
 # GET /proyecciones/
-# Lista las proyecciones ya calculadas del usuario, ordenadas por fecha.
+# Lista las proyecciones del usuario, ordenadas por fecha. Si tiene ingresos,
+# antes se asegura de que estén calculadas y al día (como el semáforo): con el
+# demo recién sembrado, el Dashboard pedía la lista antes de que nadie la
+# calculara y mostraba "Proyección próx. mes: $ 0".
 @router.get("/", response_model=list[ProyeccionResponse])
 def listar_proyecciones(
     limite: int = Query(default=30, ge=1, le=365),
@@ -51,6 +55,9 @@ def listar_proyecciones(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    if db.query(Ingreso.id).filter(Ingreso.usuario_id == current_user.id).first():
+        asegurar_proyecciones_vigentes(db, current_user.id)
+
     proyecciones = db.query(Proyeccion).filter(
         Proyeccion.usuario_id == current_user.id
     ).order_by(Proyeccion.fecha_proyeccion.asc()).offset(offset).limit(limite).all()

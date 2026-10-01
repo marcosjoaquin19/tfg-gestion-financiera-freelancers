@@ -263,6 +263,22 @@ def test_listar_proyecciones_vacio(client, auth_headers):
     assert response.json() == []
 
 
+def test_listar_calcula_la_proyeccion_si_todavia_no_hay(client, auth_headers):
+    # Regresión: con el demo recién sembrado, el Dashboard pedía la lista antes
+    # de que Monotributo o Recomendaciones la calcularan y mostraba
+    # "Proyección próx. mes: $ 0". Con ingresos cargados, listar ya la calcula.
+    _historia(client, auth_headers, MAYO_A_AGOSTO)
+    data = client.get("/proyecciones/", headers=auth_headers).json()
+    assert len(data) == 6
+    assert data[0]["monto_proyectado"] > 0
+
+
+def test_listar_no_recalcula_si_nada_cambio(client, auth_headers):
+    _historia(client, auth_headers, MAYO_A_AGOSTO)
+    ids = [p["id"] for p in client.get("/proyecciones/", headers=auth_headers).json()]
+    assert [p["id"] for p in client.get("/proyecciones/", headers=auth_headers).json()] == ids
+
+
 def test_proyecciones_sin_auth(client):
     assert client.get("/proyecciones/").status_code == 401
     assert client.post("/proyecciones/generar", json={"periodos": 6}).status_code == 401
