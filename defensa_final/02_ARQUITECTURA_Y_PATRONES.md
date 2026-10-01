@@ -6,7 +6,7 @@
 >
 > **Cómo buscar en el código:** todos los puntos con una decisión de diseño
 > documentada llevan el marcador literal `PATRÓN:` (con tilde). Buscar esa
-> cadena en el editor devuelve los 32 puntos anotados en 16 archivos.
+> cadena en el editor devuelve los 36 puntos anotados en 20 archivos.
 >
 > ```bash
 > grep -rn "PATRÓN:" app frontend/src
@@ -48,7 +48,7 @@ capas (layered architecture)** de cuatro niveles.
 un servicio y devuelve el resultado. Esto trajo tres beneficios concretos y
 verificables en este proyecto:
 
-1. **Testeabilidad.** Los 444 tests prueban los servicios directamente contra una
+1. **Testeabilidad.** Los 446 tests prueban los servicios directamente contra una
    base SQLite en memoria, sin levantar HTTP. La suite corre en unos 2 minutos.
 2. **Reutilización real.** La regla "la cuota está paga" vive en
    `monotributo_service.cuota_cubierta()`: la usan la pantalla Monotributo y la
@@ -69,36 +69,36 @@ de ML: necesitaba estar aislada y testeable, no acoplada al ciclo de request.
 
 | Si preguntan… | Archivo:línea | Patrón |
 |---|---|---|
-| ¿Cómo se conecta a la base? | [app/database.py:38](../app/database.py) | Factory · Singleton · Unit of Work |
+| ¿Cómo se conecta a la base? | [app/database.py:40](../app/database.py) | Factory · Singleton · Unit of Work |
 | ¿Cómo protegés las rutas privadas? | [app/dependencies.py:40](../app/dependencies.py) | Inyección de dependencias · Guard |
 | ¿Dónde se hashean las contraseñas? | [app/services/auth.py](../app/services/auth.py) | Facade de seguridad |
 | ¿Dónde está el índice de módulos? | [app/main.py:129](../app/main.py) | Front Controller / registro de routers |
-| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:726](../app/services/ml_service.py) | **Strategy** |
-| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:697](../app/services/ml_service.py) | **Pipeline** |
-| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:711](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
-| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:792](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
-| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:830](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
-| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:179](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
-| ¿Cómo soportás 9 bancos distintos? | [app/services/csv_service.py:41](../app/services/csv_service.py) | **Adapter** / capa anticorrupción |
-| ¿Dónde detectás el formato del archivo? | [app/services/csv_service.py:243](../app/services/csv_service.py) | Adapter (heurística local) |
-| ¿Cómo evitás contar transferencias propias? | [app/services/csv_service.py:738](../app/services/csv_service.py) | Regla de dominio |
+| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:727](../app/services/ml_service.py) | **Strategy** |
+| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:698](../app/services/ml_service.py) | **Pipeline** |
+| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:712](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
+| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:793](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
+| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:831](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
+| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:203](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
+| ¿Cómo soportás 9 bancos distintos? | [app/services/csv_service.py:42](../app/services/csv_service.py) | **Adapter** / capa anticorrupción |
+| ¿Dónde detectás el formato del archivo? | [app/services/csv_service.py:244](../app/services/csv_service.py) | Adapter (heurística local) |
+| ¿Cómo evitás contar transferencias propias? | [app/services/csv_service.py:786](../app/services/csv_service.py) | Regla de dominio |
 | ¿Qué pasa si el usuario ya corrigió esa categoría? | [app/services/ia_service.py:409](../app/services/ia_service.py) | **Cache-Aside** + Chain of Responsibility |
 | ¿Y si se cae la API de IA? | [app/services/ia_service.py:360](../app/services/ia_service.py) | Fallback determinístico |
 | ¿Cómo se crean las alertas? | [app/services/auditoria.py:59](../app/services/auditoria.py) | **Factory Method** |
 | ¿Repite alertas que ya resolví? | [app/services/auditoria.py:77](../app/services/auditoria.py) | Idempotencia por huella |
-| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:249](../app/services/auditoria.py) | **Strategy** de reglas |
+| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:248](../app/services/auditoria.py) | **Strategy** de reglas |
 | ¿Cómo detectás montos atípicos? | [app/services/auditoria.py:136](../app/services/auditoria.py) | Desvío estándar sobre 6 meses |
-| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:535](../app/services/reportes_service.py) | **Builder** |
-| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:590](../app/services/reportes_service.py) | **Template Method** |
-| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:66](../app/services/monotributo_service.py) | Servicio de dominio |
-| ¿Cómo maneja el frontend el token? | [frontend/src/api.js:23](../frontend/src/api.js) | **Interceptor** · Singleton |
-| ¿Qué pasa si expira la sesión? | [frontend/src/api.js:32](../frontend/src/api.js) | Interceptor de respuesta |
+| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:517](../app/services/reportes_service.py) | **Builder** |
+| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:572](../app/services/reportes_service.py) | **Template Method** |
+| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:67](../app/services/monotributo_service.py) | Servicio de dominio |
+| ¿Cómo maneja el frontend el token? | [frontend/src/api.js:24](../frontend/src/api.js) | **Interceptor** · Singleton |
+| ¿Qué pasa si expira la sesión? | [frontend/src/api.js:36](../frontend/src/api.js) | Interceptor de respuesta |
 | ¿Cómo bloqueás pantallas sin login? | [frontend/src/App.js:31](../frontend/src/App.js) | **Guard** / Protected Route |
-| ¿De dónde sale cada recomendación? | [app/services/recomendaciones_service.py:443](../app/services/recomendaciones_service.py) | Reglas con su dato de origen (HU-12) |
+| ¿De dónde sale cada recomendación? | [app/services/recomendaciones_service.py:468](../app/services/recomendaciones_service.py) | Reglas con su dato de origen (HU-12) |
 | ¿Qué viaja a Groq y cómo controlás lo que vuelve? | [app/services/ia_service.py:172](../app/services/ia_service.py) · [:289](../app/services/ia_service.py) | Minimización de datos + verificación de cifras |
-| ¿Cómo sabés que la proyección no quedó vieja? | [app/services/prophet_service.py:216](../app/services/prophet_service.py) | Firma de los ingresos |
-| ¿Qué escala usa un mes pasado? | [app/services/monotributo_service.py:45](../app/services/monotributo_service.py) | Catálogo versionado por fecha de vigencia |
-| ¿Qué pasa si falta la clave de firma? | [app/services/auth.py:57](../app/services/auth.py) | Fail-fast al arrancar |
+| ¿Cómo sabés que la proyección no quedó vieja? | [app/services/prophet_service.py:249](../app/services/prophet_service.py) | Firma de los ingresos |
+| ¿Qué escala usa un mes pasado? | [app/services/monotributo_service.py:46](../app/services/monotributo_service.py) | Catálogo versionado por fecha de vigencia |
+| ¿Qué pasa si falta la clave de firma? | [app/services/auth.py:65](../app/services/auth.py) | Fail-fast al arrancar |
 | ¿Dónde está el descargo de responsabilidad? | [frontend/src/components/AvisoAlcance.js](../frontend/src/components/AvisoAlcance.js) | Single Source of Truth |
 
 ---
@@ -110,7 +110,7 @@ alternativa descarté**. Este es el guion de la respuesta oral.
 
 ### 3.1 · Strategy — selección de algoritmo de clasificación
 
-**Dónde:** `app/services/ml_service.py:726` (`_elegir_algoritmo`) y `:699`
+**Dónde:** `app/services/ml_service.py:727` (`_elegir_algoritmo`) y `:698`
 (`_crear_pipeline`).
 
 ```python
@@ -118,24 +118,30 @@ def _elegir_algoritmo(n_ejemplos: int) -> str:
     return "svm" if n_ejemplos >= 100 else "naive_bayes"
 ```
 
-**Qué resuelve.** El clasificador tiene que funcionar el primer día (usuario sin
-datos, solo el dataset base de 600 ejemplos) y también cuando el usuario ya
-acumuló cientos de gastos propios. Son dos escenarios estadísticos distintos y
-ningún algoritmo gana en los dos.
+**Qué resuelve.** La tesis (pág. 14) define la estrategia: Naive Bayes
+multinomial para conjuntos chicos y SVM lineal desde 100 ejemplos. El
+clasificador tiene que poder cambiar de algoritmo según el volumen sin que lo
+note nadie más.
 
-**Por qué así.** Naive Bayes multinomial es fuerte con pocos datos porque asume
-independencia entre términos: con el dataset base no sobreajusta. LinearSVC busca
-el hiperplano de máximo margen, y eso necesita volumen — pero con más de 100
-ejemplos propios supera claramente a Naive Bayes en este dominio.
+**Por qué así.** Naive Bayes asume independencia entre términos y la literatura
+lo recomienda con pocos datos; LinearSVC busca el hiperplano de máximo margen y
+aprovecha mejor el volumen.
+
+**Lo que mostró la medición.** Con los 600 ejemplos (validación cruzada de 5
+partes): **SVM 76 %, Naive Bayes 74 %**. Con 96 ejemplos, en 50 sorteos: SVM
+46 %, Naive Bayes 44 % (SVM gana 34 de 50). Como el modelo, base o personal,
+siempre incluye los 600 de base, en la práctica corre SVM y Naive Bayes no llega
+a activarse.
 
 El punto del patrón es que **el resto del código no sabe cuál se usó**.
 `clasificar_gasto()` pide un pipeline y lo usa; la familia de algoritmos es
 intercambiable detrás de una interfaz común (`fit` / `predict`), que es
 exactamente la definición de Strategy.
 
-**Alternativa descartada:** fijar un solo algoritmo. Se descartó porque medí
-ambos: con el dataset base, Naive Bayes rinde mejor; con datos de usuario, SVM.
-Elegir uno solo significaba aceptar el peor caso en la mitad de los escenarios.
+**Alternativa descartada:** fijar el algoritmo en el código. Hoy daría el mismo
+resultado (SVM), pero ataría el clasificador a una medición sobre este
+conjunto. Con Strategy, cambiar de algoritmo o sumar uno es tocar
+`_elegir_algoritmo`, sin cambiar a quién lo usa.
 
 **Segunda alternativa descartada:** un modelo de lenguaje (Groq) clasificando
 cada gasto. Descartada por **soberanía de datos**: implicaba enviar la
@@ -144,7 +150,7 @@ está documentada en el docstring de `clasificar_gasto()`.
 
 ### 3.2 · Strategy + degradación elegante — proyecciones
 
-**Dónde:** `app/services/prophet_service.py:179` (`generar_proyecciones`).
+**Dónde:** `app/services/prophet_service.py:203` (`generar_proyecciones`).
 
 **Qué resuelve.** Prophet ajusta una tendencia sobre los totales de los **meses
 cerrados** (el mes en curso no terminó y bajaría la serie). Se usa con al menos
@@ -166,7 +172,7 @@ necesita entender qué hace la herramienta.
 
 ### 3.3 · Adapter (capa anticorrupción) — importación bancaria
 
-**Dónde:** `app/services/csv_service.py:41` (diccionarios de sinónimos) y `:197`
+**Dónde:** `app/services/csv_service.py:42` (diccionarios de sinónimos) y `:244`
 (`detectar_columnas_csv`).
 
 **Qué resuelve.** Nueve bancos argentinos (Galicia, Santander, BBVA, Macro,
@@ -216,7 +222,7 @@ aprenda ese caso puntual; la corrección explícita sí lo garantiza.
 ### 3.5 · Factory Method + idempotencia — auditoría
 
 **Dónde:** `app/services/auditoria.py:59` (`_crear_alerta`), `:77`
-(`_huella_alerta`), `:249` (`ejecutar_auditoria`).
+(`_huella_alerta`), `:248` (`ejecutar_auditoria`).
 
 **Qué resuelve.** Hay cinco detectores (duplicados, montos atípicos, facturas
 impagas, monotributo sin pagar, transferencias entre cuentas propias). Cada uno
@@ -246,7 +252,7 @@ polimorfismo necesario en Python, sin el peso de una jerarquía.
 
 ### 3.6 · Builder + Template Method — reporte PDF
 
-**Dónde:** `app/services/reportes_service.py:535` (`generar_pdf_mensual`), `:457`
+**Dónde:** `app/services/reportes_service.py:517` (`generar_pdf_mensual`), `:572`
 (`_pie_pagina`).
 
 **Builder:** cada `_seccion_*()` devuelve una lista de elementos (encabezado,
@@ -266,7 +272,7 @@ un contenedor liviano y un PDF idéntico en cualquier máquina.
 
 ### 3.7 · Inyección de dependencias + Guard — seguridad de las rutas
 
-**Dónde:** `app/dependencies.py:40` (`get_current_user`), `app/database.py:38`
+**Dónde:** `app/dependencies.py:40` (`get_current_user`), `app/database.py:40`
 (`get_db`).
 
 **Qué resuelve.** Cada endpoint privado necesita dos cosas: una sesión de base
@@ -295,7 +301,7 @@ explícita, endpoint por endpoint.
 
 ### 3.8 · Interceptor — cliente HTTP del frontend
 
-**Dónde:** `frontend/src/api.js:23` (request) y `:32` (response).
+**Dónde:** `frontend/src/api.js:24` (request) y `:36` (response).
 
 **Qué resuelve.** Trece pantallas hacen llamadas a la API. Las dos
 preocupaciones transversales — adjuntar el token y reaccionar a un 401 —
@@ -340,7 +346,7 @@ cambia una vez.
 
 ### 4.1 · Confianza del SVM — por qué no softmax
 
-**Dónde:** `app/services/ml_service.py:830` (`_confianza_svm`).
+**Dónde:** `app/services/ml_service.py:831` (`_confianza_svm`).
 
 LinearSVC no devuelve probabilidades, devuelve distancias al hiperplano
 (`decision_function`). Aplicar softmax sobre esas distancias **no funciona**
@@ -387,7 +393,7 @@ defensa.
 ### 4.4 · Límite de responsabilidad del sistema
 
 **Dónde:** `frontend/src/components/AvisoAlcance.js` (6 pantallas) y
-`app/services/reportes_service.py:515` (pie del PDF).
+`app/services/reportes_service.py:497` (pie del PDF).
 
 > *FreelanceControl informa, proyecta y alerta sobre la base de los datos que
 > usted carga. No constituye asesoramiento contable, fiscal ni financiero, y no
@@ -429,5 +435,5 @@ contador matriculado"* (un test la busca en el PDF generado).
 | Recomendaciones | `recomendaciones.py` | `recomendaciones_service.py` | — |
 | Reportes PDF | `reportes.py` | `reportes_service.py` | — |
 
-**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 444 tests
+**Volumen:** 8.364 líneas de backend · 5.454 de frontend · 446 pruebas del backend + 16 de pantalla
 automatizados · 9 tablas · 12 migraciones · 12 routers · 15 servicios · 13 pantallas.

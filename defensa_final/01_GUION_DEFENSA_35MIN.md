@@ -70,12 +70,12 @@ Este cuadro es el corazón de la defensa. Cada pedido tiene su momento y su fras
 |---|---|---|---|---|
 | 1 | El problema | 0:00 – 3:00 | 3' | Slides 1–4 |
 | 2 | La propuesta y sus **límites** | 3:00 – 6:00 | 3' | Slides 5–9 |
-| 3 | Videos | 6:00 – 10:00 | 4' | Video |
-| 4 | **Demo en vivo** | 10:00 – 24:00 | 14' | App |
+| 3 | Video institucional | 6:00 – 8:00 | 2' | Video |
+| 4 | **Demo en vivo** | 8:00 – 24:00 | 16' | App |
 | 5 | Código, **seguridad** y **ML** | 24:00 – 33:00 | 9' | Editor + slides 12–23 |
 | 6 | Cierre | 33:00 – 35:00 | 2' | Slides 24–27 |
 
-**Regla de oro del reloj:** si a los 10:00 no arrancaste la demo, cortá lo que
+**Regla de oro del reloj:** si a los 8:00 no arrancaste la demo, cortá lo que
 falte y arrancá igual. **Lo que nunca se recorta:** 4.5 Monotributo y 4.6
 Proyecciones (lo pidió el corrector de la 4ª entrega) y 5.3 Seguridad (fue la
 nota más baja de la 3ª).
@@ -186,44 +186,47 @@ y en el Resumen se ve sin bajar.
 - *¿Y en Ingresos, Gastos o Facturas no hay aviso?* → "Ahí solo se cargan y
   listan datos: no hay nada que se pueda confundir con un consejo."
 
-> ⏱ **6:00** — arrancan los videos.
+> ⏱ **6:00** — arranca el video.
 
 ---
 
-# Bloque 3 · Videos (6:00 – 10:00)
+# Bloque 3 · Video institucional (6:00 – 8:00)
 
-**Pantalla:** video a pantalla completa, volumen al máximo. Dos videos seguidos,
-los dos en el Escritorio:
+**Pantalla:** `FreelanceControl_Institucional.mp4` (1:43), en el Escritorio, a
+pantalla completa y con el volumen al máximo: el problema, la solución y el
+alcance.
 
-1. `FreelanceControl_Institucional.mp4` (1:43) — el problema, la solución y el alcance.
-2. `FreelanceControl_Demo_TFG_v2.mp4` (1:41) — el recorrido por la aplicación.
+> "Antes de la demo en vivo les muestro un video corto con el problema y la
+> solución."
 
-> "Antes de la demo en vivo les muestro dos videos cortos: uno del problema y
-> la solución, y otro con el recorrido de la aplicación."
-
-**Durante los videos no hables:** tienen narración propia. Usá esos tres
-minutos y medio para respirar, tomar agua y mirar el reloj. Es a propósito que
-estén antes del tramo más largo.
+**Durante el video no hables:** tiene narración propia. Usá ese minuto y
+cuarenta para respirar, tomar agua y mirar el reloj. Es a propósito que esté
+antes del tramo más largo.
 
 Al terminar:
 
-> "Eso es lo grabado. Ahora, lo mismo en vivo."
+> "Ahora, el sistema en vivo."
 
-**Para vos:** si preferís pasar uno solo, pasá el institucional. Los dos
-minutos que sobran van al clasificador (4.2), que es lo que más le interesa
-al tribunal.
+**Para vos:** se pasa **solo el institucional** (decidido el 01/10). El de la
+demo (v2) quedó viejo: dice que "la inteligencia artificial" da las
+recomendaciones y "cuánto te conviene ahorrar", nombra cuatro detectores y en
+la portada dice "Analista de Sistemas". Contradice el minuto más importante
+(pedido 1). Queda **solo como último plan B** (ver "Si algo falla en vivo").
+Los dos minutos que libera van al clasificador (4.2).
 
-> ⏱ **10:00**
+> ⏱ **8:00**
 
 ---
 
-# Bloque 4 · Demo en vivo (10:00 – 24:00)
+# Bloque 4 · Demo en vivo (8:00 – 24:00)
 
 > **IDEA FUERZA DE TODA LA DEMO:** cada pantalla resuelve uno de los cuatro
 > problemas del bloque 1. **Nombrá el problema antes de mostrar la solución.**
 
 ### Antes de entrar a la sala
 
+- [ ] **Abrí Docker Desktop** y esperá a que diga que está corriendo (hasta un
+      minuto). Sin eso, ningún comando de Docker anda.
 - [ ] Esa mañana: `docker compose up -d` y esperar los tres contenedores sanos.
 - [ ] `docker compose exec api python seed_demo_defensa.py` → deja los datos
       exactos del ensayo (enero a septiembre). **No** importes el extracto ni
@@ -231,18 +234,23 @@ al tribunal.
 - [ ] Login en `http://localhost:3000` con `demo@freelancecontrol.com` / `demo1234`.
 - [ ] Pestañas abiertas: Dashboard · Gastos · Importar · Auditoría · Monotributo ·
       Proyecciones · Resumen · Recomendaciones.
+      ⚠️ Cada pantalla carga sus datos **al abrirse**. Como las abriste antes de
+      importar el extracto, **al pasar a cada pestaña después de la importación,
+      recargala (`Cmd+R`)**: si no, Monotributo sigue diciendo que la cuota de
+      octubre no está paga y el Dashboard muestra octubre en cero.
 - [ ] El extracto a mano: Escritorio → `TFG_Defensa` → `demo` → `extracto_28sep_14oct.csv`.
 - [ ] Zoom del navegador al 110 %. Notificaciones en silencio.
 - [ ] Internet (Wi-Fi o el celular compartido) para el Resumen. Si no hay, igual
       funciona: cae a la plantilla local y lo explicás (ver 4.7).
-- [ ] Los dos videos abiertos y minimizados: son el plan B.
+- [ ] El video institucional listo para el bloque 3; el de la demo (v2)
+      minimizado, solo como último plan B.
 - [ ] El editor abierto en el proyecto, con estas pestañas para el bloque 5:
       `app/services/auth.py`, `app/dependencies.py`, `app/services/ml_service.py`,
       `app/services/csv_service.py`, `app/services/ia_service.py`.
 
 ---
 
-### 4.1 · Dashboard (10:00 – 10:30) · 30"
+### 4.1 · Dashboard (8:00 – 8:30) · 30"
 
 > **IDEA FUERZA:** una sola pantalla para lo que hoy está en cinco lugares.
 
@@ -257,7 +265,7 @@ No te quedes. Treinta segundos y seguís.
 
 ---
 
-### 4.2 · Clasificador de gastos (10:30 – 13:00) · 2'30" — pedido 2
+### 4.2 · Clasificador de gastos (8:30 – 13:00) · 4'30" — pedido 2
 
 **Problema:** cargar y categorizar cada gasto a mano.
 
@@ -281,6 +289,15 @@ No te quedes. Treinta segundos y seguís.
    > "Cuando cargué el primer gasto, como la usuaria ya tenía más de veinte
    > gastos propios, el sistema le entrenó su modelo personal en segundo plano.
    > No toqué nada."
+5. **(Los 2 minutos que liberó el video.)** En el mismo Clasificador, escribí
+   `servicio` → sale **Servicios con 0,50**.
+   > "Antes de empezar, con el modelo base, esta palabra daba 0,28: no llegaba al
+   > umbral y pedía revisión. Ahora, con el modelo de esta usuaria, que ya vio
+   > mis gastos y mi corrección, la clasifica. Mismo texto, otro modelo: cada
+   > usuario tiene el suyo."
+   Y `diseño de logo` → **Marketing, 0,54**: "lo clasifica, pero es justo la
+   zona donde Marketing y Servicios comparten vocabulario: la más floja del
+   modelo".
 
 **Los límites, en voz alta (pedido 2 — no los saltees):**
 
@@ -341,7 +358,7 @@ primera categoría a la segunda: si empatan, vale 0. Lo explicás en 5.4.
 4. Señalá los que quedaron en "Otros" (coworking, Telecentro, el pago de la
    tarjeta): "cuando no está seguro, no inventa".
 5. Confirmar → **29 movimientos** (3 cobros y 26 gastos).
-6. Dashboard (15"): octubre ya tiene **$ 3.460.000** de ingresos. "Esto antes era
+6. Dashboard → **`Cmd+R`** (15"): octubre ya tiene **$ 3.460.000** de ingresos. "Esto antes era
    una tarde de planilla."
 
 **El remate:**
@@ -438,6 +455,8 @@ acusación de error.
 
 > **IDEA FUERZA:** no dice "te pasaste". Dice **cuándo te pasarías**, a este ritmo.
 
+**Hacé:** pestaña Monotributo → **`Cmd+R`** (se abrió antes del extracto).
+
 > "Esta es la pantalla que responde la pregunta que originó el trabajo.
 >
 > Arriba, la categoría —la G— y lo facturado en el año contra su tope. Pero el
@@ -508,6 +527,8 @@ proyectado.
 > **IDEA FUERZA:** proyecta con una **banda**, no con una promesa, y funciona
 > también para el que recién empieza.
 
+**Hacé:** pestaña Proyecciones → **`Cmd+R`**.
+
 > ⚠️ El gráfico tarda unos 2 segundos en animarse: **esperá antes de hablar**.
 
 > "Proyección a seis meses con Prophet, un modelo que separa la historia en
@@ -560,7 +581,7 @@ Si no hay internet, sale el resumen de la plantilla local con la etiqueta
 "Sin IA" y el motivo: decí "sin conexión, el sistema sigue andando con su
 plantilla local" y seguí.
 
-**Recomendaciones (45"):**
+**Recomendaciones (45"):** pestaña Recomendaciones → **`Cmd+R`**.
 
 > **IDEA FUERZA:** son **reglas fijas**, y cada una muestra **de dónde sale**.
 > Sugieren, no deciden.
@@ -651,7 +672,7 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **444 automáticas**, que corren contra una base
+> Eso me dio dos cosas. Pruebas: **446 automáticas**, que corren contra una base
 > en memoria, sin tocar la real. Y reutilización: la regla que decide si la
 > cuota del monotributo está paga es una sola función, y la usan el módulo
 > fiscal, la auditoría y el reporte PDF, sin duplicarla."
@@ -915,7 +936,9 @@ Tres pasos, en este orden:
 1. **Recargá la página** (`Cmd+R`). Resuelve casi todo.
 2. **Pasá al módulo siguiente:** "tengo un problema de entorno, sigo y vuelvo al
    final si da el tiempo".
-3. **Mostralo en el video**, que quedó minimizado: "lo tengo grabado".
+3. **Mostralo en el video de la demo (v2)**, que quedó minimizado: "lo tengo
+   grabado". Es anterior a la revisión final: si lo pasás, aclará que las
+   recomendaciones hoy son reglas fijas, sin IA, y que los detectores son cinco.
 
 **Nunca:** quedarte en silencio tocando la aplicación. Treinta segundos de
 silencio con algo roto en pantalla es lo peor que puede pasar.
@@ -981,7 +1004,7 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **444** del backend + 16 de pantalla |
+| Pruebas automatizadas | **446** del backend + 16 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
@@ -990,7 +1013,10 @@ técnica más que una respuesta forzada.
 | Costo de desarrollo | **$ 4.400.000** |
 | Trabajo por cuenta propia (INDEC 2025) | **24,5 %** del empleo · 3,3 millones de personas |
 
-Cifras de la demo (simulación del 14/10): 29 movimientos importados (3 cobros y
+Cifras de la demo (simulación del 14/10, repetida el 01/10): jetbrains → Software
+78 %; `servicio mensual` → Otros 0,25, a revisión; Estado ML 667 ejemplos (693
+después del extracto); `servicio` 0,28 con el modelo base y 0,50 con el propio;
+29 movimientos importados (3 cobros y
 26 gastos), $ 3.460.000 cobrados en octubre, semáforo rojo 109,4 % con lo
 facturado real en 75,5 % ($ 40.760.000), supera en diciembre, sugiere la H,
 se esperan $ 7,1 millones por mes, banda de noviembre de 3,6 a 10,7 millones,

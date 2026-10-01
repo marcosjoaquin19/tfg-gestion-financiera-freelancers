@@ -270,6 +270,7 @@ kicker(s, "Alcance implementado", TEAL);
 bloque(s, "Bloque 2 · 5:00");
 title(s, "No es una nota al pie: está en el producto");
 const avisos = [
+  ["Dashboard", "La proyección es una estimación y la recomendación, orientativa"],
   ["Monotributo", "La categorización definitiva la determina ARCA"],
   ["Proyecciones", "Son estimaciones estadísticas, no una garantía de ingresos"],
   ["Recomendaciones", "Reglas sobre sus propios datos, de carácter orientativo"],
@@ -277,14 +278,15 @@ const avisos = [
   ["Auditoría", "Señala posibles inconsistencias, no dictamina un error"],
   ["Reporte PDF", "Además: verificar contra la documentación respaldatoria"],
 ];
+// Seis pantallas (como dice el guion) y el PDF, a lo ancho en la última fila.
 avisos.forEach((a, i) => {
   const col = i % 2, row = Math.floor(i / 2);
-  const x = 0.7 + col * 6.1, y = 2.2 + row * 1.35;
-  const esPdf = i === 5;
-  card(s, x, y, 5.75, 1.1, esPdf ? AMARILLO : TEAL);
-  s.addText(a[0], { x:x+0.4, y:y+0.12, w:5.1, h:0.42, fontFace:FH, fontSize:15.5, bold:true,
+  const esPdf = i === 6;
+  const x = 0.7 + col * 6.1, y = 2.05 + row * 1.0, w = esPdf ? 11.85 : 5.75;
+  card(s, x, y, w, 0.86, esPdf ? AMARILLO : TEAL);
+  s.addText(a[0], { x:x+0.4, y:y+0.07, w:w-0.65, h:0.38, fontFace:FH, fontSize:14.5, bold:true,
     color: esPdf ? "8A6410" : INK });
-  s.addText(a[1], { x:x+0.4, y:y+0.55, w:5.1, h:0.45, fontFace:FB, fontSize:12, color:TEXTO });
+  s.addText(a[1], { x:x+0.4, y:y+0.44, w:w-0.65, h:0.36, fontFace:FB, fontSize:11.5, color:TEXTO });
 });
 s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:6.22, w:11.9, h:0.72, fill:{color:NAVY}, rectRadius:0.1 });
 s.addText("El reporte PDF es el único artefacto que sale de la aplicación y circula fuera de ella: tiene que llevar el límite consigo.", {
@@ -328,13 +330,13 @@ footer(s);
 s = slide(true);
 s.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.28, h:7.5, fill:{color:MINT} });
 bloque(s, "Bloque 3 · 6:00", true);
-s.addText("VIDEO EXPLICATIVO", { x:0.9, y:2.6, w:11.9, h:0.5, fontFace:FB, fontSize:14,
+s.addText("VIDEO INSTITUCIONAL", { x:0.9, y:2.6, w:11.9, h:0.5, fontFace:FB, fontSize:14,
   bold:true, color:MINT, charSpacing:3 });
-s.addText("El sistema, de principio a fin", { x:0.85, y:3.15, w:11.7, h:1.1,
+s.addText("El problema y la propuesta", { x:0.85, y:3.15, w:11.7, h:1.1,
   fontFace:FH, fontSize:44, bold:true, color:WHITE });
-s.addText("Recorrido del ciclo completo de uso, en el mismo orden en que fueron diagnosticados los problemas.", {
+s.addText("Por qué hace falta, qué resuelve y hasta dónde llega. Después, el sistema en vivo.", {
   x:0.9, y:4.3, w:10.5, h:0.6, fontFace:FB, fontSize:17, color:ICE });
-s.addText("▶   4 minutos", { x:0.9, y:5.2, w:5, h:0.6, fontFace:FH, fontSize:22, bold:true, color:MINT });
+s.addText("▶   1:43", { x:0.9, y:5.2, w:5, h:0.6, fontFace:FH, fontSize:22, bold:true, color:MINT });
 footer(s);
 
 // =============================================================================
@@ -344,26 +346,29 @@ footer(s);
 // ── 11 · Guion de la demo ───────────────────────────────────────────────────
 s = slide(true);
 kicker(s, "Demostración en vivo", MINT);
-bloque(s, "Bloque 4 · 10:00", true);
+bloque(s, "Bloque 4 · 8:00", true);
 title(s, "El recorrido", WHITE);
+// Los ocho pasos del bloque 4 del guion (4.1 a 4.8), en el mismo orden.
 const demo = [
-  ["1", "Clasificador de gastos", "Sugerencia automática, umbral de confianza y aprendizaje por corrección", MINT],
-  ["2", "Importación bancaria", "Nueve formatos de homebanking, detección heurística local", TEAL_L],
-  ["3", "Auditoría automatizada", "Cinco detectores sobre los registros del usuario", TEAL_L],
-  ["4", "Estado fiscal", "Año en curso + proyección hasta diciembre contra el límite de la categoría", AMARILLO],
-  ["5", "Proyección de ingresos", "Seis meses con intervalo de confianza y arranque en frío", TEAL_L],
-  ["6", "Reporte PDF", "Documento mensual consolidado para el contador", MINT],
+  ["1", "Panel principal", "El mes, la proyección y la recomendación en una pantalla", TEAL_L],
+  ["2", "Clasificador de gastos", "Sugerencia automática, umbral de confianza y aprendizaje por corrección", MINT],
+  ["3", "Importación bancaria", "Nueve formatos de homebanking, detección heurística local", TEAL_L],
+  ["4", "Auditoría automatizada", "Cinco detectores sobre los registros del usuario", TEAL_L],
+  ["5", "Estado fiscal", "Año en curso + proyección hasta diciembre contra el límite de la categoría", AMARILLO],
+  ["6", "Proyección de ingresos", "Seis meses con intervalo de confianza y arranque en frío", AMARILLO],
+  ["7", "Resumen y recomendaciones", "El mes en palabras (único uso de IA externa) y reglas fijas que sugieren", TEAL_L],
+  ["8", "Reporte PDF", "Documento mensual consolidado para el contador", MINT],
 ];
 demo.forEach((d, i) => {
   const col = i % 2, row = Math.floor(i / 2);
-  const x = 0.7 + col * 6.1, y = 2.15 + row * 1.5;
-  s.addShape(pptx.ShapeType.roundRect, { x, y, w:5.75, h:1.25, fill:{color:NAVY2},
+  const x = 0.7 + col * 6.1, y = 2.0 + row * 1.12;
+  s.addShape(pptx.ShapeType.roundRect, { x, y, w:5.75, h:0.98, fill:{color:NAVY2},
     line:{color:d[3], width:1}, rectRadius:0.08 });
-  s.addShape(pptx.ShapeType.roundRect, { x:x+0.28, y:y+0.33, w:0.6, h:0.6, fill:{color:d[3]}, rectRadius:0.3 });
-  s.addText(d[0], { x:x+0.28, y:y+0.33, w:0.6, h:0.6, fontFace:FH, fontSize:20, bold:true,
+  s.addShape(pptx.ShapeType.roundRect, { x:x+0.25, y:y+0.21, w:0.56, h:0.56, fill:{color:d[3]}, rectRadius:0.28 });
+  s.addText(d[0], { x:x+0.25, y:y+0.21, w:0.56, h:0.56, fontFace:FH, fontSize:18, bold:true,
     color:NAVY, align:"center", valign:"middle" });
-  s.addText(d[1], { x:x+1.05, y:y+0.2, w:4.5, h:0.45, fontFace:FH, fontSize:15.5, bold:true, color:WHITE });
-  s.addText(d[2], { x:x+1.05, y:y+0.65, w:4.5, h:0.5, fontFace:FB, fontSize:11.5, color:ICE });
+  s.addText(d[1], { x:x+0.98, y:y+0.08, w:4.6, h:0.4, fontFace:FH, fontSize:15, bold:true, color:WHITE });
+  s.addText(d[2], { x:x+0.98, y:y+0.48, w:4.6, h:0.42, fontFace:FB, fontSize:11, color:ICE });
 });
 s.addText("Cada módulo responde a una de las cuatro problemáticas del diagnóstico.", {
   x:0.7, y:6.72, w:11.9, h:0.4, fontFace:FB, fontSize:13, italic:true, color:GREY, align:"center" });
@@ -397,7 +402,7 @@ bloque(s, "Bloque 5 · 24:00");
 title(s, "Tres contenedores, una red interna");
 const capas = [
   ["Frontend", "React 19 · React Router · Axios · Chart.js · 13 pantallas", "Puerto 3000", TEAL],
-  ["Backend API", "FastAPI 0.111 · Python 3.11 · ASGI · JWT · Pydantic", "Puerto 8000", MINT],
+  ["Backend API", "FastAPI 0.110 · Python 3.11 · ASGI · JWT · Pydantic", "Puerto 8000", MINT],
   ["Base de datos", "PostgreSQL 15 · SQLAlchemy 2.0 · Alembic · 9 tablas", "Puerto 5432", NAVY2],
 ];
 capas.forEach((c, i) => {
@@ -412,7 +417,7 @@ capas.forEach((c, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:9.35, y:2.25, w:3.25, h:4.05, fill:{color:NAVY}, rectRadius:0.1 });
 s.addText("STACK CLAVE", { x:9.6, y:2.47, w:2.8, h:0.4, fontFace:FB, fontSize:12, bold:true, color:MINT, charSpacing:2 });
 ["scikit-learn — TF-IDF + SVM", "Prophet — series temporales", "ReportLab — PDF programático",
- "Groq — solo datos agregados", "Docker Compose", "pytest — 390 pruebas"].forEach((t, i) => {
+ "Groq — solo datos agregados", "Docker Compose", "pytest — 446 pruebas"].forEach((t, i) => {
   s.addText("›", { x:9.6, y:3.0 + i * 0.52, w:0.3, h:0.4, fontFace:FB, fontSize:15, color:MINT, bold:true });
   s.addText(t, { x:9.9, y:3.0 + i * 0.52, w:2.6, h:0.45, fontFace:FB, fontSize:11.5, color:ICE, valign:"middle" });
 });
@@ -423,11 +428,11 @@ footer(s);
 // ── 14 · Las cuatro capas del backend ───────────────────────────────────────
 s = slide(true);
 kicker(s, "Arquitectura en capas", MINT);
-bloque(s, "Bloque 5 · 25:00", true);
+bloque(s, "Bloque 5 · 24:30", true);
 title(s, "Un router no calcula nada", WHITE);
 const back = [
   ["routers/", "12 archivos", "HTTP: rutas, códigos de estado y permisos", TEAL_L],
-  ["schemas/", "6 archivos", "DTO: validación de entrada y salida con Pydantic", TEAL_L],
+  ["schemas/", "7 archivos", "DTO: validación de entrada y salida con Pydantic", TEAL_L],
   ["services/", "15 archivos", "LÓGICA DE NEGOCIO — el corazón del trabajo", MINT],
   ["models/", "9 archivos", "ORM: mapeo objeto-relacional con SQLAlchemy", TEAL_L],
 ];
@@ -447,8 +452,8 @@ back.forEach((b, i) => {
 s.addShape(pptx.ShapeType.roundRect, { x:8.85, y:2.1, w:3.75, h:3.9, fill:{color:NAVY2},
   line:{color:TEAL, width:1}, rectRadius:0.1 });
 s.addText("QUÉ ME DIO", { x:9.15, y:2.32, w:3.2, h:0.35, fontFace:FB, fontSize:11.5, bold:true, color:MINT, charSpacing:2 });
-[["Testeabilidad", "390 pruebas contra SQLite en memoria, sin levantar HTTP. Unos 2 minutos."],
- ["Reutilización", "La regla de la cuota la usan el módulo fiscal y la auditoría."],
+[["Testeabilidad", "446 pruebas contra SQLite en memoria, sin levantar HTTP. Unos 2 minutos."],
+ ["Reutilización", "La regla de la cuota la usan la pantalla fiscal, la auditoría y el PDF."],
  ["Un solo lugar", "El formato de moneda lo comparten las alertas y el PDF."]].forEach((v, i) => {
   const y = 2.8 + i * 1.05;
   s.addText(v[0], { x:9.15, y, w:3.2, h:0.35, fontFace:FH, fontSize:14.5, bold:true, color:WHITE });
@@ -463,7 +468,7 @@ footer(s);
 // ── 15 · Mapa de módulos ────────────────────────────────────────────────────
 s = slide(false);
 kicker(s, "Mapa de módulos", TEAL);
-bloque(s, "Bloque 5 · 26:00");
+bloque(s, "Bloque 5 · 25:00");
 title(s, "Dónde se maneja cada cosa");
 const filas = [
   ["Registro y login",            "auth",            "auth",                 "usuario"],
@@ -493,20 +498,20 @@ s.addTable(
   { x:0.7, y:2.15, w:11.9, colW:[3.4, 2.4, 3.3, 2.8], rowH:0.34,
     fontFace:FB, fontSize:12, border:{ type:"solid", color:BORDE, pt:0.5 }, valign:"middle" }
 );
-s.addText("8.063 líneas de backend  ·  5.344 de frontend  ·  390 pruebas  ·  9 tablas  ·  13 pantallas", {
+s.addText("8.364 líneas de backend  ·  5.454 de frontend  ·  446 pruebas  ·  9 tablas  ·  13 pantallas", {
   x:0.7, y:6.65, w:11.9, h:0.45, fontFace:FB, fontSize:13, bold:true, color:TEAL, align:"center" });
 footer(s);
 
 // ── 16 · Panorama de patrones ───────────────────────────────────────────────
 s = slide(true);
 kicker(s, "Patrones de diseño", MINT);
-bloque(s, "Bloque 5 · 26:30", true);
-title(s, "32 decisiones anotadas en el código", WHITE);
+bloque(s, "Bloque 5 · 25:30", true);
+title(s, "36 decisiones anotadas en el código", WHITE);
 s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:2.0, w:11.9, h:0.8, fill:{color:"0B1B2B"},
   line:{color:MINT, width:1}, rectRadius:0.08 });
 s.addText('grep -rn "PATRÓN:" app frontend/src', { x:1.05, y:2.0, w:7, h:0.8,
   fontFace:FM, fontSize:16, color:MINT, valign:"middle" });
-s.addText("→  32 resultados en 16 archivos", { x:8.2, y:2.0, w:4.2, h:0.8,
+s.addText("→  36 resultados en 20 archivos", { x:8.2, y:2.0, w:4.2, h:0.8,
   fontFace:FB, fontSize:14, color:ICE, valign:"middle" });
 
 const pats = [
@@ -544,28 +549,28 @@ footer(s);
 // ── 17 · Patrón 1: Strategy ─────────────────────────────────────────────────
 s = slide(false);
 kicker(s, "Patrón 1 de 3 · Strategy", TEAL);
-bloque(s, "Bloque 5 · 27:00");
-title(s, "Dos algoritmos, dos escenarios");
+bloque(s, "Bloque 5 · 25:45");
+title(s, "Dos algoritmos, una misma interfaz");
 // Se parte el return en varias líneas: en una sola no entra en el ancho
 // de la caja y LibreOffice lo corta a mitad del literal.
-codigo(s, 0.7, 2.1, 6.3, 2.15, "app/services/ml_service.py:726", [
+codigo(s, 0.7, 2.1, 6.3, 2.15, "app/services/ml_service.py:727", [
   'def _elegir_algoritmo(n_ejemplos: int) -> str:',
   '    if n_ejemplos >= 100:',
   '        return "svm"',
   '    return "naive_bayes"',
 ]);
-s.addText("El clasificador tiene que funcionar el primer día, sin datos propios, y también con cientos de gastos acumulados. Son dos escenarios estadísticos distintos y ningún algoritmo gana en los dos.", {
+s.addText("La tesis define la estrategia: Naive Bayes para conjuntos chicos y SVM lineal desde 100 ejemplos. El resto del código pide un modelo y lo usa: no sabe cuál de los dos le tocó.", {
   x:0.7, y:4.4, w:6.3, h:1.0, fontFace:FB, fontSize:13.5, color:TEXTO });
 s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:5.45, w:6.3, h:1.3, fill:{color:WHITE},
-  line:{color:ROJO, width:1}, rectRadius:0.08 });
-s.addText("Alternativa descartada", { x:1.0, y:5.6, w:5.7, h:0.3, fontFace:FB, fontSize:11.5, bold:true, color:ROJO });
-s.addText("Fijar un solo algoritmo. Medí los dos: con el dataset base gana Naive Bayes, con datos de usuario gana el SVM. Elegir uno era aceptar el peor caso en la mitad de los escenarios.", {
+  line:{color:TEAL, width:1}, rectRadius:0.08 });
+s.addText("Lo que mostró la medición", { x:1.0, y:5.6, w:5.7, h:0.3, fontFace:FB, fontSize:11.5, bold:true, color:TEAL });
+s.addText("Con 600 ejemplos: SVM 76 % · Naive Bayes 74 %. Con 96, en 50 sorteos: SVM 46 % · NB 44 %. Como el modelo siempre incluye los 600 de base, en la práctica corre SVM.", {
   x:1.0, y:5.9, w:5.75, h:0.8, fontFace:FB, fontSize:11.5, color:TEXTO });
 
-[["Naive Bayes multinomial", "< 100 ejemplos propios",
-  "Asume independencia entre términos: con pocos datos no sobreajusta.", TEAL],
- ["LinearSVC", "≥ 100 ejemplos propios",
-  "Hiperplano de máximo margen: necesita volumen, pero después supera claramente a Naive Bayes.", MINT]
+[["Naive Bayes multinomial", "< 100 ejemplos",
+  "Asume independencia entre términos: la literatura lo recomienda con pocos datos.", TEAL],
+ ["LinearSVC", "≥ 100 ejemplos",
+  "Hiperplano de máximo margen. En este conjunto ganó en los dos tamaños medidos.", MINT]
 ].forEach((a, i) => {
   const y = 2.1 + i * 2.3;
   s.addShape(pptx.ShapeType.roundRect, { x:7.4, y, w:5.2, h:2.05, fill:{color:NAVY}, rectRadius:0.1 });
@@ -580,7 +585,7 @@ footer(s);
 // ── 18 · Patrón 2: Adapter ──────────────────────────────────────────────────
 s = slide(true);
 kicker(s, "Patrón 2 de 3 · Adapter", MINT);
-bloque(s, "Bloque 5 · 28:15", true);
+bloque(s, "Bloque 5 · 26:15", true);
 title(s, "Nueve bancos, un modelo interno", WHITE);
 s.addText("Galicia · Santander · BBVA · Macro · Nación · Brubank · ICBC · Mercado Pago · Naranja X", {
   x:0.7, y:1.95, w:11.9, h:0.4, fontFace:FB, fontSize:14, color:TEAL_L });
@@ -615,7 +620,7 @@ footer(s);
 // ── 19 · Patrón 3: Cache-Aside + Chain of Responsibility ────────────────────
 s = slide(false);
 kicker(s, "Patrón 3 de 3 · Cache-Aside + Chain of Responsibility", TEAL);
-bloque(s, "Bloque 5 · 29:00");
+bloque(s, "Bloque 5 · 26:40");
 title(s, "Clasificar es una cadena de tres eslabones");
 const cadena = [
   ["1", "¿Ya lo corrigió el usuario?", "Devolver su corrección con confianza 1.0.\nEs dato real: no hay nada que predecir.", MINT, "Cache-Aside"],
@@ -649,32 +654,39 @@ footer(s);
 // ── 20 · Seguridad: acceso ──────────────────────────────────────────────────
 s = slide(true);
 kicker(s, "Seguridad", MINT);
-bloque(s, "Bloque 5 · 30:00", true);
-title(s, "Control de acceso", WHITE);
+bloque(s, "Bloque 5 · 27:00", true);
+title(s, "Contraseñas, sesión y acceso", WHITE);
+// Las tres preguntas de 5.3 (contraseña, sesión, quién ve qué) y, abajo, lo
+// que el prototipo no hace: el guion lo dice en voz alta.
 const seg = [
-  ["bcrypt", "Las contraseñas nunca se guardan en texto plano. Función de derivación de clave adaptable en costo, con valor único por usuario.", "Ni ante una filtración completa de la base se recuperarían las originales."],
-  ["JWT · HMAC-SHA256", "Token firmado con vigencia de siete días. La clave de firma vive en una variable de entorno, fuera del código fuente.", "Cada petición viaja con el token en el encabezado de autorización."],
-  ["Aislamiento por usuario", "Todas las consultas se filtran por el identificador obtenido del token.", "La separación entre cuentas se garantiza en cada operación, no en la interfaz."],
+  ["Contraseña: bcrypt", "No se cifra: se hashea, con sal propia y costo 12. No hay forma de volver a la original.", "El login tarda lo mismo exista o no el correo: no delata quién está registrado."],
+  ["Sesión: token firmado", "HMAC-SHA256, vence a los 7 días. Firmado no es cifrado: se puede leer, pero no modificar.", "La clave de firma vive en el .env; sin ella, o si es débil, la API no arranca."],
+  ["Quién ve qué", "El usuario sale siempre del token. Lo ajeno responde 404, igual que lo inexistente.", "Base, API y app atienden solo en esta computadora (127.0.0.1)."],
 ];
 seg.forEach((g, i) => {
   const x = 0.7 + i * 4.05;
-  s.addShape(pptx.ShapeType.roundRect, { x, y:2.1, w:3.8, h:3.2, fill:{color:NAVY2},
+  s.addShape(pptx.ShapeType.roundRect, { x, y:2.05, w:3.8, h:2.6, fill:{color:NAVY2},
     line:{color:TEAL, width:1}, rectRadius:0.1 });
-  s.addText(g[0], { x:x+0.3, y:2.32, w:3.2, h:0.5, fontFace:FH, fontSize:17, bold:true, color:MINT });
-  s.addText(g[1], { x:x+0.3, y:2.88, w:3.2, h:1.5, fontFace:FB, fontSize:12.5, color:ICE });
-  s.addText(g[2], { x:x+0.3, y:4.45, w:3.2, h:0.75, fontFace:FB, fontSize:11, italic:true, color:GREY });
+  s.addText(g[0], { x:x+0.3, y:2.2, w:3.2, h:0.45, fontFace:FH, fontSize:16.5, bold:true, color:MINT });
+  s.addText(g[1], { x:x+0.3, y:2.68, w:3.2, h:1.05, fontFace:FB, fontSize:12, color:ICE });
+  s.addText(g[2], { x:x+0.3, y:3.75, w:3.2, h:0.8, fontFace:FB, fontSize:10.5, italic:true, color:GREY });
 });
-s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:5.6, w:11.9, h:1.25, fill:{color:MINT}, rectRadius:0.1 });
+s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:4.85, w:11.9, h:0.82, fill:{color:NAVY2},
+  line:{color:ROJO, width:1}, rectRadius:0.08 });
+s.addText("LO QUE NO HACE (para producción)", { x:1.0, y:4.9, w:6, h:0.3, fontFace:FB, fontSize:10.5, bold:true, color:ROJO, charSpacing:1.5 });
+s.addText("La base no está cifrada en disco  ·  un token no se puede anular antes de que venza  ·  no hay límite de intentos de inicio de sesión", {
+  x:1.0, y:5.2, w:11.3, h:0.4, fontFace:FB, fontSize:12, color:ICE });
+s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:5.85, w:11.9, h:1.05, fill:{color:MINT}, rectRadius:0.1 });
 s.addText("El identificador del usuario se obtiene siempre del token, nunca del cuerpo de la petición.", {
-  x:1.0, y:5.7, w:11.3, h:0.55, fontFace:FH, fontSize:19, bold:true, color:NAVY });
+  x:1.0, y:5.92, w:11.3, h:0.45, fontFace:FH, fontSize:16.5, bold:true, color:NAVY });
 s.addText("Principio transversal del diseño: un cliente no puede manipular a quién pertenecen los datos.", {
-  x:1.0, y:6.25, w:11.3, h:0.45, fontFace:FB, fontSize:13, color:NAVY2 });
+  x:1.0, y:6.4, w:11.3, h:0.4, fontFace:FB, fontSize:12.5, color:NAVY2 });
 footer(s);
 
 // ── 21 · Soberanía de datos ─────────────────────────────────────────────────
 s = slide(false);
 kicker(s, "Decisión de diseño central", TEAL);
-bloque(s, "Bloque 5 · 31:00");
+bloque(s, "Bloque 5 · 29:00");
 title(s, "Soberanía de los datos");
 s.addText("La descripción de un gasto puede revelar clientes, proveedores y hábitos de consumo. Es información financiera sensible.", {
   x:0.7, y:2.05, w:7.4, h:0.75, fontFace:FB, fontSize:15, color:INK });
@@ -703,7 +715,7 @@ footer(s);
 // ── 22 · Lo más difícil ─────────────────────────────────────────────────────
 s = slide(true);
 kicker(s, "Lo que más costó", AMARILLO);
-bloque(s, "Bloque 5 · 32:00", true);
+bloque(s, "Bloque 5 · 30:00", true);
 title(s, "No fue entrenar el modelo: fue medir la confianza", WHITE, 29);
 s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:2.1, w:5.85, h:2.1, fill:{color:NAVY2},
   line:{color:ROJO, width:1.5}, rectRadius:0.1 });
@@ -723,7 +735,7 @@ s.addText("Cambiar la pregunta: en vez de «¿qué probabilidad tiene esta clase
 s.addText("✓  El umbral de revisión manual empezó a funcionar.", { x:7.05, y:3.85, w:5.3, h:0.3,
   fontFace:FB, fontSize:12, bold:true, color:MINT });
 
-codigo(s, 0.7, 4.45, 11.9, 1.5, "app/services/ml_service.py:830  ·  _confianza_svm()", [
+codigo(s, 0.7, 4.45, 11.9, 1.5, "app/services/ml_service.py:831  ·  _confianza_svm()", [
   "brecha    = scores[top1] - scores[top2]",
   "confianza = 1 - exp(-brecha)        # monótona y acotada en [0, 1)",
 ]);
@@ -734,7 +746,7 @@ footer(s);
 // ── 23 · El riesgo R2 se materializó ────────────────────────────────────────
 s = slide(false);
 kicker(s, "Validación del diseño", TEAL);
-bloque(s, "Bloque 5 · 32:45");
+bloque(s, "Bloque 5 · 32:30");
 title(s, "Un riesgo previsto que efectivamente ocurrió");
 s.addShape(pptx.ShapeType.roundRect, { x:0.7, y:2.15, w:11.9, h:0.95, fill:{color:NAVY}, rectRadius:0.1 });
 s.addText("R2 · «El organismo recaudador actualiza la escala del régimen durante o después del desarrollo»", {
@@ -826,7 +838,7 @@ s = slide(true);
 s.addShape(pptx.ShapeType.rect, { x:0, y:0, w:0.28, h:7.5, fill:{color:MINT} });
 s.addText("FreelanceControl", { x:0.85, y:2.35, w:11.7, h:1.2, fontFace:FH, fontSize:50, bold:true, color:WHITE });
 s.addText("Gracias.", { x:0.9, y:3.6, w:11.0, h:0.8, fontFace:FH, fontSize:30, color:MINT });
-const cierre = [["76 %", "exactitud"], ["390", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
+const cierre = [["76 %", "exactitud"], ["446", "pruebas"], ["17", "historias"], ["9", "bancos"], ["5", "detectores"], ["13", "pantallas"]];
 cierre.forEach((c, i) => {
   const x = 0.9 + i * 1.95;
   s.addText(c[0], { x, y:4.8, w:1.8, h:0.55, fontFace:FH, fontSize:26, bold:true, color:WHITE });
@@ -847,7 +859,7 @@ const det = [
   ["Gastos duplicados", "Mismo monto y categoría dentro de una ventana de 3 días.", TEAL],
   ["Anomalías estadísticas", "Montos que se desvían del comportamiento histórico de la categoría en los últimos 6 meses.", MINT],
   ["Facturas vencidas o impagas", "Plata que debería haber entrado y no entró. Cubre los estados PENDIENTE y VENCIDA.", AMARILLO],
-  ["Cuota de Monotributo sin registrar", "Ausencia del pago de la cuota en el mes corriente, con tolerancia del 1 %.", ROJO],
+  ["Cuota de Monotributo sin cubrir", "Lo registrado en el mes, en uno o varios pagos, no cubre la cuota de la categoría (tolerancia del 1 %).", ROJO],
   ["Transferencias entre cuentas propias", "Un movimiento entre cuentas del usuario contado como ingreso le inflaría la facturación acumulada, que es el número del que depende su categoría fiscal.", NAVY2],
 ];
 det.forEach((d, i) => {
@@ -886,21 +898,21 @@ s = slide(true);
 kicker(s, "Anexo · respaldo para preguntas", GREY);
 title(s, "¿Dónde se maneja…?", WHITE);
 const idx = [
-  ["Conexión a la base", "database.py:38"],
+  ["Conexión a la base", "database.py:40"],
   ["Protección de rutas", "dependencies.py:40"],
   ["Hash de contraseñas", "services/auth.py"],
-  ["Elección de algoritmo", "ml_service.py:726"],
-  ["Modelo entrenado en BD", "ml_service.py:711"],
-  ["Confianza del SVM", "ml_service.py:830"],
-  ["Arranque en frío", "prophet_service.py:179"],
-  ["Formatos de banco", "csv_service.py:41"],
-  ["Transferencias propias", "csv_service.py:738"],
+  ["Elección de algoritmo", "ml_service.py:727"],
+  ["Modelo entrenado en BD", "ml_service.py:712"],
+  ["Confianza del SVM", "ml_service.py:831"],
+  ["Arranque en frío", "prophet_service.py:203"],
+  ["Formatos de banco", "csv_service.py:42"],
+  ["Transferencias propias", "csv_service.py:786"],
   ["Cadena de clasificación", "ia_service.py:409"],
   ["Creación de alertas", "auditoria.py:59"],
   ["Idempotencia de alertas", "auditoria.py:77"],
-  ["Armado del PDF", "reportes_service.py:535"],
-  ["Cálculo fiscal", "monotributo_service.py:66"],
-  ["Token en el frontend", "api.js:23"],
+  ["Armado del PDF", "reportes_service.py:517"],
+  ["Cálculo fiscal", "monotributo_service.py:67"],
+  ["Token en el frontend", "api.js:24"],
   ["Rutas privadas", "App.js:31"],
 ];
 idx.forEach((r, i) => {
@@ -908,7 +920,7 @@ idx.forEach((r, i) => {
   const x = 0.7 + col * 6.1, y = 2.05 + row * 0.585;
   s.addShape(pptx.ShapeType.roundRect, { x, y, w:5.8, h:0.5, fill:{color:NAVY2}, rectRadius:0.05 });
   s.addText(r[0], { x:x+0.25, y, w:2.75, h:0.5, fontFace:FB, fontSize:12, color:ICE, valign:"middle" });
-  // La columna de rutas va más ancha: "monotributo_service.py:66" no entraba.
+  // La columna de rutas va más ancha: "monotributo_service.py:67" no entraba.
   s.addText(r[1], { x:x+3.0, y, w:2.65, h:0.5, fontFace:FM, fontSize:10.5, color:MINT, valign:"middle" });
 });
 s.addText('Desarrollo completo en defensa_final/02_ARQUITECTURA_Y_PATRONES.md  ·  grep -rn "PATRÓN:" app frontend/src', {

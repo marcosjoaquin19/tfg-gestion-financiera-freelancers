@@ -18,7 +18,8 @@ Modalidad presencial, demostración en vivo sobre equipo propio.
 | `tesis/` | El PDF de la tesis **aprobada**, como fuente de verdad de datos y terminología | Consulta |
 | [gen_slides_defensa.js](gen_slides_defensa.js) | Generador reproducible del deck. Los slides se editan **acá**, no en PowerPoint. | Al cambiar el guion |
 | `slides/` | `FreelanceControl_Defensa_Final.pptx` — 30 slides (27 + 3 de anexo) | Bloques 1, 2, 5 y 6 |
-| `video/` | Video explicativo del sistema | Bloque 3 |
+| `demo/` | `extracto_28sep_14oct.csv`, el extracto que se importa en vivo (4.3) | Bloque 4 |
+| Escritorio | `FreelanceControl_Institucional.mp4` (1:43). El de la demo (`_v2`, 1:41) quedó viejo y es solo plan B | Bloque 3 |
 | [gen_pdfs_lectura.py](gen_pdfs_lectura.py) | Convierte los documentos a PDF para leerlos cómodo | Antes de cada lectura |
 | `lectura/` | Los mismos documentos en PDF (generados, no se versionan) | Para leer y anotar |
 
@@ -30,8 +31,8 @@ Modalidad presencial, demostración en vivo sobre equipo propio.
 |---|---|---|
 | 1 · Apertura: el problema | 0:00 – 3:00 | Slides |
 | 2 · Propuesta y **límites** | 3:00 – 6:00 | Slides |
-| 3 · Video explicativo | 6:00 – 10:00 | Video |
-| 4 · **Demo en vivo** | 10:00 – 24:00 | App |
+| 3 · Video institucional | 6:00 – 8:00 | Video |
+| 4 · **Demo en vivo** | 8:00 – 24:00 | App |
 | 5 · Código y decisiones | 24:00 – 33:00 | Editor + slides |
 | 6 · Cierre | 33:00 – 35:00 | Slides |
 
@@ -105,13 +106,13 @@ documento**, porque son una copia: por eso no se versionan en git.
 1. **Sostener que el sistema informa, proyecta y alerta, pero no reemplaza
    asesoramiento contable, fiscal ni financiero.**
    Implementado en el producto, no solo dicho: `frontend/src/components/AvisoAlcance.js`
-   aparece en Monotributo, Proyecciones, Recomendaciones, Resumen IA y Auditoría,
-   y el mismo enunciado va en el pie del reporte PDF
-   (`app/services/reportes_service.py`).
+   aparece en seis pantallas —Dashboard, Monotributo, Proyecciones,
+   Recomendaciones, Resumen IA y Auditoría— y el mismo enunciado va al final del
+   reporte PDF (`app/services/reportes_service.py`).
 
-2. **Mostrar el prototipo funcionando**, en particular: clasificador, auditoría,
-   importación, proyección, estado fiscal y reporte PDF.
-   Los seis están cubiertos en el bloque 4, en ese orden narrativo.
+2. **Mostrar el prototipo funcionando.** El bloque 4 recorre ocho pasos, en
+   este orden: panel principal, clasificador, importación, auditoría, estado
+   fiscal, proyección, resumen y recomendaciones, y reporte PDF.
 
 ---
 
@@ -124,7 +125,7 @@ literal `PATRÓN:` (con tilde):
 grep -rn "PATRÓN:" app frontend/src
 ```
 
-Devuelve 32 anotaciones en 16 archivos. El desarrollo completo de cada una
+Devuelve 36 anotaciones en 20 archivos. El desarrollo completo de cada una
 —qué resuelve, por qué se eligió, qué alternativa se descartó— está en
 [02_ARQUITECTURA_Y_PATRONES.md](02_ARQUITECTURA_Y_PATRONES.md).
 
@@ -132,12 +133,18 @@ Devuelve 32 anotaciones en 16 archivos. El desarrollo completo de cada una
 
 ## Preparar el entorno antes de la defensa
 
+Con Docker Desktop abierto:
+
 ```bash
 docker compose up -d
+docker compose exec api python seed_demo_defensa.py
 ```
 
-Esperar a que los tres contenedores queden en estado saludable y entrar a
-`http://localhost:3000` con `demo@freelancecontrol.com` / `demo1234`.
+La siembra deja los datos exactos del ensayo (enero a septiembre de 2026) y
+borra todo lo que se haya cargado en ensayos anteriores. Después, entrar a
+`http://localhost:3000` con `demo@freelancecontrol.com` / `demo1234`. El
+checklist completo de la mañana está en la sección "Antes de entrar a la sala"
+del guion.
 
 > ⚠️ **Importante:** el contenedor `api` **no tiene volumen montado**. Si se
 > edita cualquier archivo del backend hay que reconstruirlo antes de que el
@@ -149,10 +156,14 @@ Esperar a que los tres contenedores queden en estado saludable y entrar a
 >
 > El frontend sí recarga en caliente.
 
-Verificación rápida de que todo está sano:
+Verificación de que todo está sano (unos 2 minutos):
 
 ```bash
 docker exec tfg_api python -m pytest -q
 ```
 
-Debe dar **115 pruebas en verde**.
+Debe dar **446 pruebas en verde**. Las de la interfaz (16):
+
+```bash
+docker compose exec frontend sh -c "CI=true npx react-scripts test --watchAll=false"
+```
