@@ -48,11 +48,13 @@ capas (layered architecture)** de cuatro niveles.
 un servicio y devuelve el resultado. Esto trajo tres beneficios concretos y
 verificables en este proyecto:
 
-1. **Testeabilidad.** Los 438 tests prueban los servicios directamente contra una
+1. **Testeabilidad.** Los 444 tests prueban los servicios directamente contra una
    base SQLite en memoria, sin levantar HTTP. La suite corre en unos 2 minutos.
-2. **Reutilización real.** `monotributo_service.verificar_pago_monotributo()` lo
-   usan el router de monotributo *y* el servicio de auditoría. Si la regla
-   fiscal estuviera dentro del endpoint, habría que duplicarla.
+2. **Reutilización real.** La regla "la cuota está paga" vive en
+   `monotributo_service.cuota_cubierta()`: la usan la pantalla Monotributo y la
+   auditoría (a través de `verificar_pago_monotributo()`) y el reporte PDF, que
+   la aplica con la cuota de la escala del mes del reporte. Si la regla fiscal
+   estuviera dentro de cada endpoint, habría que duplicarla.
 3. **Un solo lugar por decisión.** El formato de moneda argentina vive en
    `app/services/formato.py`; lo consumen la auditoría y el PDF. Cambiar la
    convención es cambiar una función.
@@ -427,5 +429,5 @@ contador matriculado"* (un test la busca en el PDF generado).
 | Recomendaciones | `recomendaciones.py` | `recomendaciones_service.py` | — |
 | Reportes PDF | `reportes.py` | `reportes_service.py` | — |
 
-**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 438 tests
+**Volumen:** 8.063 líneas de backend · 5.344 de frontend · 444 tests
 automatizados · 9 tablas · 12 migraciones · 12 routers · 15 servicios · 13 pantallas.

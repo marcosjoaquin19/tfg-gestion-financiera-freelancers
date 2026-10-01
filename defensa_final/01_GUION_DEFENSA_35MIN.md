@@ -171,7 +171,9 @@ mirando al tribunal:
 **Para vos:** el tribunal escucha esa frase buscando si realmente la creés. Por
 eso la decís dos veces: acá y en el cierre. Y en la demo **señalá el aviso con
 el mouse** en Monotributo, Proyecciones, Recomendaciones y el PDF: que lo vean,
-no solo que lo escuchen.
+no solo que lo escuchen. Con el zoom al 110 %, en Proyecciones y en
+Recomendaciones el aviso queda al final: **bajá hasta verlo** antes de señalarlo.
+En Monotributo y en el Dashboard se ve sin bajar.
 
 **Casos bisagra:**
 
@@ -647,9 +649,10 @@ elegido) → abrir → bajar hasta el final.
 > Toda la lógica —clasificador, auditoría, monotributo, proyecciones— vive en
 > `services/`.
 >
-> Eso me dio dos cosas. Pruebas: **438 automáticas**, que corren contra una base
-> en memoria, sin tocar la real. Y reutilización: la función que verifica la
-> cuota del monotributo la usan el módulo fiscal y la auditoría, sin duplicarla."
+> Eso me dio dos cosas. Pruebas: **444 automáticas**, que corren contra una base
+> en memoria, sin tocar la real. Y reutilización: la regla que decide si la
+> cuota del monotributo está paga es una sola función, y la usan el módulo
+> fiscal, la auditoría y el reporte PDF, sin duplicarla."
 
 **Para vos:** el router es el mozo (toma el pedido), el service es la cocina
 (hace el plato), el model es la heladera (los datos) y el schema es la carta
@@ -976,7 +979,7 @@ técnica más que una respuesta forzada.
 | Horizonte de proyección | **6 meses** |
 | Contraseñas | bcrypt, costo **12**, hasta 72 bytes, mínimo 8 caracteres |
 | Token | HMAC-SHA256, vence a los **7 días**; clave de al menos **32** caracteres |
-| Pruebas automatizadas | **438** del backend + 10 de pantalla |
+| Pruebas automatizadas | **444** del backend + 16 de pantalla |
 | Historias de usuario | **17** |
 | Sprints y duración | **8 sprints**, 4 meses |
 | Pantallas | **13** |
