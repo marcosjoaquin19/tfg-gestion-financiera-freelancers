@@ -171,9 +171,10 @@ mirando al tribunal:
 **Para vos:** el tribunal escucha esa frase buscando si realmente la creés. Por
 eso la decís dos veces: acá y en el cierre. Y en la demo **señalá el aviso con
 el mouse** en Monotributo, Proyecciones, Recomendaciones y el PDF: que lo vean,
-no solo que lo escuchen. Con el zoom al 110 %, en Proyecciones y en
-Recomendaciones el aviso queda al final: **bajá hasta verlo** antes de señalarlo.
-En Monotributo y en el Dashboard se ve sin bajar.
+no solo que lo escuchen. Con el zoom al 110 %, en Proyecciones, en
+Recomendaciones y en Auditoría (ya con las cinco alertas) el aviso queda al
+final: **bajá hasta verlo** antes de señalarlo. En Monotributo, en el Dashboard
+y en el Resumen se ve sin bajar.
 
 **Casos bisagra:**
 
@@ -406,7 +407,8 @@ transferencia vino el 9 de octubre) → volver a ejecutar → la alerta desapare
 > "Y si marco una alerta como resuelta, la próxima corrida no la vuelve a
 > mostrar. Si no, la auditoría sería puro ruido."
 
-Señalá el aviso al pie de la pantalla.
+Señalá el aviso al pie de la pantalla: con las cinco alertas y el zoom al 110 %
+queda justo debajo del borde, así que **bajá un poco** antes de señalarlo.
 
 **Para vos:** "anomalía" es un puntaje z mayor a 2: el gasto está a más de dos
 "pasos típicos" del promedio de su rubro. Es una señal para revisar, no una
