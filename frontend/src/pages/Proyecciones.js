@@ -101,7 +101,8 @@ function fmtMonto(n) {
 
 function fmtK(n) {
   const v = Number(n || 0);
-  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+  // Coma decimal, como el resto de la app: "$14,0M", no "$14.0M".
+  if (v >= 1000000) return '$' + (v / 1000000).toFixed(1).replace('.', ',') + 'M';
   if (v >= 1000)    return '$' + Math.round(v / 1000) + 'k';
   return '$' + Math.round(v);
 }
@@ -407,7 +408,9 @@ export default function Proyecciones() {
           </div>
 
           {/* ── Métricas resumen ── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+          {/* Tres columnas si entran; con la ventana angosta (800 px) la tercera
+              pasa abajo en vez de salirse por la derecha. */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', marginBottom: '16px' }}>
             {[
               { label: 'Promedio proyectado', value: promedio,  color: '#3b82f6' },
               { label: 'Escenario pesimista', value: pesimista, color: '#ef4444' },

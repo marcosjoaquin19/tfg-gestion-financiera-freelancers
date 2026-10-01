@@ -1,7 +1,7 @@
 /**
  * Pantalla Clasificador — playground del modelo de ML.
  *
- * Muestra el estado del clasificador de gastos (algoritmo, precisión, cantidad
+ * Muestra el estado del clasificador de gastos (algoritmo, exactitud, cantidad
  * de ejemplos) y ofrece un "playground" para probar una descripción y ver qué
  * categoría predice. Permite corregir la predicción y reentrenar el modelo
  * (endpoints de /ml).
@@ -122,7 +122,14 @@ function CardEstadoML({ estado, cargando, onReentrenar, reentrenando }) {
       </div>
 
       <div style={{ display: 'flex', gap: '24px', fontSize: '12px', color: '#64748b', flexWrap: 'wrap' }}>
-        {precisionPct != null && <span>Precisión: <strong style={{ color: '#e2e8f0' }}>{precisionPct}%</strong></span>}
+        {/* "Exactitud", como en la tesis: es el % de aciertos sobre el total en
+            la validación cruzada (accuracy). "Precisión" es otra métrica, la
+            que la tesis informa por categoría (Figura 25). */}
+        {precisionPct != null && (
+          <span title="Porcentaje de aciertos en la validación cruzada">
+            Exactitud: <strong style={{ color: '#e2e8f0' }}>{precisionPct}%</strong>
+          </span>
+        )}
         <span>Ejemplos: <strong style={{ color: '#e2e8f0' }}>{n_ejemplos}</strong></span>
         {fechaStr && <span>Último entrenamiento: <strong style={{ color: '#e2e8f0' }}>{fechaStr}</strong></span>}
       </div>
@@ -154,6 +161,7 @@ export default function Clasificador() {
   const [reentrenando, setReentrenando] = useState(false);
   const [msgReentrenamiento, setMsgReentrenamiento] = useState(null);
   const [corrigiendoCategoria, setCorrigiendoCategoria] = useState(false);
+  const [guardandoCorreccion, setGuardandoCorreccion] = useState(false);
   const [categoriaCorrecta, setCategoriaCorrecta] = useState('');
   const [msgCorreccion, setMsgCorreccion] = useState(null);
   const [errorClasificar, setErrorClasificar] = useState('');
@@ -216,6 +224,9 @@ export default function Clasificador() {
   async function handleCorregir() {
     if (!categoriaCorrecta || !descripcion.trim()) return;
     setMsgCorreccion(null);
+    // Un clic, una corrección: cada pedido de más disparaba otro
+    // reentrenamiento de fondo (la corrección no se duplicaba).
+    setGuardandoCorreccion(true);
     try {
       await api.post('/ml/corregir', {
         descripcion: descripcion.trim(),
@@ -232,6 +243,8 @@ export default function Clasificador() {
       setTimeout(cargarEstado, 2000);
     } catch (err) {
       setMsgCorreccion({ texto: extraerMensajeError(err, 'Error al guardar la corrección.'), error: true });
+    } finally {
+      setGuardandoCorreccion(false);
     }
   }
 
@@ -367,15 +380,17 @@ export default function Clasificador() {
                 </select>
                 <button
                   onClick={handleCorregir}
+                  disabled={guardandoCorreccion}
                   style={{
                     marginTop: '8px', width: '100%',
                     background: '#166534', border: 'none',
                     color: '#4ade80', borderRadius: '8px',
                     padding: '8px', fontSize: '13px',
-                    cursor: 'pointer', fontWeight: 500,
+                    cursor: guardandoCorreccion ? 'default' : 'pointer', fontWeight: 500,
+                    opacity: guardandoCorreccion ? 0.6 : 1,
                   }}
                 >
-                  Confirmar corrección
+                  {guardandoCorreccion ? 'Guardando...' : 'Confirmar corrección'}
                 </button>
               </div>
             )}

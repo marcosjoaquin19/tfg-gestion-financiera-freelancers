@@ -117,6 +117,12 @@ export default function Register() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    // Se valida acá, como el resto de los formularios: el mensaje de la API
+    // para este caso es el genérico de Pydantic, en inglés.
+    if (password.length < 8) {
+      setError('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
     setLoading(true);
     try {
       await api.post('/auth/register', { nombre, email, password });
@@ -153,6 +159,7 @@ export default function Register() {
               autoComplete="name"
               type="text"
               placeholder="Tu nombre"
+              maxLength={100}
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               required
@@ -168,6 +175,7 @@ export default function Register() {
               autoComplete="email"
               type="email"
               placeholder="tu@email.com"
+              maxLength={150}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -182,6 +190,7 @@ export default function Register() {
               id="registro-password"
               autoComplete="new-password"
               type="password"
+              maxLength={72}
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

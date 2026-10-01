@@ -81,6 +81,7 @@ export default function Facturas() {
   const [busqueda, setBusqueda] = useState('');
   const [pagandoId, setPagandoId] = useState(null);
   const [fechaPago, setFechaPago] = useState(todayISO());
+  const [confirmandoPago, setConfirmandoPago] = useState(false);
   const [editando, setEditando] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [editSaving, setEditSaving] = useState(false);
@@ -136,6 +137,9 @@ export default function Facturas() {
   }
 
   async function handleMarcarPagada(id) {
+    // Como "Guardar": con doble clic salían dos pedidos y, si el segundo llegaba
+    // con la factura ya pagada, la API lo rechazaba y se mostraba un error.
+    setConfirmandoPago(true);
     try {
       await api.patch(`/facturas/${id}/estado`, {
         estado: 'pagada',
@@ -145,6 +149,8 @@ export default function Facturas() {
       await fetchFacturas();
     } catch (err) {
       window.alert(extraerMensajeError(err, 'No se pudo marcar la factura como pagada'));
+    } finally {
+      setConfirmandoPago(false);
     }
   }
 
@@ -244,7 +250,7 @@ export default function Facturas() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Cliente</label>
                 <input
-                  name="cliente_nombre" required value={editForm.cliente_nombre} onChange={handleEditChange}
+                  name="cliente_nombre" required maxLength={200} value={editForm.cliente_nombre} onChange={handleEditChange}
                   style={modalInputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
                   onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
@@ -263,7 +269,7 @@ export default function Facturas() {
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Descripción</label>
               <input
-                name="descripcion" required value={editForm.descripcion} onChange={handleEditChange}
+                name="descripcion" required maxLength={500} value={editForm.descripcion} onChange={handleEditChange}
                 style={modalInputStyle}
                 onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
                 onBlur={(e) => (e.target.style.borderColor = '#1e293b')}
@@ -345,7 +351,7 @@ export default function Facturas() {
               <div>
                 <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Cliente</label>
                 <input
-                  name="cliente_nombre" required value={form.cliente_nombre} onChange={handleFormChange}
+                  name="cliente_nombre" required maxLength={200} value={form.cliente_nombre} onChange={handleFormChange}
                   placeholder="Nombre del cliente"
                   style={inputStyle}
                   onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
@@ -366,7 +372,7 @@ export default function Facturas() {
             <div style={{ marginBottom: '12px' }}>
               <label style={{ display: 'block', fontSize: '12px', color: '#e2e8f0', marginBottom: '6px' }}>Descripción</label>
               <input
-                name="descripcion" required value={form.descripcion} onChange={handleFormChange}
+                name="descripcion" required maxLength={500} value={form.descripcion} onChange={handleFormChange}
                 placeholder="Servicio o trabajo facturado"
                 style={inputStyle}
                 onFocus={(e) => (e.target.style.borderColor = '#3b82f6')}
@@ -442,8 +448,10 @@ export default function Facturas() {
         />
       </div>
 
-      {/* Tabla */}
-      <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflow: 'hidden' }}>
+      {/* Tabla: con la ventana angosta (800 px) se desliza de costado dentro
+          del recuadro en vez de cortar las columnas Estado y Acciones. */}
+      <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', overflowX: 'auto' }}>
+        <div style={{ minWidth: '880px' }}>
         {/* Header */}
         <div style={{ display: 'grid', gridTemplateColumns: COLS, borderBottom: '1px solid #1e293b' }}>
           {['Cliente', 'Descripción', 'Emisión', 'Vencimiento', 'Monto', 'Estado', 'Acciones'].map((h) => (
@@ -480,10 +488,10 @@ export default function Facturas() {
                   <div title={factura.descripcion} style={{ padding: '12px 16px', fontSize: '13px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {factura.descripcion}
                   </div>
-                  <div style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
+                  <div style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>
                     {formatFecha(factura.fecha_emision)}
                   </div>
-                  <div style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b' }}>
+                  <div style={{ padding: '12px 16px', fontSize: '13px', color: '#64748b', whiteSpace: 'nowrap' }}>
                     {formatFecha(factura.fecha_vencimiento)}
                   </div>
                   <div style={{ padding: '12px 16px', fontSize: '14px', fontWeight: 600, color: '#e2e8f0' }}>
@@ -547,13 +555,15 @@ export default function Facturas() {
                     />
                     <button
                       onClick={() => handleMarcarPagada(factura.id)}
+                      disabled={confirmandoPago}
                       style={{
                         background: '#3b82f6', color: '#fff', border: 'none',
                         borderRadius: '6px', padding: '5px 14px',
-                        fontSize: '12px', cursor: 'pointer', fontWeight: 500,
+                        fontSize: '12px', cursor: confirmandoPago ? 'default' : 'pointer', fontWeight: 500,
+                        opacity: confirmandoPago ? 0.6 : 1,
                       }}
                     >
-                      Confirmar
+                      {confirmandoPago ? 'Guardando...' : 'Confirmar'}
                     </button>
                     <button
                       onClick={() => setPagandoId(null)}
@@ -571,6 +581,7 @@ export default function Facturas() {
             );
           })
         )}
+        </div>
       </div>
     </Layout>
     </>
