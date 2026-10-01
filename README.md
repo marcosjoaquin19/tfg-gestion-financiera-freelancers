@@ -78,11 +78,17 @@ GROQ_API_KEY=
 GROQ_MODEL=openai/gpt-oss-120b
 ```
 
-Para generar la `SECRET_KEY` se puede usar el comando de abajo. La API no arranca
-si la clave falta, si quedó el valor de ejemplo o si tiene menos de 32 caracteres:
+Para generar la `SECRET_KEY` se puede usar cualquiera de los dos comandos de
+abajo (en macOS el comando `python` no existe: es `python3`, y `openssl` ya viene
+instalado). La API no arranca si la clave falta, si quedó el valor de ejemplo o si
+tiene menos de 32 caracteres:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+openssl rand -hex 32
+```
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
 **2. Levantar todo**
@@ -177,14 +183,19 @@ El frontend queda en **http://localhost:3000** y apunta por defecto a
 
 ## Ejecutar los tests
 
-El proyecto incluye una suite de tests automatizados del backend (pytest).
+El proyecto incluye una suite de tests automatizados del backend (pytest), que
+corre contra una base en memoria y no toca la de la aplicación, y una de la
+interfaz (Jest).
 
 ```bash
-# Con Docker:
+# Backend, con Docker (unos 2 minutos):
 docker compose exec api pytest
 
-# De forma manual (con el venv activado):
+# Backend, de forma manual (con el venv activado):
 pytest
+
+# Interfaz, con Docker:
+docker compose exec frontend sh -c "CI=true npx react-scripts test --watchAll=false"
 ```
 
 ---

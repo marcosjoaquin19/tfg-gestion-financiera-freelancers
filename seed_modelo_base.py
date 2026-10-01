@@ -12,7 +12,8 @@ try:
     modelo = ml_service.entrenar_modelo_base(db)
     print(f"  Algoritmo:  {modelo.algoritmo}")
     print(f"  Ejemplos:   {modelo.n_ejemplos}")
-    print(f"  Precisión:  {modelo.precision:.4f}" if modelo.precision else "  Precisión:  N/A")
+    # "Exactitud", como en la tesis: aciertos sobre el total en la validación cruzada.
+    print(f"  Exactitud:  {modelo.precision:.4f}" if modelo.precision else "  Exactitud:  N/A")
     print("Seed completado: modelo base listo.")
 finally:
     db.close()
