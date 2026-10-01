@@ -55,6 +55,9 @@ export default function Monotributo() {
   // Error al guardar la categoría (backend o red): visible, no silencioso.
   const [catError, setCatError] = useState('');
   const [showCambiarCat, setShowCambiarCat] = useState(false);
+  // Si no se pudo leer el estado (API caída), no se ofrece "Configurá tu
+  // categoría": el usuario ya la tiene; lo que falló fue la consulta.
+  const [errorCarga, setErrorCarga] = useState('');
   const navigate = useNavigate();
 
   async function fetchData() {
@@ -65,6 +68,8 @@ export default function Monotributo() {
       api.get('/monotributo/categorias'),
     ]);
     if (estRes.status === 'fulfilled') setEstado(estRes.value.data);
+    setErrorCarga(estRes.status === 'rejected'
+      ? extraerMensajeError(estRes.reason, 'No se pudo cargar el estado del monotributo') : '');
     if (pagRes.status === 'fulfilled') setPago(pagRes.value.data);
     if (catRes.status === 'fulfilled') {
       const obj = {};
@@ -95,6 +100,16 @@ export default function Monotributo() {
       <Layout activeSection="Monotributo">
         <div style={{ textAlign: 'center', color: '#64748b', fontSize: '14px', padding: '48px' }}>
           Cargando...
+        </div>
+      </Layout>
+    );
+  }
+
+  if (errorCarga && !estado) {
+    return (
+      <Layout activeSection="Monotributo">
+        <div style={{ textAlign: 'center', color: '#f87171', fontSize: '14px', padding: '48px' }}>
+          {errorCarga}
         </div>
       </Layout>
     );

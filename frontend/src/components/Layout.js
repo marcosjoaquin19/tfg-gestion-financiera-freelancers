@@ -8,7 +8,7 @@
 
 // PATRÓN: Composite — Layout envuelve a cualquier pantalla (children) y aporta la navegación común.
 // Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // Definición del menú lateral: secciones y sus accesos a cada módulo de la app.
@@ -75,6 +75,19 @@ function SidebarItem({ label, active, onClick }) {
 export default function Layout({ children, activeSection }) {
   const navigate = useNavigate();
   const userEmail = localStorage.getItem('userEmail') || 'Usuario';
+  // El cliente de la API (api.js) avisa si el servidor no responde, para no
+  // mostrar ceros o formularios vacíos como si fueran los datos del usuario.
+  const [sinConexion, setSinConexion] = useState(false);
+  useEffect(() => {
+    const caida = () => setSinConexion(true);
+    const vuelta = () => setSinConexion(false);
+    window.addEventListener('api-sin-conexion', caida);
+    window.addEventListener('api-conectada', vuelta);
+    return () => {
+      window.removeEventListener('api-sin-conexion', caida);
+      window.removeEventListener('api-conectada', vuelta);
+    };
+  }, []);
 
   function handleLogout() {
     localStorage.removeItem('token');
@@ -146,6 +159,15 @@ export default function Layout({ children, activeSection }) {
 
         {/* Main */}
         <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+          {sinConexion && (
+            <div role="alert" style={{
+              background: '#2a1215', border: '1px solid #7f1d1d', color: '#fca5a5',
+              borderRadius: '8px', padding: '10px 14px', fontSize: '13px', marginBottom: '16px',
+            }}>
+              <strong>No se pudo conectar con el servidor.</strong> Lo que ves en esta pantalla
+              puede estar incompleto: revisá que la aplicación esté levantada y recargá la página.
+            </div>
+          )}
           {children}
         </main>
       </div>

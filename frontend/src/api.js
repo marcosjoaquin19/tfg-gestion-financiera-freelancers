@@ -6,7 +6,8 @@
  *  - Request: adjunta automáticamente el token JWT (guardado en localStorage)
  *    en el header Authorization de cada pedido.
  *  - Response: si la API responde 401 (sesión inválida/expirada) en un endpoint
- *    que no sea login/registro, borra el token y redirige al login.
+ *    que no sea login/registro, borra el token y redirige al login. Si la API no
+ *    responde (contenedor caído), avisa al Layout para que lo muestre.
  */
 
 // PATRÓN: Interceptor — el token JWT y el manejo global del 401 se resuelven acá, no en cada pantalla.
@@ -28,10 +29,21 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Interceptor de response: maneja de forma global el cierre de sesión por token inválido.
+// Interceptor de response: maneja de forma global el cierre de sesión por token
+// inválido y la falta de conexión. Sin respuesta del servidor, cada pantalla
+// mostraba ceros o "Configurá tu categoría" como si fueran datos reales; ahora el
+// Layout escucha estos eventos y muestra un aviso hasta que la API vuelve.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    window.dispatchEvent(new Event('api-conectada'));
+    return response;
+  },
   (error) => {
+    if (!error.response) {
+      window.dispatchEvent(new Event('api-sin-conexion'));
+    } else {
+      window.dispatchEvent(new Event('api-conectada'));
+    }
     const url = error.config?.url || '';
     // En login/registro un 401 es "credenciales incorrectas", no sesión expirada:
     // en esos casos no redirigimos para que la pantalla muestre el error.
