@@ -959,6 +959,8 @@ pantalla dice por qué.
 | La HU-09 dice "diez o más ingresos → Prophet" y el código pide además **tres meses cerrados** | "Con menos de diez, siempre media móvil, como dice la HU. Agregué un piso más porque con dos meses Prophet traza una recta que se dispara: con 1 y 3 millones proyectaba 13 millones a seis meses." |
 | La HU-10 dice que sugiere "la categoría **siguiente**" y el sistema puede sugerir otra | "Hace las dos cosas. Si la proyección todavía no pasa el tope, muestra la siguiente. Si lo pasa, sugiere la primera que la cubre: con $ 36 millones en la A sugiere la E, porque la B no alcanzaría y el dato no le serviría al usuario." |
 | ARCA mira los **últimos 12 meses** y el semáforo mira el año calendario | "El semáforo sigue la HU-10: año en curso más la proyección al cierre. Los 12 meses móviles se calculan aparte, como complemento." |
+| La tesis prevé **Naive Bayes** para conjuntos chicos y en la demo siempre corre SVM | "La estrategia está implementada tal cual: menos de 100 ejemplos, Naive Bayes; desde 100, SVM. Pero el modelo, base o personal, siempre incluye los 600 ejemplos de base, así que nunca baja de 100. Además lo medí: con 600, SVM 76 % y Naive Bayes 74 %; con 96, en 50 sorteos, 46 contra 44." |
+| La HU-08 habla de la cuota **sin registrar** y la auditoría también avisa si se pagó **de menos** | "Es más estricta a propósito: si lo registrado en el mes no cubre la cuota, en uno o varios pagos, sigue avisando. La misma regla la usan la pantalla Monotributo y el PDF." |
 
 ---
 
