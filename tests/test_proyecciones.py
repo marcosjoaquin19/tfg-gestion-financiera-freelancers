@@ -348,3 +348,25 @@ def test_mes_en_curso_con_el_calendario_de_argentina(monkeypatch):
             return instante.astimezone(tz) if tz else instante.replace(tzinfo=None)
     monkeypatch.setattr(ps, "datetime", Reloj)
     assert ps.inicio_mes_en_curso() == datetime(2026, 9, 1)
+
+
+def test_dos_pedidos_a_la_vez_no_regeneran_en_paralelo(monkeypatch):
+    # Después de importar, el Dashboard y el semáforo piden la proyección al
+    # mismo tiempo. Si regeneraban en paralelo, el segundo borraba lo que
+    # guardaba el primero (500) y la banda salía distinta por la semilla global.
+    import threading, time
+    adentro, maximo = [0], [0]
+
+    def lenta(db, usuario_id, periodos):
+        adentro[0] += 1
+        maximo[0] = max(maximo[0], adentro[0])
+        time.sleep(0.05)
+        adentro[0] -= 1
+        return []
+    monkeypatch.setattr(ps, "_generar_proyecciones", lenta)
+    hilos = [threading.Thread(target=ps.generar_proyecciones, args=(None, 1)) for _ in range(4)]
+    for h in hilos:
+        h.start()
+    for h in hilos:
+        h.join()
+    assert maximo[0] == 1
