@@ -9,7 +9,10 @@ defensa_final/demo/extracto_28sep_14oct.csv.
 Qué deja armado:
   • Meses de facturación alta (5 a 10 millones) y baja (1 a 2 millones), para
     que el gráfico de proyección y el semáforo del Monotributo tengan historia.
-  • Los cuatro detectores de la auditoría con algo que encontrar el 14/10:
+  • Cuatro de los cinco detectores de la auditoría con algo que encontrar el
+    14/10 (cinco alertas, porque hay dos facturas vencidas). El quinto,
+    transferencias propias, no deja alerta: el extracto trae $200.000 que van
+    y vuelven de Mercado Pago, y la importación los frena antes de guardarlos.
       - DUPLICADO: dos "Suscripción Adobe Creative Cloud" de $38.000 en junio
         (días 3 y 5: misma categoría, dentro de la ventana de 3 días).
       - ANOMALÍA: "Servidor dedicado AWS Reserved" de $900.000 en julio,
@@ -27,7 +30,7 @@ Qué deja armado:
 El usuario queda con el modelo base del clasificador (sin modelo propio), para
 mostrar en vivo el reentrenamiento con sus datos.
 
-Ejecutar (borra y recrea el usuario demo):
+Ejecutar (borra y recrea el usuario demo, con el mismo hash de contraseña):
     docker compose exec api python seed_demo_defensa.py
 """
 import logging
@@ -42,7 +45,7 @@ from app.models.factura import Factura, EstadoFactura
 from app.models.gasto import Gasto
 from app.models.ingreso import Ingreso
 from app.models.usuario import Usuario
-from app.services.auth import hashear_password
+from app.services.auth import hashear_password, verificar_password
 from app.services.duplicados_gasto import marcar_duplicado_si_corresponde
 from seed_demo import EMAIL, PASSWORD, asegurar_categorias_monotributo, limpiar_usuario_previo
 
@@ -198,11 +201,26 @@ def _fecha(mes, dia, hora=12):
     return datetime(ANIO, mes, dia, hora, 0)
 
 
-def crear_usuario(db):
+def hash_a_conservar(db):
+    """El hash de la cuenta demo anterior, si todavía es el de PASSWORD.
+
+    La filmina de seguridad muestra el hash real de la cuenta demo, y en la
+    defensa se puede comprobar en vivo con defensa_final/demo/ver_usuarios.sh.
+    Cada hash nuevo lleva una sal nueva: si la siembra lo recalculara, el del
+    día de la defensa ya no sería el de la filmina. La cuenta se recrea igual;
+    solo se conserva su hash.
+    """
+    previo = db.query(Usuario).filter(Usuario.email == EMAIL).first()
+    if previo and verificar_password(PASSWORD, previo.password_hash):
+        return previo.password_hash
+    return None
+
+
+def crear_usuario(db, password_hash=None):
     usuario = Usuario(
         nombre="María Fernández",
         email=EMAIL,
-        password_hash=hashear_password(PASSWORD),
+        password_hash=password_hash or hashear_password(PASSWORD),
         es_activo=True,
         categoria_monotributo=CATEGORIA,
         actividad_monotributo="servicios",
@@ -249,8 +267,9 @@ def main():
     db = SessionLocal()
     try:
         asegurar_categorias_monotributo(db)
+        hash_previo = hash_a_conservar(db)
         limpiar_usuario_previo(db)
-        usuario = crear_usuario(db)
+        usuario = crear_usuario(db, hash_previo)
         crear_movimientos(db, usuario)
         crear_facturas(db, usuario)
         print("\nDatos de la defensa cargados.")
