@@ -7,15 +7,36 @@ features TF-IDF) usando un dataset base más los gastos y correcciones del
 usuario. El entrenamiento corre 100% local (soberanía de datos); el modelo se
 serializa y se guarda en la BD para reutilizarlo sin reentrenar cada vez.
 
-Funciones clave: clasificar(), reentrenar_modelo_usuario(), registrar_ejemplo()
+Funciones clave: clasificar_gasto(), reentrenar_modelo_usuario(), registrar_ejemplo()
 y obtener_estado_modelo().
+
+Cómo leer este archivo (recorrido de un gasto):
+  1. Clasificar: ia_service.clasificar_gasto() llama a clasificar_gasto() de
+     acá, que pide el modelo a obtener_o_crear_modelo() (el propio del usuario
+     si ya lo tiene, si no el modelo base) y devuelve categoría + confianza.
+  2. Aprender: cada gasto cargado o corregido pasa por
+     evaluar_reentrenamiento_automatico(), que decide si conviene reentrenar;
+     las correcciones del Clasificador se guardan con registrar_ejemplo().
+  3. Reentrenar: _reentrenar_modelo_usuario() junta los 600 ejemplos base con
+     los gastos y correcciones del usuario y entrena su modelo propio.
+
+Vocabulario mínimo:
+  - TF-IDF: forma de convertir un texto en números. Cada palabra recibe un peso
+    alto si aparece en esa descripción y es rara en el resto (distingue), y
+    bajo si aparece en casi todas (no aporta).
+  - Naive Bayes y SVM: los dos algoritmos que aprenden a ir de esos números a
+    una categoría. Naive Bayes calcula probabilidades por palabra; SVM busca la
+    frontera que mejor separa una categoría de otra.
+  - Validación cruzada: forma honesta de medir la exactitud. Se prueba al modelo
+    con ejemplos que no vio al entrenar (como tomar examen con preguntas nuevas).
 """
 
 # PATRÓN: Strategy — _elegir_algoritmo() selecciona Naive Bayes o SVM según el volumen de datos.
 # PATRÓN: Pipeline — TF-IDF y clasificador encadenados en un solo objeto entrenable.
-# PATRÓN: Memento — el modelo entrenado se serializa (joblib+base64) y persiste en la BD.
-# PATRÓN: Lazy loading con fallback — obtener_o_crear_modelo(): modelo del usuario → modelo base → reentrenar.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# PATRÓN: Memento — el modelo entrenado se convierte a texto (joblib + base64) y se guarda en la BD.
+# PATRÓN: carga diferida con respaldo — obtener_o_crear_modelo() busca el modelo
+#         recién cuando se necesita: el del usuario → si no, el base → si no, lo entrena.
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 import base64
 import logging
@@ -47,8 +68,11 @@ CATEGORIAS_VALIDAS = CATEGORIAS_GASTO
 # Dataset base: 600 ejemplos, 50 por cada una de las 12 categorías.
 # El balanceo es deliberado: con clases desbalanceadas la exactitud global
 # se vuelve engañosa (el modelo acierta prediciendo siempre la clase mayoritaria).
-# Con 50 por categoría, el 76 % de accuracy medido por validación cruzada de 5
-# particiones es una medida honesta. Ver Anexo A de la tesis.
+# Con 50 por categoría, el 76 % de exactitud (aciertos sobre el total) medido por
+# validación cruzada de 5 particiones es una medida honesta. Ver Anexo A de la tesis.
+# Son descripciones cortas y en minúscula, como las que escribe un freelancer
+# argentino o las que trae un extracto bancario. Las tildes no importan: el
+# TF-IDF las quita antes de aprender (ver _crear_pipeline).
 DATASET_BASE = [
     # ── Software ───────────────────────────────────────────────────────────
     ("licencia windows", "Software"),
@@ -696,23 +720,49 @@ DATASET_BASE = [
 
 
 def _crear_pipeline(algoritmo: str) -> Pipeline:
+    """Arma el modelo vacío: un "Pipeline" de dos pasos, todavía sin entrenar.
+
+    Pipeline es como una línea de montaje: el texto entra por un extremo, pasa
+    por el TF-IDF (texto → números) y después por el clasificador (números →
+    categoría). Se entrena y se usa como una sola pieza, así nunca puede pasar
+    que se entrene con una conversión y se prediga con otra.
+    """
     vectorizer = TfidfVectorizer(
-        ngram_range=(1, 2),
-        strip_accents="unicode",
-        lowercase=True,
-        min_df=1,
+        ngram_range=(1, 2),       # mira palabras sueltas y pares de palabras seguidas:
+                                  # "mercado libre" dice más que "mercado" y "libre" por separado
+        strip_accents="unicode",  # "batería" y "bateria" cuentan como la misma palabra
+        lowercase=True,           # "ADOBE" y "adobe" también
+        min_df=1,                 # alcanza con que una palabra aparezca una vez para
+                                  # tenerla en cuenta (el dataset es chico: 50 por categoría)
     )
     if algoritmo == "svm":
-        clasificador = LinearSVC(max_iter=2000)
+        # LinearSVC = SVM lineal. max_iter es el tope de vueltas que puede dar el
+        # cálculo hasta encontrar la frontera entre categorías.
+        #
+        # random_state=0 fija la "semilla" del azar que usa el algoritmo por dentro.
+        # El resultado es el mismo (medido: igual exactitud y confianzas), pero sin
+        # semilla propia LinearSVC sacaba números del generador de azar compartido
+        # de numpy, el mismo que usa Prophet para calcular la banda (el rango
+        # mínimo-máximo) de la proyección. Como el reentrenamiento corre de fondo
+        # justo después de importar un extracto, le cambiaba la banda a la
+        # proyección que se calculaba al mismo tiempo.
+        clasificador = LinearSVC(max_iter=2000, random_state=0)
     else:
+        # Naive Bayes "multinomial": el que se usa para contar palabras en textos.
         clasificador = MultinomialNB()
     return Pipeline([("tfidf", vectorizer), ("clf", clasificador)])
 
 
 def _serializar_modelo(pipeline: Pipeline) -> str:
-    # joblib es la biblioteca recomendada por scikit-learn para persistir modelos:
-    # comprime arrays NumPy de manera más eficiente que pickle estándar.
-    # Envolvemos el binario en base64 para almacenarlo como texto en la columna
+    """Convierte el modelo entrenado en texto para poder guardarlo en la base.
+
+    Serializar = pasar un objeto que vive en memoria a un formato que se puede
+    guardar y después reconstruir (como "congelar" el modelo).
+    """
+    # joblib es la biblioteca que recomienda scikit-learn para guardar modelos:
+    # guarda las tablas de números (arrays de NumPy) de forma más eficiente que
+    # pickle, el formato estándar de Python. El resultado son bytes; base64 los
+    # pasa a letras y números para poder guardarlos como texto en la columna
     # modelo_serializado de la tabla modelos_clasificador.
     buffer = BytesIO()
     joblib.dump(pipeline, buffer)
@@ -720,52 +770,103 @@ def _serializar_modelo(pipeline: Pipeline) -> str:
 
 
 def _deserializar_modelo(texto: str) -> Pipeline:
+    """Lo inverso: a partir del texto guardado reconstruye el modelo listo para usar.
+
+    Por eso no hace falta reentrenar en cada clasificación: se "descongela".
+    """
     datos = base64.b64decode(texto)
     return joblib.load(BytesIO(datos))
 
 
 def _elegir_algoritmo(n_ejemplos: int) -> str:
+    """Strategy: Naive Bayes con menos de 100 ejemplos, SVM desde 100.
+
+    Es la regla que define la tesis (pág. 14): Naive Bayes se comporta mejor con
+    pocos datos y SVM aprovecha mejor el volumen. Medido con los 600 ejemplos:
+    SVM 76 %, Naive Bayes 74 %. Como todo modelo (base o del usuario) incluye
+    siempre los 600 ejemplos base, en la práctica se usa SVM; Naive Bayes queda
+    para conjuntos chicos.
+    """
     return "svm" if n_ejemplos >= 100 else "naive_bayes"
 
 
 def _calcular_precision(pipeline: Pipeline, X: list, y: list, cv: int = 5) -> Optional[float]:
+    """Mide la exactitud del modelo con validación cruzada (porcentaje de aciertos).
+
+    Cómo funciona, con cv=5: se parten los ejemplos en 5 grupos; se entrena con
+    4 y se toma "examen" con el quinto, que el modelo no vio. Se repite 5 veces
+    rotando el grupo de examen y se promedian las 5 notas. Así no se mide al
+    modelo con las mismas preguntas que estudió (eso daría casi 100 % y mentiría).
+
+    Ojo con el nombre: la función y la columna de la base se llaman "precision"
+    por el diseño original, pero lo que se mide es la exactitud (scoring=
+    "accuracy": aciertos / total). En aprendizaje automático, "precision" es otra
+    métrica: de los gastos que el modelo dijo que eran "Software", cuántos lo eran.
+
+    X son las descripciones y y las categorías correctas (los nombres X/y son la
+    convención de scikit-learn: entrada y respuesta esperada).
+
+    Devuelve None si no hay datos suficientes para medir.
+    """
     try:
         import pandas as pd
-        conteos = pd.Series(y).value_counts()
+        conteos = pd.Series(y).value_counts()   # cuántos ejemplos tiene cada categoría
         min_clase = int(conteos.min())
+        # Cada grupo de examen necesita al menos un ejemplo de cada categoría: si
+        # una categoría tiene solo 3 ejemplos, no se la puede repartir en 5 grupos.
+        # Por eso se usan como mucho tantos grupos como ejemplos tenga la
+        # categoría más chica.
         cv_real = min(cv, min_clase)
         if cv_real < 2 or len(X) < cv_real:
+            # Con menos de 2 grupos no hay forma de entrenar con uno y probar con otro.
             return None
         scores = cross_val_score(pipeline, X, y, cv=cv_real, scoring="accuracy")
-        return float(scores.mean())
+        return float(scores.mean())   # promedio de las notas de cada vuelta
     except Exception as e:
+        # Si la medición falla, el modelo igual se guarda; solo queda sin el dato.
         logger.warning(f"No se pudo calcular precisión CV: {e}")
         return None
 
 
 def entrenar_modelo_base(db: Session) -> ModeloClasificador:
+    """Entrena y guarda el modelo base: el que comparten todos los usuarios nuevos.
+
+    Se entrena solo con los 600 ejemplos de DATASET_BASE y se guarda con
+    usuario_id vacío (None), que es la marca de "no es de nadie en particular".
+    Cada usuario lo usa hasta juntar 20 gastos propios; desde ahí tiene su
+    modelo personal (ver _reentrenar_modelo_usuario).
+
+    La exactitud se mide con validación cruzada de 5 partes: es el 76 % que
+    informa la tesis y que muestra la pantalla Clasificador.
+    """
+    # Buscamos el modelo base activo. En SQLAlchemy (la biblioteca que traduce
+    # estas consultas a SQL) se escribe "== True" e ".is_(None)" para que la
+    # comparación se haga en la base de datos y no en Python.
     existente = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id.is_(None),
         ModeloClasificador.activo == True,
     ).first()
 
-    # Solo saltamos el reentrenamiento si ya está entrenado con TODOS los
-    # ejemplos disponibles. Si el dataset creció (ej: ampliación del corpus),
-    # forzamos un fit nuevo para que el modelo persistido refleje la realidad.
+    # Solo nos salteamos el entrenamiento si el modelo guardado ya usó TODOS los
+    # ejemplos disponibles. Si al dataset se le sumaron ejemplos, se entrena de
+    # nuevo para que el modelo guardado refleje el dataset actual.
     if existente and existente.n_ejemplos >= len(DATASET_BASE):
         return existente
 
-    X = [desc for desc, _ in DATASET_BASE]
-    y = [cat for _, cat in DATASET_BASE]
+    X = [desc for desc, _ in DATASET_BASE]   # entradas: las descripciones
+    y = [cat for _, cat in DATASET_BASE]     # respuestas correctas: las categorías
     n = len(X)
 
     algoritmo = _elegir_algoritmo(n)
     pipeline = _crear_pipeline(algoritmo)
-    pipeline.fit(X, y)
+    pipeline.fit(X, y)   # fit = entrenar: el modelo aprende de los ejemplos
 
     precision = _calcular_precision(pipeline, X, y, cv=5)
     modelo_str = _serializar_modelo(pipeline)
 
+    # Si ya había un modelo base (con menos ejemplos), se lo actualiza en el
+    # mismo registro; si no había ninguno, se crea. db.commit() es el momento
+    # en que los cambios quedan guardados de verdad en la base de datos.
     if existente:
         existente.modelo_serializado = modelo_str
         existente.algoritmo = algoritmo
@@ -791,13 +892,20 @@ def entrenar_modelo_base(db: Session) -> ModeloClasificador:
 
 
 def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str, bool]:
-    """Retorna (pipeline, algoritmo, es_modelo_propio).
+    """Devuelve el modelo con el que hay que clasificar a este usuario.
 
-    El tercer elemento distingue si el pipeline devuelto es el modelo
-    personalizado del usuario o el modelo base compartido. Sin ese dato la
-    respuesta de clasificación no puede decir con honestidad de dónde salió
-    la predicción, y se contradice con lo que informa GET /ml/estado.
+    Orden de búsqueda (patrón "carga diferida con respaldo"):
+      1. El modelo propio y activo del usuario, si ya tiene uno.
+      2. Si no tiene, o si el suyo no se puede leer: el modelo base compartido.
+      3. Si todavía no existe el modelo base (base de datos recién creada), lo
+         entrena en el momento.
+
+    Retorna (pipeline, algoritmo, es_modelo_propio). El tercer elemento
+    distingue si el modelo devuelto es el personal del usuario o el base. Sin
+    ese dato la respuesta de clasificación no puede decir con honestidad de
+    dónde salió la predicción, y se contradice con lo que informa GET /ml/estado.
     """
+    # 1. ¿El usuario ya tiene modelo propio?
     modelo_usuario = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id == usuario_id,
         ModeloClasificador.activo == True,
@@ -808,13 +916,17 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str,
             pipeline = _deserializar_modelo(modelo_usuario.modelo_serializado)
             return pipeline, modelo_usuario.algoritmo, True
         except Exception as e:
+            # Si el modelo propio está dañado no cortamos la clasificación:
+            # seguimos con el modelo base (paso 2).
             logger.error(f"Error deserializando modelo usuario {usuario_id}, reentrenando base: {e}")
 
+    # 2. Modelo base compartido.
     modelo_base = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id.is_(None),
         ModeloClasificador.activo == True,
     ).first()
 
+    # 3. Si no existe, se entrena ahora (pasa una sola vez, con la base vacía).
     if not modelo_base:
         modelo_base = entrenar_modelo_base(db)
 
@@ -822,6 +934,11 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str,
         pipeline = _deserializar_modelo(modelo_base.modelo_serializado)
         return pipeline, modelo_base.algoritmo, False
     except Exception as e:
+        # Último intento si el modelo base guardado no se puede leer. Ojo:
+        # entrenar_modelo_base() solo vuelve a entrenar si el guardado tiene menos
+        # ejemplos que el dataset; si tiene todos, devuelve el mismo registro, la
+        # lectura vuelve a fallar y clasificar_gasto() responde "Otros" con
+        # confianza 0 (el gasto queda marcado para revisión, no se rompe nada).
         logger.error(f"Error deserializando modelo base, reentrenando: {e}")
         modelo_base = entrenar_modelo_base(db)
         pipeline = _deserializar_modelo(modelo_base.modelo_serializado)
@@ -829,33 +946,62 @@ def obtener_o_crear_modelo(db: Session, usuario_id: int) -> tuple[Pipeline, str,
 
 
 def _confianza_svm(scores: np.ndarray) -> tuple[int, float]:
-    """Confianza para LinearSVC a partir del margen entre las dos mejores clases.
+    """Calcula qué tan seguro está el SVM, a partir de la distancia entre sus dos mejores opciones.
 
-    El softmax directo sobre decision_function() no sirve como confianza: con
-    12 clases reparte densidad entre todas y hasta los aciertos claros quedan
-    en ~0.20, por debajo de cualquier umbral razonable. En cambio, la brecha
-    top1 - top2 sí refleja la duda del modelo: 0 ante un empate (dos clases
-    compiten cabeza a cabeza) y crece cuando hay una dominante. La mapeamos a
-    [0, 1) con 1 - e^(-brecha), monótona y acotada.
+    El SVM no da probabilidades: decision_function() devuelve un puntaje por
+    categoría ("scores": cuánto se inclina el modelo hacia cada una). Para
+    convertirlos en una confianza entre 0 y 1 probamos primero lo habitual,
+    repartir los puntajes como porcentajes entre las 12 categorías (lo que se
+    llama softmax), y no sirvió: aun en los aciertos claros la ganadora quedaba
+    cerca de 0,20, por debajo de cualquier umbral razonable.
+
+    Lo que sí refleja la duda del modelo es la brecha entre la mejor categoría y
+    la segunda: 0 si empatan (el modelo duda entre dos) y más grande cuanto más
+    se despega la ganadora. La llevamos a un número entre 0 y 1 con
+    1 - e^(-brecha), que siempre crece con la brecha y nunca pasa de 1:
+        brecha 0    → confianza 0 %
+        brecha 0,36 → 30 % (el umbral de revisión, ver ia_service.UMBRAL_CONFIANZA_ML)
+        brecha 1    → 63 %
+        brecha 2    → 86 %
+
+    Devuelve (posición de la categoría ganadora, confianza).
     """
     if len(scores) == 1:
-        # Caso binario: decision_function devuelve un único margen con signo.
+        # Caso de solo dos categorías (no pasa con las 12 reales, pero
+        # scikit-learn lo devuelve distinto): llega un único puntaje con signo;
+        # positivo = segunda categoría, negativo = primera.
         idx = 1 if scores[0] > 0 else 0
         return idx, float(1.0 - np.exp(-abs(float(scores[0]))))
-    orden = np.argsort(scores)[::-1]
-    brecha = float(scores[orden[0]] - scores[orden[1]])
+    orden = np.argsort(scores)[::-1]                      # posiciones de mayor a menor puntaje
+    brecha = float(scores[orden[0]] - scores[orden[1]])   # mejor menos segunda
     return int(orden[0]), float(1.0 - np.exp(-brecha))
 
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
+    """Predice la categoría de una descripción y cuánta confianza tiene el modelo.
+
+    Es la predicción "pura" del modelo. Quien la llama, ia_service.clasificar_gasto(),
+    agrega dos cosas antes: si el usuario ya corrigió esa misma descripción, usa
+    la corrección; y si la confianza queda por debajo del 30 %, sugiere "Otros"
+    y marca el gasto para revisión.
+
+    Todo corre en el servidor propio: la descripción del gasto no sale a ningún
+    servicio externo (soberanía de datos; se descartó clasificar con Groq por eso).
+
+    Devuelve un diccionario con categoria, confianza (0 a 1), fuente ("ml_propio"
+    o "ml_base") y algoritmo.
+    """
     try:
         pipeline, algoritmo, es_propio = obtener_o_crear_modelo(db, usuario_id)
-        clases = pipeline.classes_
+        clases = pipeline.classes_   # las 12 categorías, en el orden interno del modelo
 
         if algoritmo == "svm":
+            # Un puntaje por categoría → confianza por brecha (ver _confianza_svm).
             scores = np.array(pipeline.decision_function([descripcion])[0], dtype=float).ravel()
             idx, confianza = _confianza_svm(scores)
         else:
+            # Naive Bayes sí da probabilidades: la más alta es la categoría elegida
+            # y su probabilidad es la confianza.
             probas = pipeline.predict_proba([descripcion])[0]
             idx = int(np.argmax(probas))
             confianza = float(probas[idx])
@@ -871,6 +1017,8 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
             "algoritmo": algoritmo,
         }
     except Exception as e:
+        # Si algo falla, el alta del gasto no se corta: va a "Otros" con
+        # confianza 0, y por estar debajo del umbral queda marcado para revisión.
         logger.error(f"Error ML clasificar_gasto usuario {usuario_id}: {e}")
         return {
             "categoria": "Otros",
@@ -881,24 +1029,33 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int) -> dict:
 
 
 def normalizar_descripcion(descripcion: str) -> str:
-    """Forma canónica para comparar descripciones de gastos.
+    """Lleva una descripción a una forma única para poder compararla con otras.
 
-    Insensible a mayúsculas, tildes y espacios múltiples: el usuario debería
-    poder corregir "Adobe Photoshop" una vez y que la corrección se aplique
-    también a "adobe  photoshop" o "ADOBE PHOTOSHOP". Es la misma estrategia
-    que csv_service usa para detectar duplicados en importaciones bancarias.
+    No le importan las mayúsculas, las tildes ni los espacios repetidos: el
+    usuario corrige "Adobe Photoshop" una vez y la corrección se aplica también
+    a "adobe  photoshop" o "ADOBE PHOTOSHOP". Ejemplo: "  Café   Martínez " →
+    "cafe martinez".
     """
     if not descripcion:
         return ""
+    # NFKD separa cada letra de su tilde ("é" pasa a ser "e" + "´")...
     nfkd = unicodedata.normalize("NFKD", descripcion)
+    # ...y acá se descartan las tildes sueltas (los caracteres "combinables").
     sin_tildes = "".join(c for c in nfkd if not unicodedata.combining(c))
+    # Minúsculas, sin espacios en los bordes y los espacios repetidos se vuelven uno.
     return re.sub(r"\s+", " ", sin_tildes.lower().strip())
 
 
 def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id: int) -> None:
-    """Persiste una corrección explícita aportada por el usuario desde el
-    playground del clasificador (POST /ml/corregir). La corrección se usa
-    como ejemplo de entrenamiento adicional en el próximo reentrenamiento."""
+    """Guarda una corrección que el usuario hizo en la pantalla Clasificador (POST /ml/corregir).
+
+    Se guarda en la tabla cache_clasificacion y sirve para dos cosas:
+      - la próxima vez que aparezca esa misma descripción, ia_service la usa
+        directo, sin preguntarle al modelo (confianza 100 %);
+      - entra como ejemplo de entrenamiento en el próximo reentrenamiento.
+    Si esa descripción ya estaba corregida, se pisa con la categoría nueva: la
+    última corrección del usuario es la que vale.
+    """
     try:
         descripcion_norm = normalizar_descripcion(descripcion)
         existente = db.query(CacheClasificacion).filter(
@@ -913,10 +1070,10 @@ def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id:
                 descripcion_normalizada=descripcion_norm,
                 categoria=categoria,
             ))
-        db.commit()
+        db.commit()   # guardar los cambios en la base
     except Exception as e:
         logger.error(f"Error registrar_ejemplo: {e}")
-        db.rollback()
+        db.rollback()   # deshacer lo que quedó a medias para no dejar la sesión rota
 
 
 # Un reentrenamiento a la vez por usuario. Las correcciones y los gastos nuevos
@@ -924,21 +1081,49 @@ def registrar_ejemplo(descripcion: str, categoria: str, db: Session, usuario_id:
 # desactivaba el modelo anterior e insertaba el suyo, y el usuario quedaba con
 # varios modelos "activos". La API corre en un solo proceso, así que un candado
 # en memoria alcanza para ordenarlos.
+#
+# Un candado (threading.Lock) funciona como la llave del baño de una estación de
+# servicio: el que la tiene entra, y el que llega después espera a que la devuelvan.
+# Hay un candado por usuario, así el reentrenamiento de uno no frena al de otro.
 _candados_reentrenamiento: dict[int, threading.Lock] = {}
+# Este segundo candado cuida el diccionario de arriba: evita que dos pedidos
+# simultáneos le creen dos candados distintos al mismo usuario.
 _candado_registro = threading.Lock()
 
 
 def _candado_de(usuario_id: int) -> threading.Lock:
+    """Devuelve el candado del usuario; la primera vez lo crea."""
     with _candado_registro:
         return _candados_reentrenamiento.setdefault(usuario_id, threading.Lock())
 
 
 def reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
-    with _candado_de(usuario_id):
+    """Reentrena el modelo del usuario, esperando su turno si ya hay uno en curso.
+
+    Es la función que llaman las rutas (POST /ml/reentrenar) y la política
+    automática. El trabajo real está en _reentrenar_modelo_usuario().
+    """
+    with _candado_de(usuario_id):   # "with" toma el candado y lo suelta al terminar, aunque falle
         return _reentrenar_modelo_usuario(db, usuario_id)
 
 
 def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
+    """Entrena el modelo personal del usuario.
+
+    Pasos:
+      1. Junta tres fuentes de ejemplos: los 600 del dataset base, los gastos
+         del usuario (descripción + categoría que quedó guardada) y sus
+         correcciones del Clasificador.
+      2. Si entre gastos y correcciones tiene menos de 20 propios, no entrena:
+         todavía no hay suficiente información suya y sigue con el modelo base.
+      3. Si tiene 20 o más, entrena, mide la exactitud, desactiva el modelo
+         anterior y guarda el nuevo como activo. Los anteriores quedan en la
+         tabla con activo=False (historial).
+
+    Los 600 ejemplos base siempre se incluyen: así el modelo personal nunca
+    "olvida" las categorías para las que el usuario todavía no cargó gastos.
+    """
+    # Paso 1a: los gastos del usuario que tienen descripción y categoría.
     gastos = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.descripcion.isnot(None),
@@ -948,7 +1133,7 @@ def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
     X_usuario = [g.descripcion.strip().lower() for g in gastos if g.descripcion and g.categoria]
     y_usuario = [g.categoria for g in gastos if g.descripcion and g.categoria]
 
-    # Correcciones explícitas del usuario desde el playground (/ml/corregir).
+    # Paso 1b: correcciones explícitas del usuario desde el Clasificador (/ml/corregir).
     # No dependen de que existan gastos reales asociados: son enseñanza directa
     # al modelo. Por eso entran como ejemplos de entrenamiento del usuario.
     correcciones = db.query(CacheClasificacion).filter(
@@ -962,8 +1147,10 @@ def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
 
     X = X_base + X_usuario + X_correcciones
     y = y_base + y_usuario + y_correcciones
-    n = len(X_usuario) + len(X_correcciones)
+    n = len(X_usuario) + len(X_correcciones)   # cuántos ejemplos son del usuario
 
+    # Paso 2: con menos de 20 propios no vale la pena un modelo personal
+    # (mismo valor que UMBRAL_MINIMO_REENTRENAMIENTO, más abajo).
     if n < 20:
         modelo_base = db.query(ModeloClasificador).filter(
             ModeloClasificador.usuario_id.is_(None),
@@ -978,13 +1165,20 @@ def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
             "mensaje": "Pocos ejemplos propios, usando modelo base. Clasificá más gastos para personalizar.",
         }
 
+    # Paso 3: entrenar el modelo personal.
     algoritmo = _elegir_algoritmo(len(X))
     pipeline = _crear_pipeline(algoritmo)
-    pipeline.fit(X, y)
+    pipeline.fit(X, y)   # fit = entrenar
 
+    # Se mide con 3 partes y no con 5 como el modelo base: esto corre en segundo
+    # plano cada vez que el usuario corrige o carga gastos, y 3 partes son 3
+    # entrenamientos de prueba en lugar de 5 (más rápido). La cifra de
+    # referencia de la tesis (76 %) es la del modelo base, medida con 5.
     precision = _calcular_precision(pipeline, X, y, cv=3)
     modelo_str = _serializar_modelo(pipeline)
 
+    # El modelo anterior del usuario se desactiva (no se borra) y el nuevo pasa
+    # a ser el activo: siempre hay uno solo activo por usuario.
     db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id == usuario_id,
         ModeloClasificador.activo == True,
@@ -1018,25 +1212,38 @@ def _reentrenar_modelo_usuario(db: Session, usuario_id: int) -> dict:
 
 UMBRAL_MINIMO_REENTRENAMIENTO = 20
 # Por debajo de este número de gastos clasificados, no entrenamos un modelo
-# personalizado: el sample sería demasiado chico para que el SVM/Naive Bayes
-# generalice algo útil contra las 12 categorías. Mismo umbral que ya usa
-# reentrenar_modelo_usuario() para no entrar en contradicción.
+# personal: la muestra sería demasiado chica para que el modelo aprenda algo
+# que sirva con descripciones nuevas en las 12 categorías. Es el mismo umbral
+# que usa _reentrenar_modelo_usuario(), para que las dos no se contradigan.
 
 INTERVALO_REENTRENAMIENTO_NUEVOS = 10
-# Cantidad de gastos nuevos que se acumulan antes de reentrenar por creación.
-# Buscamos un balance: si reentrenamos en cada gasto, gastamos CPU al pedo;
-# si esperamos demasiado, el modelo queda viejo. Diez es razonable para un
-# freelancer típico que carga ~30-60 gastos al mes.
+# Cantidad de gastos nuevos que se acumulan antes de reentrenar por carga.
+# Buscamos un equilibrio: si reentrenáramos con cada gasto, el servidor
+# trabajaría de más sin necesidad; si esperáramos demasiado, el modelo quedaría
+# desactualizado. Diez es un punto medio: con un uso típico de algunas decenas
+# de gastos por mes (estimación de diseño, no medición), el modelo se actualiza
+# unas pocas veces por mes.
 
 
 def evaluar_reentrenamiento_automatico(db: Session, usuario_id: int, motivo: str = "creacion") -> dict:
-    """Evalúa la política de reentrenamiento y dispara el fit si corresponde.
+    """Decide si corresponde reentrenar el modelo del usuario y, si corresponde, lo hace.
 
-    motivo: "creacion"   → gasto nuevo, reentrena cada INTERVALO_REENTRENAMIENTO_NUEVOS.
+    Corre en segundo plano (routers/gastos.py, _reentrenar_en_background):
+    después de cada alta de gasto, cuando el usuario le cambia la categoría a
+    uno, y al confirmar una importación. El usuario no espera: su gasto ya quedó
+    guardado.
+
+    motivo: "creacion"   → gasto nuevo: se reentrena cada 10 gastos nuevos
+                           (INTERVALO_REENTRENAMIENTO_NUEVOS).
             "correccion" → el usuario cambió la categoría de un gasto existente.
-                           Esa es la señal más informativa que tenemos, así que
-                           reentrenamos siempre que se haya superado el umbral.
+                           Es la señal más valiosa que tenemos (nos dice
+                           exactamente en qué se equivocó el modelo), así que
+                           se reentrena siempre que se haya superado el umbral.
+
+    Devuelve un diccionario que dice si reentrenó y por qué ("razon"), útil
+    para las pruebas y para los registros del servidor.
     """
+    # Cuántos gastos con descripción y categoría tiene hoy el usuario.
     n_actuales = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
         Gasto.descripcion.isnot(None),
@@ -1061,11 +1268,14 @@ def evaluar_reentrenamiento_automatico(db: Session, usuario_id: int, motivo: str
         resultado = reentrenar_modelo_usuario(db, usuario_id)
         return {"reentrenado": True, "razon": "primer_entrenamiento", **resultado}
 
-    # n_ejemplos guardado = DATASET_BASE + propios al momento del último fit.
-    # Restando el tamaño del base obtenemos cuántos propios había entonces.
+    # El modelo guardado recuerda con cuántos ejemplos se entrenó (n_ejemplos =
+    # 600 base + los propios de ese momento). Restando los 600 base sabemos
+    # cuántos propios había, y por diferencia cuántos gastos nuevos llegaron desde
+    # el último entrenamiento.
     n_propios_anterior = max(0, modelo_actual.n_ejemplos - len(DATASET_BASE))
     nuevos_desde_ultimo = n_actuales - n_propios_anterior
 
+    # Una corrección reentrena siempre; un gasto nuevo, solo cada 10.
     if motivo == "correccion":
         resultado = reentrenar_modelo_usuario(db, usuario_id)
         return {"reentrenado": True, "razon": "correccion_usuario", **resultado}
@@ -1084,15 +1294,28 @@ def evaluar_reentrenamiento_automatico(db: Session, usuario_id: int, motivo: str
 
 
 def evaluar_modelo_base(db: Session) -> dict:
-    """Mide la performance del modelo base con cross-validation 5-fold.
+    """Evaluación completa del modelo base con validación cruzada de 5 partes.
 
-    Devuelve accuracy global, métricas por categoría (precision, recall, f1)
-    y matriz de confusión. Se usa antes de ampliar el dataset para diagnosticar
-    qué categorías están fallando, y después para validar la mejora.
+    No la usa la aplicación: la usa el script evaluar_modelo.py, que genera las
+    cifras del Anexo A de la tesis. Sirvió para ver qué categorías fallaban antes
+    de ampliar el dataset y para confirmar después que había mejorado.
 
-    Cross-validation 5-fold significa que cada ejemplo se predice cinco veces
-    (entrenando con el resto del dataset cada vez) y se promedia. Es una
-    métrica más honesta que evaluar sobre el mismo dataset de entrenamiento.
+    Validación cruzada de 5 partes: los 600 ejemplos se parten en 5 grupos de
+    120. Cada grupo, por turno, queda afuera del entrenamiento y el modelo lo
+    predice "a ciegas". Al final, cada ejemplo se predijo una sola vez y siempre
+    por un modelo que no lo había visto. Es una medida más honesta que evaluar
+    con los mismos ejemplos con los que se entrenó.
+
+    Devuelve:
+      - exactitud global: aciertos / total (el 76 %);
+      - por categoría:
+          precision = de los gastos que el modelo dijo "Software", cuántos lo eran;
+          recall    = de los gastos que eran "Software", cuántos encontró;
+          f1        = un promedio de las dos (si una es baja, el f1 también);
+          support   = cuántos ejemplos de esa categoría había (50);
+      - matriz de confusión: tabla de "categoría real" contra "categoría predicha".
+        La diagonal son los aciertos; lo que queda fuera muestra con qué se confunde
+        cada categoría.
     """
     from sklearn.model_selection import cross_val_predict
     from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
@@ -1104,8 +1327,9 @@ def evaluar_modelo_base(db: Session) -> dict:
     algoritmo = _elegir_algoritmo(n)
     pipeline = _crear_pipeline(algoritmo)
 
-    # cross_val_predict da la predicción de cada ejemplo cuando NO formó parte
-    # del fold de entrenamiento. Esa es la métrica que reportamos.
+    # cross_val_predict devuelve, para cada ejemplo, lo que predijo el modelo
+    # entrenado SIN ese ejemplo (cuando su grupo quedó afuera). Con esas
+    # predicciones "a ciegas" se calculan todas las métricas de abajo.
     y_pred = cross_val_predict(pipeline, X, y, cv=5)
 
     accuracy = accuracy_score(y, y_pred)
@@ -1133,6 +1357,13 @@ def evaluar_modelo_base(db: Session) -> dict:
 
 
 def obtener_estado_modelo(db: Session, usuario_id: int) -> dict:
+    """Datos del modelo que está usando el usuario (GET /ml/estado).
+
+    Es lo que muestra el recuadro de arriba de la pantalla Clasificador:
+    algoritmo, exactitud, cantidad de ejemplos y fecha del último entrenamiento.
+    Tres casos: el usuario tiene modelo propio; usa el modelo base; o todavía
+    no existe ningún modelo (base de datos recién creada, sin sembrar).
+    """
     modelo_usuario = db.query(ModeloClasificador).filter(
         ModeloClasificador.usuario_id == usuario_id,
         ModeloClasificador.activo == True,
