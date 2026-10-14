@@ -72,33 +72,33 @@ de ML: necesitaba estar aislada y testeable, no acoplada al ciclo de request.
 | ¿Cómo se conecta a la base? | [app/database.py:40](../app/database.py) | Factory · Singleton · Unit of Work |
 | ¿Cómo protegés las rutas privadas? | [app/dependencies.py:40](../app/dependencies.py) | Inyección de dependencias · Guard |
 | ¿Dónde se hashean las contraseñas? | [app/services/auth.py](../app/services/auth.py) | Facade de seguridad |
-| ¿Dónde está el índice de módulos? | [app/main.py:129](../app/main.py) | Front Controller / registro de routers |
-| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:727](../app/services/ml_service.py) | **Strategy** |
-| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:698](../app/services/ml_service.py) | **Pipeline** |
-| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:712](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
-| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:793](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
-| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:831](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
-| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:203](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
+| ¿Dónde está el índice de módulos? | [app/main.py:150](../app/main.py) | Front Controller / registro de routers |
+| ¿Cómo elegís entre Naive Bayes y SVM? | [app/services/ml_service.py:781](../app/services/ml_service.py) | **Strategy** |
+| ¿Cómo se arma el clasificador? | [app/services/ml_service.py:722](../app/services/ml_service.py) | **Pipeline** |
+| ¿Dónde se guarda el modelo entrenado? | [app/services/ml_service.py:756](../app/services/ml_service.py) | **Memento** (joblib + base64 → BD) |
+| ¿Qué pasa si un usuario no tiene modelo? | [app/services/ml_service.py:894](../app/services/ml_service.py) | Lazy loading con cadena de fallback |
+| ¿Cómo calculás la confianza del SVM? | [app/services/ml_service.py:948](../app/services/ml_service.py) | (decisión algorítmica, ver §4) |
+| ¿Y si no hay datos para proyectar? | [app/services/prophet_service.py:288](../app/services/prophet_service.py) | **Strategy** + degradación elegante |
 | ¿Cómo soportás 9 bancos distintos? | [app/services/csv_service.py:42](../app/services/csv_service.py) | **Adapter** / capa anticorrupción |
 | ¿Dónde detectás el formato del archivo? | [app/services/csv_service.py:244](../app/services/csv_service.py) | Adapter (heurística local) |
 | ¿Cómo evitás contar transferencias propias? | [app/services/csv_service.py:786](../app/services/csv_service.py) | Regla de dominio |
-| ¿Qué pasa si el usuario ya corrigió esa categoría? | [app/services/ia_service.py:409](../app/services/ia_service.py) | **Cache-Aside** + Chain of Responsibility |
-| ¿Y si se cae la API de IA? | [app/services/ia_service.py:360](../app/services/ia_service.py) | Fallback determinístico |
-| ¿Cómo se crean las alertas? | [app/services/auditoria.py:59](../app/services/auditoria.py) | **Factory Method** |
-| ¿Repite alertas que ya resolví? | [app/services/auditoria.py:77](../app/services/auditoria.py) | Idempotencia por huella |
-| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:248](../app/services/auditoria.py) | **Strategy** de reglas |
-| ¿Cómo detectás montos atípicos? | [app/services/auditoria.py:136](../app/services/auditoria.py) | Desvío estándar sobre 6 meses |
-| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:517](../app/services/reportes_service.py) | **Builder** |
-| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:572](../app/services/reportes_service.py) | **Template Method** |
-| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:67](../app/services/monotributo_service.py) | Servicio de dominio |
+| ¿Qué pasa si el usuario ya corrigió esa categoría? | [app/services/ia_service.py:492](../app/services/ia_service.py) | **Cache-Aside** + Chain of Responsibility |
+| ¿Y si se cae la API de IA? | [app/services/ia_service.py:435](../app/services/ia_service.py) | Fallback determinístico |
+| ¿Cómo se crean las alertas? | [app/services/auditoria.py:79](../app/services/auditoria.py) | **Factory Method** |
+| ¿Repite alertas que ya resolví? | [app/services/auditoria.py:103](../app/services/auditoria.py) | Idempotencia por huella |
+| ¿Cómo orquestás los detectores? | [app/services/auditoria.py:315](../app/services/auditoria.py) | **Strategy** de reglas |
+| ¿Cómo detectás montos atípicos? | [app/services/auditoria.py:175](../app/services/auditoria.py) | Desvío estándar sobre 6 meses |
+| ¿Cómo se construye el PDF? | [app/services/reportes_service.py:579](../app/services/reportes_service.py) | **Builder** |
+| ¿Cómo numerás las páginas del PDF? | [app/services/reportes_service.py:641](../app/services/reportes_service.py) | **Template Method** |
+| ¿Dónde está el cálculo fiscal? | [app/services/monotributo_service.py:95](../app/services/monotributo_service.py) | Servicio de dominio |
 | ¿Cómo maneja el frontend el token? | [frontend/src/api.js:24](../frontend/src/api.js) | **Interceptor** · Singleton |
 | ¿Qué pasa si expira la sesión? | [frontend/src/api.js:36](../frontend/src/api.js) | Interceptor de respuesta |
-| ¿Cómo bloqueás pantallas sin login? | [frontend/src/App.js:31](../frontend/src/App.js) | **Guard** / Protected Route |
-| ¿De dónde sale cada recomendación? | [app/services/recomendaciones_service.py:468](../app/services/recomendaciones_service.py) | Reglas con su dato de origen (HU-12) |
-| ¿Qué viaja a Groq y cómo controlás lo que vuelve? | [app/services/ia_service.py:172](../app/services/ia_service.py) · [:289](../app/services/ia_service.py) | Minimización de datos + verificación de cifras |
-| ¿Cómo sabés que la proyección no quedó vieja? | [app/services/prophet_service.py:249](../app/services/prophet_service.py) | Firma de los ingresos |
-| ¿Qué escala usa un mes pasado? | [app/services/monotributo_service.py:46](../app/services/monotributo_service.py) | Catálogo versionado por fecha de vigencia |
-| ¿Qué pasa si falta la clave de firma? | [app/services/auth.py:65](../app/services/auth.py) | Fail-fast al arrancar |
+| ¿Cómo bloqueás pantallas sin login? | [frontend/src/App.js:49](../frontend/src/App.js) | **Guard** / Protected Route |
+| ¿De dónde sale cada recomendación? | [app/services/recomendaciones_service.py:531](../app/services/recomendaciones_service.py) | Reglas con su dato de origen (HU-12) |
+| ¿Qué viaja a Groq y cómo controlás lo que vuelve? | [app/services/ia_service.py:211](../app/services/ia_service.py) · [:357](../app/services/ia_service.py) | Minimización de datos + verificación de cifras |
+| ¿Cómo sabés que la proyección no quedó vieja? | [app/services/prophet_service.py:360](../app/services/prophet_service.py) | Firma de los ingresos |
+| ¿Qué escala usa un mes pasado? | [app/services/monotributo_service.py:67](../app/services/monotributo_service.py) | Catálogo versionado por fecha de vigencia |
+| ¿Qué pasa si falta la clave de firma? | [app/services/auth.py:83](../app/services/auth.py) | Fail-fast al arrancar |
 | ¿Dónde está el descargo de responsabilidad? | [frontend/src/components/AvisoAlcance.js](../frontend/src/components/AvisoAlcance.js) | Single Source of Truth |
 
 ---
@@ -110,7 +110,7 @@ alternativa descarté**. Este es el guion de la respuesta oral.
 
 ### 3.1 · Strategy — selección de algoritmo de clasificación
 
-**Dónde:** `app/services/ml_service.py:727` (`_elegir_algoritmo`) y `:698`
+**Dónde:** `app/services/ml_service.py:781` (`_elegir_algoritmo`) y `:722`
 (`_crear_pipeline`).
 
 ```python
@@ -150,7 +150,7 @@ está documentada en el docstring de `clasificar_gasto()`.
 
 ### 3.2 · Strategy + degradación elegante — proyecciones
 
-**Dónde:** `app/services/prophet_service.py:203` (`generar_proyecciones`).
+**Dónde:** `app/services/prophet_service.py:288` (`generar_proyecciones`).
 
 **Qué resuelve.** Prophet ajusta una tendencia sobre los totales de los **meses
 cerrados** (el mes en curso no terminó y bajaría la serie). Se usa con al menos
@@ -195,7 +195,7 @@ explicarle qué columna es cuál, ya perdí.
 
 ### 3.4 · Cache-Aside + Chain of Responsibility — clasificación de un gasto
 
-**Dónde:** `app/services/ia_service.py:409` (`clasificar_gasto`).
+**Dónde:** `app/services/ia_service.py:492` (`clasificar_gasto`).
 
 **Cadena de resolución:**
 
@@ -221,8 +221,8 @@ aprenda ese caso puntual; la corrección explícita sí lo garantiza.
 
 ### 3.5 · Factory Method + idempotencia — auditoría
 
-**Dónde:** `app/services/auditoria.py:59` (`_crear_alerta`), `:77`
-(`_huella_alerta`), `:248` (`ejecutar_auditoria`).
+**Dónde:** `app/services/auditoria.py:79` (`_crear_alerta`), `:103`
+(`_huella_alerta`), `:315` (`ejecutar_auditoria`).
 
 **Qué resuelve.** Hay cinco detectores (duplicados, montos atípicos, facturas
 impagas, monotributo sin pagar, transferencias entre cuentas propias). Cada uno
@@ -252,7 +252,7 @@ polimorfismo necesario en Python, sin el peso de una jerarquía.
 
 ### 3.6 · Builder + Template Method — reporte PDF
 
-**Dónde:** `app/services/reportes_service.py:517` (`generar_pdf_mensual`), `:572`
+**Dónde:** `app/services/reportes_service.py:579` (`generar_pdf_mensual`), `:641`
 (`_pie_pagina`).
 
 **Builder:** cada `_seccion_*()` devuelve una lista de elementos (encabezado,
@@ -346,7 +346,7 @@ cambia una vez.
 
 ### 4.1 · Confianza del SVM — por qué no softmax
 
-**Dónde:** `app/services/ml_service.py:831` (`_confianza_svm`).
+**Dónde:** `app/services/ml_service.py:948` (`_confianza_svm`).
 
 LinearSVC no devuelve probabilidades, devuelve distancias al hiperplano
 (`decision_function`). Aplicar softmax sobre esas distancias **no funciona**
@@ -393,7 +393,7 @@ defensa.
 ### 4.4 · Límite de responsabilidad del sistema
 
 **Dónde:** `frontend/src/components/AvisoAlcance.js` (6 pantallas) y
-`app/services/reportes_service.py:497` (pie del PDF).
+`app/services/reportes_service.py:558` (pie del PDF).
 
 > *FreelanceControl informa, proyecta y alerta sobre la base de los datos que
 > usted carga. No constituye asesoramiento contable, fiscal ni financiero, y no

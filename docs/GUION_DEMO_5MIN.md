@@ -50,15 +50,20 @@ correcta → Corregir). Volver a clasificar la misma descripción.
 
 ## ⏱ 1:30 – 2:30 · Importación bancaria (Importar)
 
-**En pantalla:** ir a **Importar** → subir `docs/extractos_ejemplo/galicia.csv`.
+**En pantalla:** ir a **Importar** → subir `defensa_final/demo/extracto_28sep_14oct.csv`
+→ **Analizar archivo**.
 
 **Decir:**
-> "Para evitar la carga manual, importo el extracto del banco. Este es un CSV de
-> Galicia, que usa punto y coma como separador. El sistema detecta la estructura
-> con heurísticas locales —reconoce las columnas y el separador sin que yo
-> configure nada— y marca los movimientos que ya existen para no duplicarlos."
+> "Para evitar la carga manual, importo el extracto del banco: del 28 de
+> septiembre a hoy. Es un CSV con formato Galicia, punto y coma y punto de
+> miles. El sistema detecta la estructura con heurísticas locales —reconoce las
+> columnas y el separador sin que yo configure nada— y antes de guardar me
+> avisa: tres movimientos ya estaban (los importé con el extracto anterior),
+> dos son una transferencia entre mis propias cuentas y no son facturación, y
+> una fila tiene una fecha que no existe, 31 de septiembre."
 
-**En pantalla:** mostrar la vista previa (columnas detectadas, tipos, duplicados).
+**En pantalla:** mostrar la vista previa (columnas detectadas, categorías, avisos)
+y confirmar: **29 movimientos importados**.
 
 **Decir:**
 > "La importación es una transacción atómica: si algo falla, no queda nada a
@@ -68,7 +73,7 @@ correcta → Corregir). Volver a clasificar la misma descripción.
 
 ## ⏱ 2:30 – 3:30 · Auditoría automática (Alertas)
 
-**En pantalla:** ir a **Alertas** → ejecutar auditoría.
+**En pantalla:** ir a **Auditoría** → *Ejecutar auditoría*.
 
 **Decir:**
 > "La auditoría corre cinco detectores sobre los registros: gastos duplicados
@@ -93,19 +98,16 @@ y la factura vencida.
 **En pantalla:** ir a **Monotributo**.
 
 **Decir:**
-> "Esta es la pantalla que cruza los dos modelos. El acumulado real va por el
-> **44% del límite** de la categoría D. Si miráramos solo el presente, todo
-> tranquilo. Pero el sistema proyecta los ingresos con Prophet hasta el cierre
-> del año fiscal, y esa proyección se va por encima del **77%**. Por eso el
-> **semáforo pasa a amarillo** y sugiere recategorizar a la **E**, antes de que
-> ARCA lo fuerce."
+> "Esta es la pantalla que cruza los dos modelos. Lo facturado en el año va por
+> el **75 % del límite** de la categoría G. Si miráramos solo el presente, todo
+> tranquilo. Pero el sistema suma la proyección de Prophet hasta el cierre del
+> año, y la utilización llega al **109 %**: **semáforo rojo**. No dice que me
+> pasé: dice que a este ritmo me pasaría **en diciembre**, y que la categoría
+> que cubriría esa facturación es la **H**. La decisión es mía y de mi contador."
 
-> ⚠️ *Leer el porcentaje que muestre la pantalla, no el de este guión.* El
-> semáforo se calcula sobre la **proyección anual**, y esa proyección depende de
-> cuántos meses quedan hasta el 31/12: cuanto más cerca del cierre del año se
-> corra la demo, menos meses se suman y más baja el porcentaje. Verde por debajo
-> del 70%, amarillo entre 70 y 90, rojo por encima de 90. El acumulado real
-> (~44%) y la sugerencia de categoría **E** se mantienen estables.
+> ⚠️ Valores del 14/10/2026 (simulados con el código real). Si se ensaya antes,
+> los números son otros porque cambian los meses cerrados. Verde por debajo del
+> 70 %, amarillo entre 70 y 90, rojo por encima de 90.
 
 **Decir (remate):**
 > "Este es el valor diferencial: el sistema anticipa el riesgo fiscal mirando el
@@ -115,7 +117,7 @@ y la factura vencida.
 
 ## ⏱ 4:30 – 5:00 · Reporte PDF + cierre (Reportes)
 
-**En pantalla:** descargar el reporte PDF del mes. Abrirlo brevemente.
+**En pantalla:** en el Dashboard, dejar el selector en el **último mes cerrado** (viene preseleccionado) → *Descargar reporte PDF*. Abrirlo brevemente.
 
 **Decir:**
 > "Finalmente, el usuario descarga un reporte mensual en PDF para su contador:
@@ -142,8 +144,9 @@ y la factura vencida.
 ## Checklist de 1 minuto antes de entrar
 
 - [ ] Navegador en el Dashboard, sesión `demo@freelancecontrol.com` / `demo1234` iniciada
-- [ ] `docs/extractos_ejemplo/galicia.csv` a mano para arrastrar
-- [ ] Auditoría y proyecciones ya ejecutadas una vez (pantallas con datos)
-- [ ] Semáforo Monotributo encendido (amarillo o rojo según el mes), sugiere **E**
+- [ ] Esa mañana: `docker compose exec api python seed_demo_defensa.py`
+- [ ] `defensa_final/demo/extracto_28sep_14oct.csv` a mano para arrastrar (Escritorio → TFG_Defensa → demo)
+- [ ] **No** ejecutar la auditoría ni importar antes: son parte de la demo
+- [ ] Semáforo Monotributo en **rojo 109,4 %**, sugiere **H**
 - [ ] Zoom del navegador al 100–110% para que se lea de lejos
 - [ ] Slides abiertos en otra ventana para volver al cierre

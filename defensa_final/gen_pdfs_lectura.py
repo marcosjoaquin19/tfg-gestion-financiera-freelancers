@@ -24,6 +24,7 @@ DOCUMENTOS = [
     ("README.md", "Defensa final — índice del material"),
     ("01_GUION_DEFENSA_35MIN.md", "Guion de defensa oral — 35 minutos"),
     ("02_ARQUITECTURA_Y_PATRONES.md", "Arquitectura y patrones de diseño"),
+    ("03_GUION_DEMO_EN_VIVO.md", "Guion de la demo en vivo"),
 ]
 
 # Tipografía grande y medidas de lectura cómodas: estos documentos se leen

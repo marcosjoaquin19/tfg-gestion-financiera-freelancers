@@ -1,0 +1,3 @@
+# La compilación instala sus propias dependencias: no se manda la carpeta de la Mac.
+node_modules/
+build/

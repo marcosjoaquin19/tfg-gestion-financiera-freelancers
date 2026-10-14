@@ -2,6 +2,11 @@
 
 > Camino reproducible para la defensa del TFG. Cada paso indica qué hacer,
 > qué se debería ver y qué decir. Tiempo total estimado: **5–7 minutos**.
+>
+> **Guion vigente de la defensa:** `defensa_final/01_GUION_DEFENSA_35MIN.md`.
+> Esta guía usa los mismos datos: `seed_demo_defensa.py` (enero a septiembre
+> 2026) y el extracto `defensa_final/demo/extracto_28sep_14oct.csv`. Las cifras
+> son las del **14/10/2026** (simuladas con el código real el 27/09).
 
 ---
 
@@ -44,29 +49,31 @@ docker compose restart api
 ### 0.3 Poblar los datos de demostración
 
 ```bash
-docker compose exec api python seed_demo.py
+docker compose exec api python seed_demo_defensa.py
 ```
 
 Salida esperada:
 
 ```
-Categorías Monotributo: 11 creadas, 0 actualizadas.
-Usuario demo previo eliminado.        (solo si ya existía)
-Usuario demo creado (id=NN).
-Ingresos y gastos creados (enero a mayo 2026).
-Facturas creadas (6).
-Seed demo completado.
+Categorías Monotributo: 2 escalas (vigente desde 2026-08-01): ...
+Usuario demo previo eliminado.
+Usuario demo creado (id=NN, categoría G).
+Ingresos: 27 ($37.300.000). Gastos: 65. Enero a septiembre de 2026.
+Facturas: 8.
+
+Datos de la defensa cargados.
   Login: demo@freelancecontrol.com / demo1234
 ```
 
-> El seed es **idempotente**: se puede correr varias veces sin romper nada.
-> Asegura por sí mismo que las categorías de Monotributo existan, así que
-> un solo comando deja todo listo.
+> Se puede correr las veces que haga falta: borra y recrea el usuario demo
+> (también lo que se haya cargado en los ensayos). **Correrlo la mañana del
+> 14/10.**
 
-### 0.4 Generar proyecciones y auditoría (para que el demo tenga datos vivos)
+### 0.4 Proyección y auditoría
 
-Estos dos se disparan desde la UI durante la demo, pero conviene pre-cargarlos
-para que las pantallas no aparezcan vacías si se navega en otro orden:
+**El 14/10 no pre-cargar la auditoría:** se ejecuta en vivo después de importar
+el extracto. La proyección se genera sola al abrir Monotributo. Solo para
+ensayos, estos comandos dejan todo calculado:
 
 ```bash
 # Login y captura del token
@@ -84,11 +91,11 @@ curl -s -X POST http://localhost:8000/alertas/ejecutar-auditoria \
 ### 0.5 Checklist pre-defensa
 
 - [ ] `docker compose ps` → 3 servicios `Up`
-- [ ] `GET /ml/estado` → `"tipo_modelo": "base"` (modelo base entrenado)
+- [ ] `GET /ml/estado` → `"usa_modelo_base": true` (sin modelo propio todavía)
 - [ ] `http://localhost:3000` abre el login
 - [ ] Login `demo@freelancecontrol.com` / `demo1234` funciona
-- [ ] Dashboard muestra ingresos/gastos (no vacío)
-- [ ] Pantalla Monotributo muestra semáforo **rojo** (~131% proyectado), categoría siguiente **E**
+- [ ] Dashboard en **octubre, en cero** (se completa al importar el extracto)
+- [ ] Monotributo: semáforo **rojo 109,4 %**, categoría G, "lo superarías en diciembre", sugiere **H**
 - [ ] Video backup grabado y accesible (por si falla la red/proyector)
 
 ---
@@ -98,13 +105,13 @@ curl -s -X POST http://localhost:8000/alertas/ejecutar-auditoria \
 **Hacer:** abrir `http://localhost:3000`, iniciar sesión con
 `demo@freelancecontrol.com` / `demo1234`.
 
-**Se ve:** dashboard de María Fernández, freelancer monotributista, con
-ingresos y gastos de enero a mayo 2026.
+**Se ve:** dashboard de María Fernández, freelancer monotributista. Es 14 de
+octubre y el mes todavía no tiene movimientos: se completa en el paso 4.
 
 **Decir:**
 > "FreelanceControl es un sistema de gestión financiera para monotributistas
-> argentinos. Los datos que ven son de un freelancer de software con cinco
-> meses de actividad. Todo lo que voy a mostrar corre sobre datos reales
+> argentinos. Los datos que ven son de una freelancer de software con nueve
+> meses de actividad, con meses de proyecto grande y meses flojos. Todo lo que voy a mostrar corre sobre datos reales
 > persistidos en PostgreSQL."
 
 ---
@@ -152,11 +159,14 @@ corregir su categoría desde la pantalla **Clasificador** / edición de gasto.
 
 ## 4. Importación de extracto bancario (≈1 min) — HU-07
 
-**Hacer:** ir a **Importar**, subir un CSV de banco (ver archivos de ejemplo
-en `docs/extractos_ejemplo/`, o el de Galicia con `;`).
+**Hacer:** ir a **Importar**, subir `defensa_final/demo/extracto_28sep_14oct.csv`
+(34 filas, formato Galicia con `;` y punto de miles) y tocar **Analizar archivo**.
 
-**Se ve:** vista previa de los primeros movimientos, columnas detectadas
-automáticamente, y marca de posibles duplicados.
+**Se ve:** columnas detectadas solas (Fecha, Concepto, Débito, Crédito), cada
+movimiento con su categoría, y los avisos: **3 ya existen** (28 al 30/09, del
+extracto anterior), **2 son una transferencia entre cuentas propias** (3 y 4/10),
+**1 fila omitida** (fecha 31/09). Cuatro gastos quedan en "Otros" para revisar.
+Al confirmar: **29 importados** (3 cobros por $ 3.460.000 y 26 gastos).
 
 **Decir:**
 > "El sistema detecta la estructura del archivo con heurísticas locales:
@@ -174,16 +184,18 @@ automáticamente, y marca de posibles duplicados.
 
 **Hacer:** ir a **Alertas** → ejecutar auditoría.
 
-**Se ve:** se generan **4 alertas, una de cada tipo** (los datos del seed están
-diseñados para disparar los cuatro detectores):
-- **Gasto duplicado** — dos "Adobe Creative Cloud" de $ 38.000,00 en
-  Suscripciones, registrados el 03 y el 05 de enero (dentro de la ventana de 3 días).
+**Se ve (después de importar el extracto):** 5 alertas.
+- **Gastos duplicados (2)** — dos "Suscripción Adobe Creative Cloud" de
+  $ 38.000,00 (3 y 5 de junio) y dos "FIGMA PROFESSIONAL" de $ 21.000,00 (2 y 4
+  de octubre, vinieron en el extracto).
 - **Anomalía estadística** — "Servidor dedicado AWS Reserved" de $ 900.000,00 en
-  Infraestructura, muy por encima de la media de la categoría ($ 208.857,14, z > 2σ).
-- **Discrepancia de facturación** — factura de Consultora Aurora por $ 430.000,00
-  vencida sin cobrar (venció el 2026-04-20).
-- **Monotributo impago** — no se registró el pago de la cuota de mayo (mes en
-  curso); cuota esperada $ 72.414.
+  julio, muy por encima de la media de Infraestructura en los últimos 6 meses.
+- **Facturas vencidas (2)** — Consultora Aurora ($ 430.000,00, venció el 20/08)
+  y Brand Studio ($ 980.000,00, venció el 08/10; su pago vino en el extracto el
+  09/10 → marcarla pagada en Facturas).
+- **Sin monotributo impago:** el extracto trajo el pago de octubre (día 7). Si
+  se ejecuta la auditoría antes de importar, aparece la cuota de octubre
+  ($ 230.313) como impaga.
 
 **Decir:**
 > "La auditoría corre cuatro detectores y acá vemos uno de cada tipo: gastos
@@ -199,47 +211,69 @@ diseñados para disparar los cuatro detectores):
 
 ## 6. Estado fiscal del Monotributo (≈1 min) — HU-09 + HU-10
 
+> Valores del 14/10/2026 con la escala vigente desde el 1/8/2026 (simulados
+> con el código real). Antes de esa fecha los números son otros, porque cambian
+> los meses cerrados.
+
 **Hacer:** ir a **Monotributo**.
 
-**Se ve (con los datos del seed):**
-- Categoría actual: **D** (límite anual $ 27.540.988)
-- Facturación real del año: **$ 13.370.000 → 48,5%** del límite (uso real a hoy)
-- Proyección anual (Prophet): **$ 36.075.854 → ~131%** del límite (uso proyectado)
-- Semáforo: **ROJO** (proyección por encima del 90%)
-- Faltan ~**3,7 meses** para superar el límite al ritmo proyectado
-- Próxima categoría sugerida: **E**
+**Se ve (14/10, después de importar):**
+- Categoría actual: **G** (límite anual $ 53.995.799)
+- Facturación real del año: **$ 40.760.000 → 75,5 %** del límite (antes de
+  importar: $ 37.300.000 → 69,1 %)
+- Proyección anual: **$ 59.093.741 → 109,4 %** del límite
+- Semáforo: **ROJO** (proyección por encima del 90 %)
+- "Lo superarías en **diciembre 2026**"; la categoría que cubre la proyección es la **H**
+- Cuota de octubre **pagada** (vino en el extracto)
+
+**Cómo se arma la proyección anual:** facturado real del año (hasta hoy) + el
+mes en curso (lo mayor entre lo cobrado y lo esperado para un mes) + los meses
+que faltan hasta diciembre según Prophet. La proyección se regenera sola si
+cambiaron los ingresos, así que después de importar el CSV en vivo el semáforo
+ya refleja los datos nuevos.
 
 **Decir:**
-> "Esta es la pantalla que cruza los dos modelos. El acumulado real va por el
-> 48% del límite de la categoría D —tranquilo si miramos solo el presente—.
-> Pero el sistema no se queda ahí: proyecta los ingresos con Prophet hasta el
-> cierre del año fiscal, y esa proyección supera el límite anual. Por eso el
-> semáforo está en rojo y avisa que, al ritmo actual, en unos 3 o 4 meses se
-> pasa de categoría. Sugiere recategorizar a la E **antes** de que AFIP lo
-> fuerce. Ese es el valor diferencial: anticipa el riesgo fiscal mirando la
-> proyección, no solo lo ya facturado."
+> "Esta es la pantalla que cruza los dos modelos. Lo facturado en el año va
+> por el 75 % del límite de la categoría G. Pero el sistema no se queda ahí:
+> suma la proyección de Prophet hasta el cierre del año, y eso lleva la
+> utilización al 109 %: semáforo rojo. No dice que me pasé: dice que a este
+> ritmo me pasaría en diciembre, y que la categoría que cubriría esa
+> facturación es la H. La decisión de recategorizarse es mía y de mi contador."
 
-> **Distinción importante para la defensa:** el "48,5%" es el porcentaje **ya
-> facturado** (pasado); el semáforo se calcula sobre el porcentaje **proyectado**
-> a fin de año (131%). Son dos métricas distintas y conviene saber explicarlo:
-> el sistema decide el color por la proyección, no por lo facturado a hoy.
+> **Distinción importante para la defensa:** el "75,5 %" es lo **ya facturado**
+> (pasado); el semáforo se calcula sobre el porcentaje **proyectado** a fin de
+> año (109,4 %). El sistema decide el color por la proyección, no por lo
+> facturado a hoy.
+>
+> **Si preguntan por qué importar $ 3,46 M no movió la proyección:** el mes en
+> curso cuenta lo mayor entre lo ya cobrado y lo esperado para un mes. Prophet
+> espera unos $ 7,1 M para octubre; con $ 3,46 M cobrados, sigue mandando lo
+> esperado.
 
 ---
 
 ## 7. Reporte mensual en PDF (≈45 s) — HU-13
 
-**Hacer:** descargar el reporte PDF de abril 2026.
+**Hacer:** en el Dashboard, dejar el selector en el **último mes cerrado** (viene
+preseleccionado; el 14-oct será septiembre 2026) y tocar **Descargar reporte PDF**.
 
-**Se ve:** PDF con encabezado, resumen ejecutivo (con comparativa vs mes
-anterior), estado fiscal, distribución de gastos por categoría, facturación
-y auditoría. Montos en formato argentino ($ 1.234.567,89). Disclaimer al pie.
+**Se ve:** encabezado (nombre, período, hora de Argentina), resumen ejecutivo con
+la variación contra el mes anterior, estado fiscal con **la escala que regía en
+ese mes** (categoría, tope, cuota pagada / parcial / sin registrar),
+gastos por categoría, facturación del período, alertas pendientes con nombres
+legibles y el descargo al pie. Importes y porcentajes en formato argentino.
 
 **Decir:**
-> "Finalmente, el usuario puede descargar un reporte mensual consolidado en
-> PDF para archivar o compartir con su contador. Se genera de forma
-> programática con ReportLab, usa formato argentino de pesos en todo el
-> documento e incluye un disclaimer aclarando que no reemplaza el
-> asesoramiento de un contador matriculado."
+> "El reporte es del mes cerrado, para archivar o mandarle al contador. Se arma
+> de forma programática con ReportLab. Un detalle importante: la escala del
+> Monotributo cambió el 1 de agosto, y el sistema guarda las dos escalas con su
+> fecha de vigencia, así que un reporte de mayo evalúa la cuota y el tope con
+> los valores de mayo, no con los de hoy. Y como sale de la aplicación, lleva
+> consigo la aclaración de que no reemplaza a un contador matriculado."
+
+> **Si preguntan por un mes anterior:** elegir mayo en el selector: la cuota
+> figura "Pagada ($ 197.108,23)" con la escala vigente desde el 01/02/2026;
+> septiembre figura "Pagada ($ 230.312,94)" con la de agosto.
 
 ---
 

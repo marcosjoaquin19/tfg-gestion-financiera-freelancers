@@ -1,0 +1,18 @@
+# Pantalla de la copia pública: se compila una sola vez (npm run build) y la
+# sirve nginx, en lugar del servidor de desarrollo que usa la demo.
+
+# Etapa 1: compila React en archivos estáticos.
+FROM node:18-alpine AS compilacion
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY public ./public
+COPY src ./src
+# La API se pide a la misma dirección de la página (/api/...), así un solo
+# túnel alcanza para la pantalla y la API.
+ENV REACT_APP_API_URL=/api
+RUN npm run build
+
+# Etapa 2: nginx sirve lo compilado (la configuración llega montada desde nginx.conf).
+FROM nginx:1.28-alpine
+COPY --from=compilacion /app/build /usr/share/nginx/html

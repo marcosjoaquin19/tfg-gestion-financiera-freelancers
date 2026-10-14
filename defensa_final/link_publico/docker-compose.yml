@@ -1,0 +1,64 @@
+# Copia de FreelanceControl para abrir desde cualquier navegador.
+#
+# Es una instalación APARTE de la que se usa en la demo: tiene su propia base
+# de datos, así nadie que entre por el link puede tocar los datos de la defensa
+# (tfg_db). No usa los puertos 3000, 8000 ni 5432.
+#
+#   web    → nginx: sirve la pantalla ya compilada y pasa /api/... a la API,
+#            así todo sale por una sola dirección
+#   api    → la misma API, sin el modo desarrollo (--reload)
+#   db     → PostgreSQL propio de esta copia
+#   tunel  → Cloudflare: le da a "web" una dirección pública con HTTPS
+#
+# No se usa directo: se prende con prender_link.sh y se apaga con apagar_link.sh.
+
+name: tfg_publico
+
+services:
+
+  db:
+    image: postgres:15
+    container_name: tfg_publico_db
+    env_file:
+      - .env.publico           # usuario y clave propios, generados por prender_link.sh
+    volumes:
+      - datos_publicos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build: ../..               # la misma imagen de la API, con el código actual
+    container_name: tfg_publico_api
+    restart: on-failure
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ../../.env             # Groq, algoritmo y vigencia del token: igual que la app
+      - .env.publico           # base y clave de firma propias (pisan a las de arriba)
+
+  web:
+    build:
+      context: ../../frontend
+      dockerfile: ../defensa_final/link_publico/Dockerfile.web
+    container_name: tfg_publico_web
+    depends_on:
+      - api
+    ports:
+      - "127.0.0.1:8080:80"    # para probarla en esta compu; afuera se entra por el túnel
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  tunel:
+    image: cloudflare/cloudflared:2026.9.3
+    container_name: tfg_publico_tunel
+    command: tunnel --no-autoupdate --url http://web:80
+    depends_on:
+      - web
+
+volumes:
+  datos_publicos:
