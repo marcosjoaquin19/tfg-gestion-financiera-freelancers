@@ -7,7 +7,7 @@
  */
 
 // PATRÓN: Composite — Layout envuelve a cualquier pantalla (children) y aporta la navegación común.
-// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+// Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -29,8 +29,9 @@ const SIDEBAR_SECTIONS = [
   {
     title: 'INTELIGENCIA ARTIFICIAL',
     items: [
+      // El estado del modelo (algoritmo, exactitud, ejemplos) es el recuadro de
+      // arriba de esta pantalla: no tiene entrada propia en el menú.
       { label: 'Clasificador',    route: '/clasificador' },
-      { label: 'Estado ML',       route: '/clasificador' },
       { label: 'Resumen IA',      route: '/resumen-ia' },
       { label: 'Recomendaciones', route: '/recomendaciones' },
     ],
@@ -72,6 +73,9 @@ function SidebarItem({ label, active, onClick }) {
   );
 }
 
+// Marco común de las pantallas privadas: barra de arriba (usuario y "Cerrar
+// sesión"), menú lateral y, a la derecha, el contenido de cada pantalla
+// (children = lo que la pantalla pone adentro de <Layout>...</Layout>).
 export default function Layout({ children, activeSection }) {
   const navigate = useNavigate();
   const userEmail = localStorage.getItem('userEmail') || 'Usuario';
@@ -79,6 +83,8 @@ export default function Layout({ children, activeSection }) {
   // mostrar ceros o formularios vacíos como si fueran los datos del usuario.
   const [sinConexion, setSinConexion] = useState(false);
   useEffect(() => {
+    // Escucha los avisos que manda api.js: "sin conexión" muestra la franja de
+    // aviso y "conectada" la saca. Al salir de la pantalla se deja de escuchar.
     const caida = () => setSinConexion(true);
     const vuelta = () => setSinConexion(false);
     window.addEventListener('api-sin-conexion', caida);
@@ -89,6 +95,8 @@ export default function Layout({ children, activeSection }) {
     };
   }, []);
 
+  // Cerrar sesión: borra el token guardado en el navegador y vuelve al login.
+  // Sin token, PrivateRoute (App.js) ya no deja entrar a las pantallas privadas.
   function handleLogout() {
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
