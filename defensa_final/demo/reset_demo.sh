@@ -70,7 +70,9 @@ else
 fi
 
 echo "5/5 · Presentación adelante."
-sleep 2
+# VS Code tarda unos segundos en mostrar su ventana: si la presentación se abre
+# antes, VS Code le pasa por encima.
+sleep 6
 [ -e "$PRESENTACION" ] && open "$PRESENTACION"
 
 echo
