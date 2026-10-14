@@ -36,3 +36,13 @@ defensa_final/lectura/
 
 # Material local de la revisión final (prompts e informes, no es código).
 defensa_final/revision_final/
+
+# El video institucional en H.264, que el generador de filminas mete adentro de
+# la filmina 10 (se rehace con ffmpeg: ver defensa_final/slides/fuentes/LEEME.md).
+defensa_final/video/*.mp4
+
+# La copia en Keynote (.key) se genera a mano desde el .pptx (Archivo > Guardar en Keynote).
+defensa_final/slides/*.key
+
+# Claves de la copia del link público: las genera prender_link.sh la primera vez.
+defensa_final/link_publico/.env.publico
