@@ -5,7 +5,11 @@ Expone bajo /importar la subida de extractos en CSV/XLSX. El flujo: el usuario
 sube el archivo, el sistema detecta automáticamente las columnas (fecha, monto,
 descripción), clasifica cada movimiento como ingreso o gasto, marca posibles
 duplicados y, tras la confirmación del usuario, guarda los movimientos en la BD.
-La lógica de parseo y clasificación vive en csv_service.
+La lógica de lectura del archivo y clasificación vive en csv_service.
+
+Endpoints (dos pasos, para que el usuario vea antes de guardar):
+  POST /importar/preview   → lee el archivo y devuelve la vista previa; no guarda nada.
+  POST /importar/confirmar → guarda los movimientos que el usuario confirmó.
 
 Los ingresos que entran por acá pasan por la misma revisión de carga repetida
 que los cargados a mano (routers/ingresos.py), para que la marca y el filtro
@@ -251,12 +255,19 @@ def confirmar_importacion(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Paso 2 de la importación: guarda los movimientos que el usuario confirmó.
+
+    Vuelve a filtrar duplicados y transferencias propias, valida todas las
+    fechas antes de guardar (si una es ilegible, no se guarda nada), marca
+    duplicados, guarda todo junto y, si entraron gastos, agenda el
+    reentrenamiento del clasificador.
+    """
     ingresos_nuevos = []
     gastos_nuevos = []
 
-    # Red de seguridad: aunque el frontend ya filtre lo que el usuario marcó
-    # como duplicado en el preview, volvemos a aplicar la detección server-side
-    # antes de persistir. Si alguien llama directo al endpoint sin pasar por
+    # Red de seguridad: aunque la pantalla ya filtre lo que el usuario marcó
+    # como duplicado en la vista previa, volvemos a aplicar la detección en el
+    # servidor antes de guardar. Si alguien llama directo al endpoint sin pasar por
     # el preview (por ejemplo desde un script), la idempotencia se mantiene.
     movimientos_dict = [m.model_dump() for m in datos.movimientos]
     a_importar, omitidos_por_duplicado, omitidos_por_transferencia = filtrar_no_duplicados(

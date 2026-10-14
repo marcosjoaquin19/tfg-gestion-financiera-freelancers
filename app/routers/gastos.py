@@ -7,12 +7,16 @@ duplicados al instante (mismo monto/categoría dentro de una ventana de días);
 editar o borrar un gasto recalcula esa marca.
 
 Endpoints:
+  POST   /gastos/clasificar → sugiere una categoría para una descripción (sin guardar nada).
   POST   /gastos/      → crea un gasto (clasificación automática + chequeo de duplicados).
   GET    /gastos/      → lista con filtros (mes, categoría, solo duplicados, etc.).
   GET    /gastos/meses → meses con gastos cargados (para el selector de la pantalla).
   GET    /gastos/{id}  → devuelve un gasto.
   PUT    /gastos/{id}  → edita un gasto.
   DELETE /gastos/{id}  → elimina un gasto.
+
+La pantalla Gastos crea, lista y borra; la edición (PUT) existe en la API y
+es la que dispara el reentrenamiento por "corrección" cuando cambia la categoría.
 """
 
 import logging
@@ -43,7 +47,7 @@ def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
 
     La sesión de BD del request se cierra apenas FastAPI termina la respuesta,
     así que para una tarea diferida hay que abrir una sesión nueva. Si algo
-    falla acá, se loguea pero no afecta al usuario: el gasto ya quedó guardado.
+    falla acá, se anota en el registro del servidor pero no afecta al usuario: el gasto ya quedó guardado.
     """
     from app.services import ml_service
 
@@ -61,6 +65,8 @@ def _reentrenar_en_background(usuario_id: int, motivo: str) -> None:
         db.close()
 
 
+# Formato del pedido y de la respuesta de POST /gastos/clasificar (Pydantic
+# valida que el pedido traiga una descripción no vacía de hasta 255 caracteres).
 class ClasificarRequest(BaseModel):
     descripcion: str = Field(max_length=255)
     # Mismo tope que la columna de la descripción: nada más largo puede
@@ -88,6 +94,11 @@ def clasificar(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Sugiere la categoría de una descripción, con su confianza; no guarda ningún gasto.
+
+    La usan la pantalla Clasificador (para probar el modelo) y el botón de
+    sugerir categoría del formulario de Gastos.
+    """
     resultado = clasificar_gasto(datos.descripcion, db, current_user.id)
     return ClasificarResponse(
         categoria_sugerida=resultado["categoria_sugerida"],
@@ -104,7 +115,8 @@ def crear_gasto(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    # Si el cliente no manda categoría, la infiere el clasificador local (HU-04).
+    """Crea un gasto: lo clasifica si no trae categoría, marca duplicados y agenda el reentrenamiento."""
+    # Si el pedido no trae categoría, la infiere el clasificador local (HU-04).
     # Debajo del umbral de confianza, clasificar_gasto() ya devuelve "Otros",
     # que es el comportamiento esperado para una descripción sin señal clara.
     categoria = datos.categoria
@@ -117,7 +129,7 @@ def crear_gasto(
         monto=datos.monto,
         categoria=categoria,
         fecha=datos.fecha,
-        # es_duplicado arranca en False, el módulo de auditoría lo puede marcar después
+        # es_duplicado arranca en False; justo abajo se revisa si tiene un gemelo
     )
     db.add(nuevo_gasto)
     db.commit()
@@ -129,8 +141,9 @@ def crear_gasto(
         db.commit()
         db.refresh(nuevo_gasto)
 
-    # Aprende de a poco: cada N gastos nuevos, reentrenamos el modelo del
-    # usuario en background. La política está en ml_service.
+    # Aprende de a poco: cada 10 gastos nuevos, reentrenamos el modelo del
+    # usuario en segundo plano (después de responder, sin hacer esperar al
+    # usuario). La política está en ml_service.evaluar_reentrenamiento_automatico.
     background_tasks.add_task(_reentrenar_en_background, current_user.id, "creacion")
 
     return nuevo_gasto
@@ -173,7 +186,8 @@ def listar_meses_con_gastos(
 def listar_gastos(
     categoria: str | None = Query(default=None),
     solo_duplicados: bool = Query(default=False),
-    # ?solo_duplicados=true → filtra solo los gastos marcados como duplicados por auditoría
+    # ?solo_duplicados=true → solo los gastos marcados como duplicados (la marca
+    # se pone al cargar el gasto y también al correr la auditoría)
     mes: int | None = Query(default=None, ge=1, le=12),
     anio: int | None = Query(default=None, ge=2000, le=2100),
     # ?mes=9&anio=2026 → solo los gastos de ese mes. La pantalla lista mes por
@@ -184,6 +198,7 @@ def listar_gastos(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Lista los gastos del usuario, del más nuevo al más viejo, con filtros opcionales."""
     if (mes is None) != (anio is None):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -214,6 +229,7 @@ def obtener_gasto(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Devuelve un gasto del usuario (404 si no existe o es de otro usuario)."""
     gasto = db.query(Gasto).filter(
         Gasto.id == gasto_id,
         Gasto.usuario_id == current_user.id,
@@ -233,6 +249,7 @@ def actualizar_gasto(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Edita un gasto, recalcula su marca de duplicado y, si cambió la categoría, reentrena."""
     gasto = db.query(Gasto).filter(
         Gasto.id == gasto_id,
         Gasto.usuario_id == current_user.id,
@@ -255,6 +272,8 @@ def actualizar_gasto(
     if datos.categoria is not None:
         gasto.categoria = datos.categoria
     gasto.fecha = datos.fecha
+    # flush = mandar los cambios a la base sin confirmarlos todavía (el commit
+    # va más abajo): así las consultas de duplicados ya ven los datos nuevos.
     db.flush()
     # Releemos para comparar con el monto ya redondeado a 2 decimales por la
     # base, igual que al crear.
@@ -279,6 +298,7 @@ def eliminar_gasto(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Borra un gasto; si formaba un par duplicado, al otro se le quita la marca."""
     gasto = db.query(Gasto).filter(
         Gasto.id == gasto_id,
         Gasto.usuario_id == current_user.id,

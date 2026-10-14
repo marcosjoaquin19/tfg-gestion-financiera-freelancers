@@ -4,8 +4,24 @@ Servicio de Monotributo — cálculos fiscales del monotributo argentino.
 Contiene la lógica fiscal: calcular la facturación del año en curso más la
 proyección hasta el cierre del ejercicio (HU-10), compararla contra el límite
 de la categoría del usuario, estimar el riesgo de recategorización y verificar
-si pagó la cuota del mes. Lo usa el router de
-monotributo y también el de auditoría (para la alerta de monotributo impago).
+si pagó la cuota del mes. Lo usan la ruta /monotributo (pantalla Monotributo),
+la auditoría (alerta de cuota impaga), las recomendaciones y el reporte PDF.
+
+Vocabulario:
+  - Categoría (A a K): el escalón del monotributo en el que está el usuario.
+    Cada una tiene un tope de facturación anual y una cuota mensual fija.
+  - Tope anual: lo máximo que se puede facturar en el año en esa categoría.
+    Si se pasa, corresponde subir de categoría (recategorización semestral) o,
+    si se pasa del tope de la K, salir del régimen.
+  - Escala: la tabla oficial de categorías con sus topes y cuotas. Cambia
+    varias veces por año; se guardan todas con su fecha de vigencia.
+
+Por qué año calendario: la HU-10 de la tesis pide "ingresos del año en curso +
+proyección hasta el cierre del ejercicio". ARCA mira los últimos 12 meses
+móviles; ese dato también existe, como complemento, en
+GET /monotributo/facturacion-12-meses.
+
+Función principal: calcular_estado_monotributo() → el semáforo.
 """
 
 import logging
@@ -29,12 +45,17 @@ MESES_ES = {
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
 }
 
+# De menor a mayor tope: sirve para saber cuál es la categoría "siguiente".
 CATEGORIAS_ORDEN = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]
 
 
 def get_categoria(db: Session, letra: str) -> CategoriaMonotributo | None:
     """Categoría de la escala VIGENTE (la activa). Para evaluar un período
-    pasado se usa escala_vigente_en()."""
+    pasado se usa escala_vigente_en().
+
+    Si por error hubiera dos activas con la misma letra, gana la de fecha de
+    vigencia más reciente (order_by ... desc + first).
+    """
     return (
         db.query(CategoriaMonotributo)
         .filter(CategoriaMonotributo.letra == letra.upper(), CategoriaMonotributo.activa == True)
@@ -46,7 +67,13 @@ def get_categoria(db: Session, letra: str) -> CategoriaMonotributo | None:
 def escala_vigente_en(db: Session, fecha, actividad: str = "servicios") -> dict[str, CategoriaMonotributo]:
     """Escala que regía en `fecha`: la de fecha de vigencia más reciente que no
     sea posterior a esa fecha, como {letra: categoría}. Vacía si para esa
-    fecha no hay ninguna escala cargada (no se inventa una)."""
+    fecha no hay ninguna escala cargada (no se inventa una).
+
+    Ejemplo: con escalas vigentes desde el 1/2 y desde el 1/8, para un reporte
+    de mayo se usa la del 1/2, y para uno de septiembre, la del 1/8. Así el PDF
+    de un mes viejo muestra la cuota que correspondía en ese momento.
+    """
+    # Paso 1: la fecha de vigencia más reciente que no pase de "fecha".
     vigencia = (
         db.query(func.max(CategoriaMonotributo.fecha_vigencia))
         .filter(
@@ -57,6 +84,7 @@ def escala_vigente_en(db: Session, fecha, actividad: str = "servicios") -> dict[
     )
     if vigencia is None:
         return {}
+    # Paso 2: todas las categorías (A a K) de esa escala.
     filas = db.query(CategoriaMonotributo).filter(
         CategoriaMonotributo.actividad == actividad,
         CategoriaMonotributo.fecha_vigencia == vigencia,
@@ -73,8 +101,19 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
         asegurar_proyecciones_vigentes);
       - el mes en curso suma lo que sea mayor entre lo ya cobrado y lo que se
         espera para un mes (criterio conservador: el mes no terminó);
-      - los meses hasta diciembre que el horizonte de 6 meses no alcanza
-        (enero a junio) se completan con el promedio proyectado.
+      - los meses hasta diciembre que la proyección guardada no cubre se
+        completan con el promedio proyectado. Pasa si se consulta entre enero
+        y mayo: en marzo, por ejemplo, la proyección de 6 meses llega hasta
+        septiembre, y octubre a diciembre se completan con el promedio.
+
+    La cuenta, en criollo:
+        proyección anual = lo facturado de enero a hoy
+                         + lo que falta para completar el mes en curso
+                         + lo proyectado para cada mes hasta diciembre
+        % proyectado     = proyección anual / tope de la categoría
+    y el semáforo sale de ese %: verde < 70 %, amarillo 70-90 %, rojo > 90 %.
+
+    Devuelve None si el usuario no cargó su categoría (no hay contra qué comparar).
     """
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario or not usuario.categoria_monotributo:
@@ -111,9 +150,11 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
         i.monto for i in ingresos_anio
         if (i.fecha.year, i.fecha.month) == (mes_actual.year, mes_actual.month)
     ))
+    # % del tope ya consumido con lo facturado real (sin proyección).
     porcentaje_usado = round((facturado_anual / limite_anual * 100), 1) if limite_anual > 0 else 0.0
 
     # Proyección de los meses que faltan hasta diciembre.
+    # por_mes = {(año, mes): monto proyectado}, solo meses posteriores al actual.
     proyecciones = db.query(Proyeccion).filter(Proyeccion.usuario_id == usuario_id).all()
     por_mes = {
         (p.fecha_proyeccion.year, p.fecha_proyeccion.month): float(p.monto_proyectado)
@@ -122,10 +163,15 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     }
     promedio_proyectado = sum(por_mes.values()) / len(por_mes) if por_mes else 0.0
 
+    # Mes en curso: se toma como referencia lo que se espera cobrar en un mes
+    # (la proyección del mes que viene). Si lo cobrado este mes todavía no llega
+    # a eso, se suma la diferencia; si ya lo superó, no se suma nada (max con 0).
+    # Ejemplo: esperado $1.000.000 y cobrado $300.000 → se suman $700.000 más.
     mes_siguiente = mes_actual + relativedelta(months=1)
     esperado_un_mes = por_mes.get((mes_siguiente.year, mes_siguiente.month), promedio_proyectado)
     ajuste_mes_en_curso = max(0.0, esperado_un_mes - facturado_mes_en_curso)
 
+    # Meses que faltan hasta diciembre: el proyectado si existe, si no el promedio.
     restantes = []
     meses_estimados_con_promedio = 0
     mes = mes_siguiente
@@ -153,8 +199,7 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     else:
         estado = "rojo"
 
-    # ¿En qué mes de ESTE año se cruzaría el tope? El modelo es anual: si no
-    # se cruza antes de diciembre, no hay fecha que informar.
+    # ¿El tope ya se pasó con lo facturado de verdad (sin proyección)?
     limite_superado = facturado_anual > limite_anual
 
     # Los porcentajes se muestran con un decimal. Redondeados sin más, 69,99 %
@@ -168,6 +213,10 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     if limite_superado:
         porcentaje_usado = max(porcentaje_usado, 100.1)
 
+    # ¿En qué mes de ESTE año se cruzaría el tope? El modelo es anual: si no
+    # se cruza antes de diciembre, no hay fecha que informar.
+    # Se va sumando mes a mes (este mes, después los siguientes) sobre lo ya
+    # facturado; el primer mes en que el acumulado pasa el tope es el que se avisa.
     meses_para_limite = None
     mes_limite = None
     if limite_superado:
@@ -190,6 +239,8 @@ def calcular_estado_monotributo(db: Session, usuario_id: int) -> dict | None:
     categoria_sugerida = None
     excede_regimen = False
     if proyeccion_anual > limite_anual:
+        # Se recorre la escala vigente de menor a mayor tope y se elige la
+        # primera categoría cuyo tope alcanza para la proyección.
         escala = (
             db.query(CategoriaMonotributo)
             .filter(
@@ -234,20 +285,24 @@ def cuota_cubierta(registrado, cuota) -> bool:
     """Regla única de "cuota pagada": lo registrado en el mes cubre la cuota
     (con la tolerancia del 1 %), en uno o en varios pagos. La usan la pantalla
     Monotributo y la auditoría (vía verificar_pago_monotributo) y el reporte
-    PDF, que la aplica con la cuota de la escala del mes del reporte."""
+    PDF, que la aplica con la cuota de la escala del mes del reporte.
+
+    Se compara con Decimal (números decimales exactos) en lugar de float: con
+    float, 0,1 + 0,2 da 0,30000000000000004, y en plata un centavo de error
+    puede hacer que una cuota pagada justa figure como impaga.
+    """
     return Decimal(str(registrado)) >= Decimal(str(cuota)) * Decimal(str(TOLERANCIA_CUOTA))
 
 
 def verificar_pago_monotributo(db: Session, usuario_id: int) -> dict:
     """Verifica si la cuota del mes en curso está cubierta.
 
-    Antes alcanzaba con que existiera CUALQUIER gasto de categoría
-    "Monotributo" en el mes; ahora, si el usuario tiene categoría cargada,
-    lo registrado en el mes tiene que cubrir la cuota esperada (con
-    tolerancia del 1%). Cuenta la suma: la cuota se puede pagar en más de un
-    débito, y con dos pagos que juntos la cubrían se avisaba que no estaba
-    paga. Si lo registrado no alcanza es un pago PARCIAL: se informa aparte y
-    la auditoría sigue alertando que la cuota no está cubierta.
+    Busca los gastos del mes con categoría "Monotributo" y suma sus montos. Si
+    el usuario tiene categoría cargada, esa suma tiene que cubrir la cuota de su
+    categoría (con la tolerancia del 1 %). Se cuenta la suma y no un pago suelto
+    porque la cuota se puede pagar en más de un débito. Si lo registrado no
+    alcanza es un pago PARCIAL: se informa aparte y la auditoría sigue
+    alertando que la cuota no está cubierta.
     """
     mes_actual = inicio_mes_en_curso()
     mes = mes_actual.month

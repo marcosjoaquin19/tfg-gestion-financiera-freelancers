@@ -1,9 +1,11 @@
 /**
  * Pantalla Gastos — gestión de gastos.
  *
- * Permite listar, crear, editar y eliminar gastos (endpoint /gastos). Al cargar
- * un gasto, el backend puede sugerir su categoría con el clasificador de ML.
- * Ofrece filtros, incluido el de "solo duplicados" detectados por la auditoría.
+ * Permite listar, crear y eliminar gastos (endpoint /gastos). No hay botón de
+ * editar: un gasto mal cargado se borra y se vuelve a cargar. Al cargar un
+ * gasto, el botón "Clasificar con IA" pide la categoría al clasificador de ML.
+ * Ofrece filtros (categoría, búsqueda libre) y el de "Solo duplicados": la marca
+ * la pone el backend al cargar el gasto y también la auditoría.
  *
  * La lista se muestra mes por mes (por defecto, el mes en curso): cada mes
  * nuevo arranca su propia hoja, y la consulta nunca choca con el tope de 200
@@ -15,6 +17,8 @@ import Layout from '../components/Layout';
 import api, { extraerMensajeError } from '../api';
 import { todayISO } from '../fechas';
 
+// Las 12 categorías de gasto: la misma lista cerrada que valida el backend
+// (app/services/categorias_gasto.py) y con la que se entrenó el clasificador.
 const CATEGORIAS = [
   'Software', 'Hardware', 'Infraestructura', 'Marketing', 'Servicios',
   'Capacitación', 'Suscripciones', 'Transporte', 'Alimentación',
@@ -35,12 +39,14 @@ function clavePeriodo(anio, mes) {
   return `${anio}-${String(mes).padStart(2, '0')}`;
 }
 
+// "2026-09" → "Septiembre 2026" (lo que se ve en el selector).
 function nombrePeriodo(clave) {
   const [anio, mes] = clave.split('-').map(Number);
   return `${MESES[mes - 1]} ${anio}`;
 }
 
 const hoy = new Date();
+// Mes en curso: es el que se muestra al entrar a la pantalla.
 const PERIODO_ACTUAL = clavePeriodo(hoy.getFullYear(), hoy.getMonth() + 1);
 
 const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -52,6 +58,7 @@ function formatFecha(str) {
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// Monto en formato argentino con signo menos (es un gasto): "-$1.234,50".
 function fmtMonto(n) {
   return '-$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -67,6 +74,7 @@ const inputStyle = {
   outline: 'none',
 };
 
+// Botón "Eliminar" que se pone rojo al pasar el mouse.
 function DeleteBtn({ onDelete }) {
   const [hover, setHover] = useState(false);
   return (
@@ -88,6 +96,8 @@ function DeleteBtn({ onDelete }) {
   );
 }
 
+// Pantalla principal. Cada useState es un dato que la pantalla recuerda (lista,
+// mes elegido, formulario, filtros, orden de la tabla).
 export default function Gastos() {
   const [gastos, setGastos] = useState([]);
   // Mes que se está mirando ("AAAA-MM" o TODOS) y meses que tienen gastos.
@@ -114,6 +124,9 @@ export default function Gastos() {
   });
   const location = useLocation();
 
+  // Pide a la API los gastos del mes elegido (o todos) y, a la vez, la lista de
+  // meses con gastos para el selector. Promise.all = hacer los dos pedidos juntos
+  // y esperar a que lleguen ambos.
   async function fetchGastos(periodoElegido = periodo) {
     setLoading(true);
     const params = { limite: LIMITE_API };
@@ -136,6 +149,7 @@ export default function Gastos() {
     }
   }
 
+  // Cada vez que cambia el mes elegido ([periodo]), volver a pedir los gastos.
   useEffect(() => { fetchGastos(periodo); }, [periodo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Si venimos desde el Clasificador con una descripción/categoría ya elegida,
@@ -155,6 +169,7 @@ export default function Gastos() {
     }
   }, [location.state]);
 
+  // Al escribir en el formulario: guarda el campo que cambió y borra el error anterior.
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setFormError('');
@@ -162,6 +177,11 @@ export default function Gastos() {
     if (e.target.name === 'descripcion') setClasificacion(null);
   }
 
+  // Botón "Clasificar con IA": le pide al clasificador la categoría de la
+  // descripción escrita (POST /gastos/clasificar), la pone en el formulario y
+  // muestra la confianza. Si quedó por debajo del 30 %, la sugerencia es "Otros"
+  // y se avisa que conviene revisarla.
+  // El usuario puede cambiar la categoría antes de guardar.
   async function handleClasificar() {
     if (!form.descripcion.trim()) return;
     setClasificando(true);
@@ -180,6 +200,8 @@ export default function Gastos() {
     }
   }
 
+  // Guardar el gasto nuevo (POST /gastos). e.preventDefault() evita que el
+  // navegador recargue la página al enviar el formulario.
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -209,6 +231,7 @@ export default function Gastos() {
     }
   }
 
+  // Pide confirmación y borra el gasto (DELETE /gastos/{id}).
   async function handleDelete(id) {
     if (!window.confirm('¿Eliminar este gasto?')) return;
     try {
@@ -221,6 +244,9 @@ export default function Gastos() {
     }
   }
 
+  // Clic en el encabezado Fecha o Monto: si no ordenaba, se suma como criterio
+  // (de mayor a menor); si ya estaba de mayor a menor, pasa a menor a mayor; y
+  // si estaba de menor a mayor, se saca del orden.
   function toggleOrden(campo) {
     setOrden((prev) => {
       const actual = prev.find((c) => c.campo === campo);
@@ -232,6 +258,8 @@ export default function Gastos() {
     });
   }
 
+  // Flechita que se muestra en el encabezado (↓ o ↑) y, si hay varios criterios,
+  // su número de prioridad (1°, 2°).
   function indicadorOrden(campo) {
     const idx = orden.findIndex((c) => c.campo === campo);
     if (idx === -1) return '';
@@ -240,18 +268,22 @@ export default function Gastos() {
     return ` ${flecha}${prio}`;
   }
 
+  // Fecha → número de mes (año × 12 + mes): ordenar "por fecha" agrupa por mes,
+  // así dentro de un mismo mes puede desempatar el monto.
   const periodoMes = (f) => {
     const d = new Date(f);
     return d.getUTCFullYear() * 12 + d.getUTCMonth();
   };
 
+  // Filtros que se aplican en la pantalla, sin volver a llamar a la API:
+  // categoría, "Solo duplicados" y búsqueda libre.
   let gastosFiltrados = filtroCategoria
     ? gastos.filter((g) => g.categoria === filtroCategoria)
     : gastos;
   if (soloDuplicados) {
     gastosFiltrados = gastosFiltrados.filter((g) => g.es_duplicado);
   }
-  // Búsqueda libre: matchea descripción o categoría (sin distinguir mayúsculas).
+  // Búsqueda libre: busca el texto en la descripción o la categoría (sin distinguir mayúsculas).
   const termino = busqueda.trim().toLowerCase();
   if (termino) {
     gastosFiltrados = gastosFiltrados.filter(
@@ -261,6 +293,8 @@ export default function Gastos() {
     );
   }
 
+  // Ordenamiento: se prueban los criterios en orden de prioridad; si todos
+  // empatan, primero el más reciente.
   gastosFiltrados = [...gastosFiltrados].sort((a, b) => {
     for (const criterio of orden) {
       const cmp =

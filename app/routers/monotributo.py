@@ -45,7 +45,7 @@ def listar_categorias(
     """Escala vigente de categorías (única fuente de verdad para el frontend).
 
     Evita duplicar la tabla de montos en el cliente: el front consume esto en
-    lugar de tener los valores hardcodeados.
+    lugar de tener los valores escritos fijos en el código.
     """
     cats = (
         db.query(CategoriaMonotributo)

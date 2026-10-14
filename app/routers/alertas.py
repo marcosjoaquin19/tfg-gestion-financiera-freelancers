@@ -6,9 +6,16 @@ usuario en busca de anomalías) y la consulta/gestión de las alertas generadas.
 La lógica de detección vive en el servicio de auditoría; este router orquesta.
 
 Endpoints:
-  POST  /alertas/ejecutar-auditoria → corre la auditoría y genera alertas.
-  GET   /alertas/                   → lista las alertas (con filtros).
-  PATCH /alertas/{id}               → marca una alerta como resuelta o la reabre.
+  POST   /alertas/ejecutar-auditoria          → corre la auditoría y genera alertas.
+  GET    /alertas/                            → lista las alertas (con filtros).
+  GET    /alertas/{id}                        → una alerta puntual.
+  PATCH  /alertas/{id}/resolver               → marca una alerta como resuelta o la reabre.
+  DELETE /alertas/resueltas                   → borra las alertas ya resueltas.
+  DELETE /alertas/{id}/gasto-duplicado        → borra el gasto repetido y resuelve la alerta.
+  DELETE /alertas/{id}/transferencia-propia   → descarta el ingreso que era una transferencia propia.
+
+Todas filtran por el usuario del token (current_user): nadie puede ver ni
+tocar alertas de otro usuario; si lo intenta, recibe 404 ("no encontrada").
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -31,7 +38,9 @@ def ejecutar_auditoria_endpoint(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    # analiza los gastos y facturas del usuario y genera alertas nuevas
+    """Botón "Ejecutar auditoría": corre los cinco detectores y devuelve cuántas alertas hubo de cada tipo."""
+    # Analiza gastos, ingresos, facturas y la cuota del monotributo del usuario
+    # y genera las alertas nuevas (ver services/auditoria.py).
     conteo = ejecutar_auditoria(db, usuario_id=current_user.id)
     total = sum(conteo.values())
     return {
@@ -52,6 +61,11 @@ def listar_alertas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Lista las alertas del usuario, de la más nueva a la más vieja.
+
+    Filtros opcionales en la dirección (query string): tipo, solo_pendientes,
+    y limite/offset para paginar (traer de a 50, saltear las primeras N).
+    """
     query = db.query(AlertaAuditoria).filter(AlertaAuditoria.usuario_id == current_user.id)
 
     if tipo:
@@ -69,6 +83,7 @@ def obtener_alerta(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Devuelve una alerta del usuario por su id (404 si no existe o es de otro usuario)."""
     alerta = db.query(AlertaAuditoria).filter(
         AlertaAuditoria.id == alerta_id,
         AlertaAuditoria.usuario_id == current_user.id,
@@ -87,6 +102,7 @@ def resolver_alerta(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Marca una alerta como resuelta (o la reabre). Una resuelta no se vuelve a generar."""
     # PATCH → solo actualizamos el campo resuelta
     # el usuario no puede crear ni editar alertas, solo marcarlas como revisadas
     alerta = db.query(AlertaAuditoria).filter(

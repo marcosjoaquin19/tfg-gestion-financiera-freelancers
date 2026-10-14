@@ -1,7 +1,8 @@
 /**
- * Pantalla Facturas — emisión y seguimiento de facturas.
+ * Pantalla Facturas — registro y seguimiento de las facturas emitidas.
  *
- * Permite emitir facturas, listarlas con filtros (por estado y cliente) y
+ * Permite registrar las facturas que el usuario emitió a sus clientes,
+ * listarlas con filtros (por estado y buscando por cliente), editarlas y
  * marcarlas como pagadas contra el endpoint /facturas. El paso a "vencida" lo
  * hace el servidor solo, cuando la fecha de vencimiento ya pasó.
  * Refleja las reglas de negocio: una factura pagada no se edita ni elimina.
@@ -21,15 +22,18 @@ function formatFecha(str) {
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// Monto en formato argentino: 1234.5 → "$1.234,50".
 function fmtMonto(n) {
   return '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// "2026-09-01T00:00:00Z" → "2026-09-01": el formato que espera un <input type="date">.
 function toDateInput(str) {
   if (!str) return '';
   return str.split('T')[0];
 }
 
+// Colores de la etiqueta de cada estado (amarillo pendiente, verde pagada, rojo vencida).
 const ESTADO_BADGE = {
   pendiente: { background: '#1f1a0d', color: '#fbbf24' },
   pagada:    { background: '#0d1f0d', color: '#4ade80' },
@@ -50,6 +54,8 @@ const smallInputStyle = {
   outline: 'none', colorScheme: 'dark',
 };
 
+// Botón "Eliminar" que se pone rojo al pasar el mouse. Para las facturas pagadas
+// llega deshabilitado (disabled): una factura cobrada no se puede borrar.
 function EliminarBtn({ disabled, onDelete }) {
   const [hover, setHover] = useState(false);
   return (
@@ -72,6 +78,9 @@ function EliminarBtn({ disabled, onDelete }) {
   );
 }
 
+// Pantalla principal. Cada useState es un dato que la pantalla recuerda: la
+// lista de facturas, los filtros, el formulario de alta, la factura que se está
+// editando y la que se está marcando como pagada.
 export default function Facturas() {
   const [facturas, setFacturas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +102,7 @@ export default function Facturas() {
     fecha_emision: todayISO(), fecha_vencimiento: '',
   });
 
+  // Pide las facturas del usuario a la API (hasta 200) y las guarda en la pantalla.
   async function fetchFacturas() {
     setLoading(true);
     try {
@@ -107,13 +117,20 @@ export default function Facturas() {
     }
   }
 
+  // Al entrar a la pantalla, cargar las facturas ([] = solo la primera vez).
   useEffect(() => { fetchFacturas(); }, []);
 
+  // Al escribir en el formulario de alta: guarda el campo que cambió (el "name"
+  // del input) y borra el mensaje de error anterior.
   function handleFormChange(e) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setFormError('');
   }
 
+  // Enviar el formulario de alta (POST /facturas). e.preventDefault() evita que
+  // el navegador recargue la página. Las fechas se mandan como día calendario a
+  // las 00:00. Si sale bien, cierra y vacía el formulario y recarga la lista; si
+  // falla, muestra en el formulario el mensaje que devolvió la API.
   async function handleSubmit(e) {
     e.preventDefault();
     setSaving(true);
@@ -136,6 +153,9 @@ export default function Facturas() {
     }
   }
 
+  // "Marcar pagada": cambia el estado con la fecha de cobro elegida
+  // (PATCH /facturas/{id}/estado). La API controla que la fecha no sea anterior
+  // a la emisión ni posterior a hoy.
   async function handleMarcarPagada(id) {
     // Como "Guardar": con doble clic salían dos pedidos y, si el segundo llegaba
     // con la factura ya pagada, la API lo rechazaba y se mostraba un error.
@@ -154,6 +174,7 @@ export default function Facturas() {
     }
   }
 
+  // Abre el formulario de edición precargado con los datos actuales de la factura.
   function handleAbrirEditar(factura) {
     setEditando(factura);
     setEditError('');
@@ -166,11 +187,14 @@ export default function Facturas() {
     });
   }
 
+  // Igual que handleFormChange, pero para el formulario de edición.
   function handleEditChange(e) {
     setEditForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setEditError('');
   }
 
+  // Guarda la edición (PUT /facturas/{id}). Si se corrió el vencimiento a una
+  // fecha futura, el servidor vuelve la factura de "vencida" a "pendiente".
   async function handleSaveEdit(e) {
     e.preventDefault();
     setEditSaving(true);
@@ -191,6 +215,8 @@ export default function Facturas() {
     }
   }
 
+  // Pide confirmación y borra la factura (DELETE). Si sale bien, la saca de la
+  // lista sin volver a pedirla a la API.
   async function handleDelete(id) {
     if (!window.confirm('¿Eliminar esta factura?')) return;
     try {
@@ -201,6 +227,8 @@ export default function Facturas() {
     }
   }
 
+  // Filtros que se aplican en la pantalla, sin volver a llamar a la API: por
+  // estado y por texto en el nombre del cliente (sin distinguir mayúsculas).
   let facturasFiltradas = facturas;
   if (filtroEstado) {
     facturasFiltradas = facturasFiltradas.filter((f) => f.estado === filtroEstado);

@@ -32,12 +32,14 @@ function claveMes(str) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+// "2026-11" + 2 meses → "2027-01" (el calendario se encarga del cambio de año).
 function sumarMes(clave, n) {
   const [a, m] = clave.split('-').map(Number);
   const d = new Date(Date.UTC(a, m - 1 + n, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
+// "2026-09" → "Septiembre 2026" (etiqueta del eje del gráfico).
 function etiquetaMes(clave) {
   const [a, m] = clave.split('-').map(Number);
   const nombre = MESES_ES[m - 1];
@@ -95,10 +97,12 @@ function describirMetodo(metodo, mesesHistoricos) {
   }
 }
 
+// Monto en formato argentino: 1234.5 → "$1.234,50".
 function fmtMonto(n) {
   return '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Monto abreviado para el eje del gráfico: 14.000.000 → "$14,0M", 350.000 → "$350k".
 function fmtK(n) {
   const v = Number(n || 0);
   // Coma decimal, como el resto de la app: "$14,0M", no "$14.0M".
@@ -107,13 +111,14 @@ function fmtK(n) {
   return '$' + Math.round(v);
 }
 
+// Promedio de un campo en una lista (por ejemplo, el monto proyectado de los 6 meses).
 function avg(arr, key) {
   if (!arr.length) return 0;
   return arr.reduce((s, p) => s + parseFloat(p[key] || 0), 0) / arr.length;
 }
 
 
-// ── Component ──────────────────────────────────────────────────────────────────
+// ── Componente ─────────────────────────────────────────────────────────────────
 
 export default function Proyecciones() {
   const [proyecciones, setProyecciones] = useState([]);
@@ -121,9 +126,14 @@ export default function Proyecciones() {
   const [enCurso, setEnCurso]           = useState(null);  // mes que todavía no terminó (no entra al cálculo)
   const [loading, setLoading]           = useState(true);
   const [generando, setGenerando]       = useState(false);
+  // useRef guarda una referencia que sobrevive entre dibujos sin redibujar la
+  // pantalla: canvasRef apunta al <canvas> donde se dibuja el gráfico y chartRef
+  // al gráfico de Chart.js, para poder borrarlo antes de dibujar uno nuevo.
   const canvasRef = useRef(null);
   const chartRef  = useRef(null);
 
+  // Pide las proyecciones guardadas y la historia mensual real (GET /proyecciones
+  // y GET /proyecciones/historico) para dibujar las dos partes del gráfico.
   async function fetchProyecciones() {
     setLoading(true);
     try {
@@ -145,12 +155,16 @@ export default function Proyecciones() {
     }
   }
 
+  // Al entrar a la pantalla, cargar los datos ([] = solo la primera vez).
   useEffect(() => { fetchProyecciones(); }, []);
 
   // ── Construir gráfico cuando llegan los datos ────────────────────────────────
   useEffect(() => {
     if (!proyecciones.length) return;
 
+    // Arma el gráfico de líneas con Chart.js: la historia real (meses cerrados),
+    // el mes en curso como punto aparte, y la proyección con su banda
+    // (pesimista-optimista) sombreada.
     function buildChart() {
       if (!canvasRef.current) return;
 
@@ -337,6 +351,8 @@ export default function Proyecciones() {
     };
   }, [proyecciones, historico, enCurso]);
 
+  // Promedios de los meses proyectados para las tarjetas de resumen: escenario
+  // esperado, pesimista (piso de la banda) y optimista (techo).
   const promedio  = avg(proyecciones, 'monto_proyectado');
   const pesimista = avg(proyecciones, 'monto_lower');
   const optimista = avg(proyecciones, 'monto_upper');

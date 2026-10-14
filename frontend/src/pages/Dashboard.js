@@ -2,8 +2,13 @@
  * Pantalla Dashboard — panel de inicio.
  *
  * Es la primera vista tras iniciar sesión. Muestra un resumen general de la
- * situación financiera del freelancer: totales de ingresos y gastos, balance,
- * facturas pendientes y métricas clave consultadas a la API del backend.
+ * situación financiera del freelancer, consultado a la API del backend:
+ *  - cuatro tarjetas del mes en curso: ingresos, gastos, balance neto y la
+ *    proyección del mes que viene;
+ *  - los últimos movimientos (5, mezclando ingresos y gastos);
+ *  - la recomendación más urgente (el detalle está en la pantalla Recomendaciones);
+ *  - la descarga del reporte PDF, con selector de período (por defecto, el
+ *    último mes cerrado), y el aviso de alcance.
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
@@ -31,6 +36,8 @@ function periodosReporte(hoy) {
 function useAnchoVentana() {
   const [ancho, setAncho] = useState(() => window.innerWidth);
   useEffect(() => {
+    // Cada vez que se agranda o achica la ventana, se actualiza el ancho guardado;
+    // al salir de la pantalla se deja de escuchar (el return de useEffect).
     const alCambiar = () => setAncho(window.innerWidth);
     window.addEventListener('resize', alCambiar);
     return () => window.removeEventListener('resize', alCambiar);
@@ -38,10 +45,13 @@ function useAnchoVentana() {
   return ancho;
 }
 
+// Número en formato argentino, sin el signo $: 1234.5 → "1.234,50".
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Tarjeta de una métrica: el monto grande, su nombre y una barrita cuyo largo
+// (pct) compara este valor con el mayor de las cuatro tarjetas.
 function MetricCard({ value, label, color, pct }) {
   return (
     <div style={{ background: '#161b27', border: '1px solid #1e293b', borderRadius: '8px', padding: '16px', minWidth: 0 }}>
@@ -57,6 +67,7 @@ function MetricCard({ value, label, color, pct }) {
   );
 }
 
+// Pantalla principal del panel de inicio.
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   // Movimientos del mes en curso (para los totales) y los últimos 5 de cada
@@ -81,6 +92,9 @@ export default function Dashboard() {
   const [periodoReporte, setPeriodoReporte] = useState(periodos[1].valor);
 
   useEffect(() => {
+    // Pide todo lo que muestra el panel en paralelo. Promise.allSettled espera a
+    // que terminen los seis pedidos aunque alguno falle: si una sección no carga,
+    // las demás se muestran igual.
     async function fetchData() {
       setLoading(true);
       const delMes = { mes: mesActual, anio: anioActual, limite: 200 };
@@ -105,6 +119,7 @@ export default function Dashboard() {
     fetchData();
   }, [mesActual, anioActual]);
 
+  // Totales del mes en curso: se suman los montos (reduce = recorrer la lista acumulando).
   const totalIngresos = ingresos.reduce((s, i) => s + parseFloat(i.monto || 0), 0);
   const totalGastos = gastos.reduce((s, g) => s + parseFloat(g.monto || 0), 0);
   const balance = totalIngresos - totalGastos;
@@ -120,12 +135,17 @@ export default function Dashboard() {
   });
   const proyPromedio = proySiguiente ? parseFloat(proySiguiente.monto_proyectado || 0) : 0;
 
+  // El mayor de los cuatro valores: es el 100 % de las barritas de las tarjetas.
   const maxVal = Math.max(totalIngresos, totalGastos, Math.abs(balance), proyPromedio, 1);
 
+  // Últimos movimientos: se mezclan los 5 ingresos y los 5 gastos más recientes,
+  // se ordenan por fecha y quedan los 5 primeros.
   const movimientos = [...ultimos]
     .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
     .slice(0, 5);
 
+  // La primera recomendación de la lista es la más urgente (el backend ya las
+  // ordena). El "?." evita un error si los datos todavía no llegaron.
   const primeraRec = recomendaciones?.recomendaciones?.[0] || 'Sin recomendaciones disponibles.';
   const genConIA = recomendaciones?.generado_con_ia ?? false;
 

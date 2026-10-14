@@ -6,7 +6,7 @@ convención: separador de miles con punto, decimales con coma.
 """
 
 # PATRÓN: Single Source of Truth — un único formateador de moneda para toda la app.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 
 def formato_pesos_ar(valor, decimales: int = 2) -> str:

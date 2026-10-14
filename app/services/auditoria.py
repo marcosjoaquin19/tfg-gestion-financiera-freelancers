@@ -1,16 +1,27 @@
 """
 Servicio de Auditoría — detección de inconsistencias y anomalías.
 
-Contiene la lógica que recorre los datos del usuario y genera alertas. Detecta
-gastos duplicados, montos atípicos (anomalías estadísticas), facturas impagas,
-monotributo sin pagar y riesgo de recategorización. Lo usa el router de alertas:
-ejecutar_auditoria() corre todas las reglas y persiste las alertas encontradas.
+Contiene la lógica que recorre los datos del usuario y genera alertas. Tiene
+cinco detectores:
+  1. gastos duplicados (mismo monto y categoría con 3 días o menos de diferencia);
+  2. anomalías estadísticas (un gasto mucho más alto que lo normal en su categoría);
+  3. discrepancias de facturación (facturas vencidas sin cobrar);
+  4. monotributo impago (la cuota del mes no está cubierta);
+  5. transferencias entre cuentas propias (un ingreso y un gasto que son la
+     misma plata pasando de una cuenta del usuario a otra).
+Lo usa la ruta /alertas (pantalla Auditoría): ejecutar_auditoria() corre los
+cinco detectores y guarda las alertas encontradas.
+
+Son reglas fijas y explicables, no un modelo de IA: cada alerta dice qué dato
+la disparó, y el usuario decide si la resuelve.
 """
 
 # PATRÓN: Strategy — cada detector es una función independiente con la misma firma; ejecutar_auditoria() las orquesta.
-# PATRÓN: Factory Method — _crear_alerta() centraliza la construcción de alertas.
+# PATRÓN: Factory Method — _crear_alerta() centraliza la construcción de alertas
+#         (todas se arman en un solo lugar, así ninguna queda con un campo de menos).
 # PATRÓN: Idempotencia por huella — _huella_alerta() evita regenerar alertas ya resueltas por el usuario.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+#         (Idempotente = correr la auditoría dos veces da el mismo resultado que una.)
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
@@ -28,22 +39,31 @@ import statistics
 # CONSTANTES DE CONFIGURACIÓN
 # -------------------------------------------------------------------
 VENTANA_DUPLICADOS_DIAS = 3
+# Dos gastos se consideran duplicados si tienen el mismo monto y la misma
+# categoría y sus fechas están a 3 días o menos. Dos cobros iguales separados
+# por más tiempo son, por lo general, cuotas o abonos mensuales, no un error.
 
 MESES_VENTANA = 6
-# solo analizamos los últimos 6 meses para mantener la detección relevante y eficiente
-# dos gastos se consideran duplicados si tienen mismo monto y categoría
-# y fueron registrados con menos de 3 días de diferencia
+# Solo analizamos los últimos 6 meses (6 × 30 = 180 días) para que la
+# detección sea relevante y rápida: un duplicado de hace un año ya no se corrige.
 
 UMBRAL_ANOMALIA_DESVIACIONES = 2.0
-# un gasto es anómalo si supera la media de su categoría en más de 2 desviaciones estándar
-# equivale a estar en el top ~2.5% de gastos para esa categoría
+# Un gasto es anómalo si supera el promedio de su categoría en más de 2
+# desviaciones estándar. La desviación estándar mide cuánto se alejan, en
+# general, los gastos del promedio. Regla estadística clásica: en datos
+# "normales" casi todo (alrededor de 95 de cada 100) cae a menos de 2
+# desviaciones del promedio, así que lo que queda por encima (~2,5 %) llama la atención.
 
 MIN_GASTOS_PARA_ESTADISTICA = 5
-# necesitamos al menos 5 gastos por categoría para que la estadística sea significativa
-# con menos datos la desviación estándar no es confiable
+# Necesitamos al menos 5 gastos por categoría (la tesis dice "al menos cinco"):
+# con menos datos, el promedio y la desviación no son confiables.
+# Dato fino: con exactamente 5 gastos ningún gasto puede quedar a más de 1,79
+# desviaciones (es el máximo matemático para 5 datos: (n-1)/√n), así que en la
+# práctica la primera anomalía puede aparecer desde el sexto gasto.
 
 
-# a qué contador del resumen suma cada tipo de alerta
+# A qué contador del resumen suma cada tipo de alerta (el resumen es lo que
+# muestra la pantalla Auditoría después de correrla: "2 duplicados, 1 anomalía...").
 CLAVE_CONTEO = {
     TipoAlerta.GASTO_DUPLICADO: "gastos_duplicados",
     TipoAlerta.ANOMALIA_ESTADISTICA: "anomalias",
@@ -64,6 +84,12 @@ def _crear_alerta(
     gasto_id_duplicado: int | None = None,
     ingreso_id_relacionado: int | None = None,
 ) -> AlertaAuditoria:
+    """Arma una alerta (todavía sin guardar) con los datos que la identifican.
+
+    gasto_id_duplicado e ingreso_id_relacionado apuntan a los registros
+    involucrados, para que las acciones de la pantalla ("eliminar duplicado",
+    "descartar transferencia") sepan exactamente sobre cuál actuar.
+    """
     return AlertaAuditoria(
         usuario_id=usuario_id,
         tipo=tipo,
@@ -102,6 +128,16 @@ def _huella_alerta(alerta: AlertaAuditoria) -> tuple:
 # Busca gastos con mismo monto y categoría dentro de la ventana de días
 # -------------------------------------------------------------------
 def detectar_gastos_duplicados(db: Session, usuario_id: int) -> list[tuple[Gasto, Gasto]]:
+    """Devuelve los pares de gastos que parecen cargados dos veces.
+
+    Regla: mismo monto, misma categoría y 3 días o menos de diferencia. Se
+    comparan los gastos de a pares, ordenados por fecha: para cada gasto se
+    miran solo los siguientes y se deja de mirar apenas uno queda a más de 3
+    días (como están ordenados, los que siguen están todavía más lejos).
+
+    Es la misma regla que se aplica al cargar cada gasto (duplicados_gasto.py);
+    acá se repasa todo junto y, además, se genera la alerta.
+    """
     fecha_limite = datetime.now(timezone.utc) - timedelta(days=MESES_VENTANA * 30)
     gastos = (
         db.query(Gasto)
@@ -112,15 +148,18 @@ def detectar_gastos_duplicados(db: Session, usuario_id: int) -> list[tuple[Gasto
 
     duplicados = []
     for i, gasto_a in enumerate(gastos):
-        for gasto_b in gastos[i + 1:]:
+        for gasto_b in gastos[i + 1:]:   # solo los gastos posteriores a gasto_a
+            # Les quitamos la zona horaria a las dos fechas para poder restarlas:
+            # Python no deja comparar una fecha con zona y otra sin zona.
             fecha_a = gasto_a.fecha.replace(tzinfo=None) if gasto_a.fecha.tzinfo else gasto_a.fecha
             fecha_b = gasto_b.fecha.replace(tzinfo=None) if gasto_b.fecha.tzinfo else gasto_b.fecha
-            # normalizamos a naive para poder comparar sin importar el timezone guardado
 
+            # Diferencia en días (86.400 segundos = 1 día).
             diferencia_dias = abs((fecha_b - fecha_a).total_seconds()) / 86400
 
             if diferencia_dias > VENTANA_DUPLICADOS_DIAS:
-                # como están ordenados por fecha, si superamos la ventana podemos cortar
+                # Como están ordenados por fecha, si este ya quedó fuera de la
+                # ventana, los siguientes también: cortamos y pasamos al próximo gasto_a.
                 break
 
             if gasto_a.monto == gasto_b.monto and gasto_a.categoria == gasto_b.categoria:
@@ -134,6 +173,19 @@ def detectar_gastos_duplicados(db: Session, usuario_id: int) -> list[tuple[Gasto
 # Detecta gastos inusualmente altos comparados al promedio de su categoría
 # -------------------------------------------------------------------
 def detectar_anomalias_estadisticas(db: Session, usuario_id: int) -> list[tuple[Gasto, float, float]]:
+    """Devuelve los gastos inusualmente altos para su categoría (puntaje z > 2).
+
+    El puntaje z dice a cuántas desviaciones estándar está un gasto del
+    promedio de su categoría:  z = (monto - promedio) / desviación.
+    Ejemplo: en Software el promedio es $10.000 y la desviación $2.000; un gasto
+    de $15.000 tiene z = (15.000 - 10.000) / 2.000 = 2,5 → es anomalía.
+
+    Cada categoría se compara solo consigo misma: $50.000 puede ser normal en
+    Hardware y rarísimo en Transporte. Solo se marcan los gastos ALTOS (z
+    positivo): gastar menos de lo habitual no es un problema a revisar.
+
+    Devuelve (gasto, promedio, desviación) para poder explicarlo en la alerta.
+    """
     fecha_limite = datetime.now(timezone.utc) - timedelta(days=MESES_VENTANA * 30)
     gastos = db.query(Gasto).filter(
         Gasto.usuario_id == usuario_id,
@@ -152,8 +204,8 @@ def detectar_anomalias_estadisticas(db: Session, usuario_id: int) -> list[tuple[
             continue
 
         montos = [g.monto for g in lista]
-        media = statistics.mean(montos)
-        desviacion = statistics.stdev(montos)
+        media = statistics.mean(montos)        # promedio de la categoría
+        desviacion = statistics.stdev(montos)  # desviación estándar de la categoría
 
         if desviacion == 0:
             # todos los gastos tienen el mismo monto, ninguno es anómalo
@@ -173,6 +225,13 @@ def detectar_anomalias_estadisticas(db: Session, usuario_id: int) -> list[tuple[
 # Detecta facturas que vencieron sin ser cobradas
 # -------------------------------------------------------------------
 def detectar_discrepancias_facturacion(db: Session, usuario_id: int) -> list[Factura]:
+    """Devuelve las facturas cuyo vencimiento ya pasó y siguen sin cobrarse.
+
+    "Discrepancia" porque hay una diferencia entre lo facturado y lo cobrado:
+    se emitió la factura, venció, y la plata no está registrada como cobrada.
+    """
+    # Primero se actualiza el estado: las pendientes con vencimiento pasado
+    # pasan a "vencida" (ver facturas_estado.py).
     marcar_vencidas(db, usuario_id)
 
     facturas_vencidas = (
@@ -202,9 +261,14 @@ def detectar_transferencias_propias(db: Session, usuario_id: int) -> list[tuple[
     """Empareja ingresos y gastos que parecen las dos patas de una transferencia.
 
     Criterio: mismo monto exacto, fechas a ≤1 día y vocabulario de
-    transferencia en al menos una de las descripciones (mismo guardia que usa
-    la importación, ver csv_service.es_descripcion_transferencia). El
-    emparejamiento es voraz: cada gasto participa de un solo par.
+    transferencia ("transf", "enviaste", "recibiste", "cuenta propia", etc.) en al menos una de las
+    descripciones; es el mismo control que usa la importación (ver
+    csv_service.es_descripcion_transferencia). El emparejamiento es "voraz":
+    para cada ingreso se toma el primer gasto que cumple y ese gasto ya no
+    se ofrece a otro ingreso, así cada gasto participa de un solo par.
+
+    Ejemplo: sale $200.000 de Galicia el 3/9 ("TRANSF A MERCADO PAGO") y entran
+    $200.000 en Mercado Pago el 3/9 → un par: no es facturación nueva.
     """
     from app.services.csv_service import es_descripcion_transferencia
 
@@ -219,6 +283,8 @@ def detectar_transferencias_propias(db: Session, usuario_id: int) -> list[tuple[
     pares: list[tuple[Ingreso, Gasto]] = []
     gastos_usados: set[int] = set()
 
+    # Para cada ingreso se busca un gasto que cumpla las tres condiciones; cada
+    # "continue" descarta el gasto y pasa al siguiente.
     for ingreso in ingresos:
         fecha_ing = ingreso.fecha.replace(tzinfo=None) if ingreso.fecha.tzinfo else ingreso.fecha
         for gasto in gastos:
@@ -234,6 +300,7 @@ def detectar_transferencias_propias(db: Session, usuario_id: int) -> list[tuple[
                 or es_descripcion_transferencia(gasto.descripcion)
             ):
                 continue
+            # Cumple todo: es un par. El gasto queda usado y se pasa al próximo ingreso.
             pares.append((ingreso, gasto))
             gastos_usados.add(gasto.id)
             break
@@ -246,14 +313,23 @@ def detectar_transferencias_propias(db: Session, usuario_id: int) -> list[tuple[
 # Ejecuta los detectores y guarda las alertas en la BD
 # -------------------------------------------------------------------
 def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
-    # Borramos las alertas no resueltas antes de regenerarlas
-    # así evitamos duplicar alertas si la auditoría se corre múltiples veces
+    """Corre los cinco detectores, guarda las alertas y devuelve cuántas hubo de cada tipo.
+
+    La llama el botón "Ejecutar auditoría" (POST /alertas/ejecutar-auditoria). Pasos:
+      1. Borra las alertas pendientes anteriores (se vuelven a calcular de cero).
+      2. Anota las "huellas" de las alertas que el usuario ya resolvió.
+      3. Corre los cinco detectores y arma una alerta por cada hallazgo.
+      4. Descarta las que coinciden con una huella resuelta (no se repiten).
+      5. Guarda las que quedan y devuelve el conteo por tipo.
+    """
+    # Paso 1: borramos las alertas no resueltas antes de regenerarlas; así no
+    # se duplican alertas si la auditoría se corre varias veces.
     db.query(AlertaAuditoria).filter(
         AlertaAuditoria.usuario_id == usuario_id,
         AlertaAuditoria.resuelta == False,
     ).delete()
 
-    # Huellas de las alertas YA RESUELTAS (ver _huella_alerta).
+    # Paso 2: huellas de las alertas YA RESUELTAS (ver _huella_alerta).
     resueltas = db.query(AlertaAuditoria).filter(
         AlertaAuditoria.usuario_id == usuario_id,
         AlertaAuditoria.resuelta == True,
@@ -266,12 +342,14 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
     }
     alertas: list[AlertaAuditoria] = []
 
+    # Paso 3: los cinco detectores.
     # --- DETECTOR 1: duplicados ---
     duplicados = detectar_gastos_duplicados(db, usuario_id)
     ids_marcados: set[int] = set()
 
     for gasto_a, gasto_b in duplicados:
-        # marcamos ambos gastos como duplicados en la tabla gastos
+        # Marcamos ambos gastos como duplicados en la tabla gastos (es la marca
+        # que usa el filtro "Solo duplicados" de la pantalla Gastos).
         for g in (gasto_a, gasto_b):
             if g.id not in ids_marcados:
                 g.es_duplicado = True
@@ -337,18 +415,31 @@ def ejecutar_auditoria(db: Session, usuario_id: int) -> dict:
             ingreso_id_relacionado=ingreso.id,
         ))
 
-    # Una condición que el usuario ya marcó como resuelta no se vuelve a
-    # generar aunque siga existiendo: así "Resolver" es efectivo.
+    # Paso 4: una condición que el usuario ya marcó como resuelta no se vuelve
+    # a generar aunque siga existiendo: así "Resolver" es efectivo.
     alertas = [a for a in alertas if _huella_alerta(a) not in huellas_resueltas]
     for alerta in alertas:
         conteo[CLAVE_CONTEO[alerta.tipo]] += 1
 
+    # Paso 5: guardar todo junto.
     db.add_all(alertas)
     db.commit()
     return conteo
 
 
+# -------------------------------------------------------------------
+# DETECTOR 4: MONOTRIBUTO IMPAGO
+# Avisa si la cuota del mes en curso no está cubierta por los gastos de
+# categoría "Monotributo" registrados en el mes.
+# -------------------------------------------------------------------
 def detectar_monotributo_impago(db: Session, usuario_id: int) -> tuple:
+    """Devuelve (1, alerta) si la cuota del mes no está cubierta, o (0, None) si está bien.
+
+    La regla de "cuota pagada" vive en monotributo_service (verificar_pago_monotributo
+    y cuota_cubierta): la misma que usa la pantalla Monotributo, así nunca
+    se contradicen. Si el usuario no cargó su categoría no hay cuota contra la
+    cual comparar y no se genera alerta.
+    """
     estado = verificar_pago_monotributo(db, usuario_id)
     if not estado["pagado"] and estado["monto_esperado"] is not None:
         detalle = (

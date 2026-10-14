@@ -17,7 +17,7 @@ duplicados_gasto.py y la comparten del mismo modo la carga manual y el importado
 
 # PATRÓN: Servicio de dominio — la regla vive en una sola capa y la comparten
 # los routers que la necesitan, en lugar de que uno importe del otro.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 from sqlalchemy.orm import Session
 

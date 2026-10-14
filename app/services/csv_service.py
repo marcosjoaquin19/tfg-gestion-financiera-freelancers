@@ -16,7 +16,7 @@ transmite el contenido del archivo a servicios externos.
 
 # PATRÓN: Adapter / Capa anticorrupción — traduce 9 formatos de homebanking a un movimiento interno único.
 # PATRÓN: Diccionario de sinónimos como tabla de mapeo: agregar un banco no toca la lógica.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 import io
 import logging
@@ -81,13 +81,13 @@ def _normalizar(texto: str) -> str:
 def _buscar_columna(
     columnas_norm: dict[str, str], sinonimos: list[str], usadas: set | None = None,
 ) -> str | None:
-    """Devuelve el nombre original de la columna que matchee algún sinónimo.
+    """Devuelve el nombre original de la columna que coincida con algún sinónimo.
 
-    columnas_norm: dict {nombre_normalizado: nombre_original}
+    columnas_norm: diccionario {nombre_normalizado: nombre_original}
     usadas: columnas ya asignadas a otro campo, que no se vuelven a considerar.
     Sin esto, "Fecha Movimiento" contiene "movimiento" y la misma columna
     terminaba siendo a la vez la fecha y la descripción.
-    Estrategia: primero match exacto, luego match por contains (más permisivo).
+    Estrategia: primero coincidencia exacta, luego "contiene" (más permisivo).
     """
     usadas = usadas or set()
     candidatas = {n: o for n, o in columnas_norm.items() if o not in usadas}
@@ -311,7 +311,7 @@ def procesar_csv(df: pd.DataFrame, mapeo: dict, omitidas: list | None = None) ->
     """Convierte cada fila del DataFrame en un movimiento normalizado.
 
     Recibe el DataFrame ya leído (por leer_dataframe) más el mapeo de columnas
-    detectado por detectar_columnas_csv. La salida es una lista de dicts con
+    detectado por detectar_columnas_csv. La salida es una lista de diccionarios con
     las claves fecha, descripción, monto y tipo, lista para clasificar.
 
     Si se pasa la lista `omitidas`, se le agrega una entrada por cada fila que
@@ -537,7 +537,7 @@ def clasificar_movimientos(movimientos: list, db: Session, usuario_id: int = 0) 
     if not indices_gasto:
         return resultado
 
-    # Paso 1: correcciones explícitas previas del usuario (ground truth).
+    # Paso 1: correcciones explícitas previas del usuario (la respuesta correcta, dada por él).
     # Misma prioridad que aplica ia_service.clasificar_gasto, pero resuelta
     # con una única query en lugar de una por fila.
     correcciones = {
@@ -643,7 +643,7 @@ def _contar_instancias_en_bd(
     desc_norm: str,
     tipo: str,
 ) -> int:
-    """Cuenta movimientos del usuario en BD que matchean la clave del CSV.
+    """Cuenta movimientos del usuario en BD que coinciden con la clave del CSV.
 
     La descripción tiene que compararse normalizada, pero la BD guarda el
     texto original. Por eso traemos los candidatos por fecha+monto y
@@ -677,7 +677,7 @@ def detectar_posibles_duplicados(
     usuario_id: int,
     movimientos: list[dict],
 ) -> list[dict]:
-    """Marca cada movimiento con la flag posible_duplicado: bool.
+    """Marca cada movimiento con la marca posible_duplicado (verdadero/falso).
 
     El criterio se documenta arriba en este mismo archivo. La función no
     decide nada ni omite filas — solo agrega información para que el cliente
@@ -692,7 +692,7 @@ def detectar_posibles_duplicados(
         clave = _clave_movimiento(mov)
         grupos[clave].append(idx)
 
-    # Arrancamos con la flag en False para todos.
+    # Arrancamos con la marca en False para todos.
     resultado = [{**mov, "posible_duplicado": False} for mov in movimientos]
 
     # Cache local para no preguntarle a la BD lo mismo dos veces si hay
@@ -767,7 +767,7 @@ def es_descripcion_transferencia(descripcion: str) -> bool:
     """Indica si la descripción tiene vocabulario típico de transferencia.
 
     Se evalúa sobre la forma normalizada (minúsculas, sin tildes), así
-    "TRANSFERENCIA", "Transf." y "transferís" matchean igual. Es un guardia
+    "TRANSFERENCIA", "Transf." y "transferís" coinciden igual. Es un guardia
     contra falsos positivos: un ingreso y un gasto que casualmente coinciden
     en monto y fecha NO se marcan si ninguno menciona una transferencia.
     """
@@ -788,7 +788,7 @@ def detectar_transferencias_propias_en_lote(movimientos: list[dict]) -> list[dic
 
     Emparejamiento voraz: cada ingreso se aparea con a lo sumo un gasto libre
     de igual monto, fecha a ≤1 día y vocabulario de transferencia en alguna
-    de las dos descripciones. Ambas patas quedan con la flag
+    de las dos descripciones. Ambas patas quedan con la marca
     posible_transferencia_propia = True; el resto queda en False.
     """
     resultado = [{**m, "posible_transferencia_propia": False} for m in movimientos]

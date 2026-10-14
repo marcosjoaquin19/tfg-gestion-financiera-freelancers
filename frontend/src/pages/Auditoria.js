@@ -2,8 +2,11 @@
  * Pantalla Auditoría — alertas de inconsistencias.
  *
  * Permite ejecutar la auditoría sobre los datos del usuario y ver las alertas
- * generadas (gastos duplicados, montos atípicos, monotributo impago, etc.),
- * marcándolas como resueltas. Consume los endpoints de /alertas.
+ * generadas (gastos duplicados, montos atípicos, facturas vencidas, monotributo
+ * impago y transferencias entre cuentas propias). Sobre cada alerta se puede:
+ * marcarla resuelta (o reabrirla), eliminar el gasto duplicado o descartar la
+ * transferencia propia; y borrar de una vez las ya resueltas.
+ * Consume los endpoints de /alertas.
  */
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
@@ -20,10 +23,14 @@ function formatFecha(str) {
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// Monto en formato argentino: 1234.5 → "$1.234,50".
 function fmtMonto(n) {
   return '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Color y nombre visible de cada tipo de alerta (las claves son los tipos que
+// devuelve la API). factura_impaga quedó de una versión anterior: hoy las
+// facturas vencidas llegan como discrepancia_facturacion.
 const TIPO_CONFIG = {
   gasto_duplicado:           { color: '#fbbf24', label: 'Gasto duplicado' },
   anomalia_estadistica:      { color: '#f87171', label: 'Anomalía estadística' },
@@ -33,6 +40,7 @@ const TIPO_CONFIG = {
   transferencia_propia:      { color: '#60a5fa', label: 'Transferencia propia' },
 };
 
+// Botón "Resolver" que se pone verde al pasar el mouse.
 function ResolverBtn({ onClick }) {
   const [hover, setHover] = useState(false);
   return (
@@ -54,6 +62,7 @@ function ResolverBtn({ onClick }) {
   );
 }
 
+// Pantalla principal de la Auditoría.
 export default function Auditoria() {
   const [alertas, setAlertas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +75,7 @@ export default function Auditoria() {
   // Por defecto ocultamos las resueltas (pantalla limpia, sin lista infinita).
   const [mostrarResueltas, setMostrarResueltas] = useState(false);
 
+  // Pide las alertas del usuario (hasta 200, también las resueltas).
   async function fetchAlertas() {
     setLoading(true);
     try {
@@ -81,8 +91,12 @@ export default function Auditoria() {
     }
   }
 
+  // Al entrar a la pantalla, cargar las alertas ([] = solo la primera vez).
   useEffect(() => { fetchAlertas(); }, []);
 
+  // Botón "Ejecutar auditoría": el backend corre los cinco detectores y devuelve
+  // cuántas alertas generó de cada tipo; acá se suman para el mensaje y se
+  // recarga la lista.
   async function handleEjecutar() {
     setEjecutando(true);
     setMensaje('');
@@ -100,6 +114,8 @@ export default function Auditoria() {
     }
   }
 
+  // Marca una alerta como resuelta (PATCH /alertas/{id}/resolver). Se actualiza
+  // solo esa alerta en la pantalla, sin volver a pedir toda la lista.
   async function handleResolver(id) {
     try {
       await api.patch(`/alertas/${id}/resolver`, { resuelta: true });

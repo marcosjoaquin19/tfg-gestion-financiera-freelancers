@@ -7,14 +7,34 @@ Reúne:
     numéricos agregados, nunca descripciones libres del usuario. La respuesta
     se controla (formato, largo, cifras) antes de mostrarla; si no pasa o si
     Groq no responde, se usa una plantilla local.
-También expone clasificar_gasto(), usado al crear gastos.
+También expone clasificar_gasto(), usado al crear gastos. La clasificación es
+100 % local (modelo propio de ml_service): no usa Groq.
+
+Vocabulario:
+  - Groq: empresa que ofrece modelos de lenguaje (IA que redacta texto) por
+    internet. Se le manda un pedido y devuelve un texto.
+  - Prompt: las instrucciones que se le dan al modelo (acá, INSTRUCCIONES_RESUMEN).
+  - Token: la unidad en la que el modelo cuenta el texto (un pedazo de palabra;
+    en español, una palabra suele ser 1 o 2 tokens).
+  - Temperatura: cuánto "improvisa" el modelo. Baja = respuestas más fieles y
+    parecidas entre sí; alta = más creativas.
+  - API key (GROQ_API_KEY): la clave que identifica a esta aplicación ante Groq.
+    Se lee del .env; sin clave se usa directamente la plantilla local.
+
+Qué viaja a Groq y qué no: viajan solo el mes, los totales de ingresos y
+gastos, los totales por categoría (de la lista cerrada de 12) y el balance.
+NO viajan descripciones, nombres de clientes, emails ni ningún texto que haya
+escrito el usuario (ver _datos_para_ia).
 """
 
 # PATRÓN: Facade — punto único de entrada a clasificación y resumen (las recomendaciones, que no usan IA, viven en recomendaciones_service).
 # PATRÓN: Cache-Aside — clasificar_gasto() consulta la corrección del usuario antes de invocar el modelo.
+#         (Cache-Aside = "mirar primero en lo guardado": si ya hay respuesta, no se calcula.)
 # PATRÓN: Chain of Responsibility — corrección explícita → modelo ML → 'Otros' + revisión manual.
-# PATRÓN: Fallback determinístico — si no hay API de IA disponible, el resumen se arma con reglas locales.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+#         (Cadena de responsabilidad: cada paso resuelve si puede; si no, pasa al siguiente.)
+# PATRÓN: Reserva determinística (fallback) — si no hay API de IA disponible, el resumen
+#         se arma con reglas locales: con los mismos datos, siempre el mismo texto.
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 import os
 import re
@@ -35,7 +55,8 @@ from app.services.formato import formato_pesos_ar
 logger = logging.getLogger(__name__)
 
 # Categorías cerradas válidas para clasificación de gastos.
-# La lista vive en categorias_gasto; este alias la usan los fallbacks locales.
+# La lista vive en categorias_gasto; este alias (otro nombre para la misma
+# lista) quedó de una versión anterior: hoy ningún otro archivo lo usa.
 CATEGORIAS = CATEGORIAS_GASTO
 
 
@@ -62,6 +83,9 @@ MESES_ES = {
 # los controles.
 
 GROQ_MODELO_POR_DEFECTO = "openai/gpt-oss-120b"
+# Modelo de lenguaje de código abierto que ofrece Groq. Se puede cambiar sin
+# tocar el código con la variable GROQ_MODEL del .env (el anterior,
+# llama-3.3-70b, fue dado de baja por Groq).
 
 GROQ_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 GROQ_REINTENTOS_RED = 0
@@ -93,9 +117,13 @@ Describí cómo le fue en el mes a partir de los datos que te paso. Reglas oblig
 
 
 class ResultadoResumen(NamedTuple):
+    """Lo que devuelve generar_resumen_financiero() a la ruta /resumen.
+
+    NamedTuple = una tupla con nombres: se lee resultado.texto en lugar de resultado[0].
+    """
     texto: str
-    generado_con_ia: bool
-    sin_datos: bool
+    generado_con_ia: bool       # True solo si el texto es de Groq y pasó los controles
+    sin_datos: bool             # el mes no tiene ingresos ni gastos
     motivo_reserva: str | None = None
     # por qué se usó la plantilla local: "sin_clave" (no hay API key
     # configurada), "limite_de_uso" (Groq respondió 429: se superó la cuota
@@ -105,6 +133,7 @@ class ResultadoResumen(NamedTuple):
 
 
 class DatosMes(NamedTuple):
+    """Los totales de un mes: la materia prima del resumen (con IA o con plantilla)."""
     mes: int
     anio: int
     total_ingresos: Decimal
@@ -112,6 +141,8 @@ class DatosMes(NamedTuple):
     gastos_por_categoria: list          # [(categoria, total)], de mayor a menor
     total_gastos: Decimal
 
+    # @property: se calcula al pedirlo (datos.balance), no se guarda aparte,
+    # así nunca puede quedar desfasado de los totales.
     @property
     def balance(self) -> Decimal:
         return self.total_ingresos - self.total_gastos
@@ -126,10 +157,12 @@ class DatosMes(NamedTuple):
 
 
 def _plural(n: int, singular: str, plural: str) -> str:
+    """"1 cobro" / "3 cobros": elige la palabra según la cantidad."""
     return f"{n} {singular if n == 1 else plural}"
 
 
 def _texto_balance(balance: Decimal) -> str:
+    """Pone el balance en palabras: superávit (sobró), déficit (faltó) o equilibrio."""
     if balance > 0:
         return f"superávit de {formato_pesos_ar(balance)}"
     if balance < 0:
@@ -138,6 +171,12 @@ def _texto_balance(balance: Decimal) -> str:
 
 
 def _datos_del_mes(db: Session, usuario_id: int, mes: int, anio: int) -> DatosMes:
+    """Calcula en la base los totales del mes elegido para este usuario.
+
+    Los gastos se suman por categoría directamente en la base (GROUP BY
+    categoria: "agrupá por categoría y sumá") y se ordenan de mayor a menor,
+    para que el resumen nombre primero los rubros más pesados.
+    """
     ingresos = db.query(Ingreso).filter(
         Ingreso.usuario_id == usuario_id,
         extract("month", Ingreso.fecha) == mes,
@@ -187,22 +226,40 @@ def _datos_para_ia(d: DatosMes) -> str:
 
 
 def _montos_enviados(d: DatosMes) -> list[Decimal]:
+    """Lista de los montos que se le mandaron a Groq.
+
+    Es la "lista blanca" del control de cifras: si la respuesta trae un monto
+    que no está acá (ni redondeado), Groq lo calculó o lo inventó y el texto se
+    descarta.
+    """
     montos = [d.total_ingresos, d.total_gastos, abs(d.balance)]
     montos += [total for _, total in d.gastos_por_categoria]
     return [m for m in montos if m > 0]
 
 
 # --- Controles sobre la respuesta de la IA ---------------------------------
+# Antes de mostrar el texto de Groq se revisa que: tenga un formato de párrafo
+# simple, no esté cortado, tenga entre 30 y 150 palabras, use solo montos que se
+# le mandaron y no aconseje ni prediga. Si algo falla, se descarta.
 
+# Expresiones regulares (patrones de búsqueda de texto) para encontrar cifras:
 _RE_MONTO = re.compile(r"\$\s?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?")
+# montos en formato argentino: "$ 1.234.567,89", "$350", "$ 12.000"
 _RE_ABREVIADO = re.compile(r"(?:\$\s?)?(\d+(?:,\d+)?)\s*(millones|millón|mil)\b")
+# montos abreviados en palabras: "$ 2,9 millones", "431 mil"
 _RE_PORCENTAJE = re.compile(r"\d+(?:[.,]\d+)?\s?%")
+# porcentajes: "35 %", "12,5%" (no se envían, así que cualquiera es inventado)
 
 
 def _cifras_no_enviadas(texto: str, permitidos: list[Decimal]) -> list[str]:
     """Montos del texto que no están entre los enviados (una cuenta propia de
-    la IA o un número inventado). Se aceptan redondeos como "2,9 millones"."""
+    la IA o un número inventado). Se aceptan redondeos como "2,9 millones".
+
+    Tolerancias: 5 % para las cifras abreviadas ("2,9 millones" por $2.874.000)
+    y 0,5 % para las escritas completas (absorbe solo redondeos de centavos).
+    """
     def coincide(valor: Decimal, tolerancia: Decimal) -> bool:
+        # ¿el valor está cerca de alguno de los montos enviados?
         return any(abs(valor - p) <= p * tolerancia for p in permitidos)
 
     problemas = []
@@ -216,6 +273,7 @@ def _cifras_no_enviadas(texto: str, permitidos: list[Decimal]) -> list[str]:
     resto = _RE_ABREVIADO.sub(" ", texto)
     for m in _RE_MONTO.finditer(resto):
         entero, dec = m.group(1), m.group(2) or "0"
+        # "1.234.567" y "89" → 1234567.89 (se sacan los puntos de miles y la coma pasa a punto)
         valor = Decimal(entero.replace(".", "") + "." + dec)
         if not coincide(valor, Decimal("0.005")):
             problemas.append(m.group(0))
@@ -224,7 +282,12 @@ def _cifras_no_enviadas(texto: str, permitidos: list[Decimal]) -> list[str]:
 
 
 def _limpiar_formato(texto: str) -> str:
-    """Un solo párrafo de texto plano: sin títulos, viñetas ni markdown."""
+    """Un solo párrafo de texto plano: sin títulos, viñetas ni markdown.
+
+    Markdown es el formato con el que los modelos de lenguaje suelen marcar
+    negritas (**así**), títulos (# Título) y listas (- ítem). La pantalla
+    muestra texto simple, así que esas marcas se sacan.
+    """
     lineas = []
     for linea in texto.splitlines():
         l = linea.strip()
@@ -247,7 +310,11 @@ def _limpiar_formato(texto: str) -> str:
 
 
 _RE_FIN_ORACION = re.compile(r"(?<=[.!?…])\s+")
+# el espacio que viene después de un punto, signo de exclamación o pregunta:
+# sirve para partir el texto en oraciones
 
+# Frases típicas de un consejo o de una predicción. Si aparece alguna, el texto
+# se descarta (el resumen solo describe el mes; aconsejar es de Recomendaciones).
 _RE_CONSEJO = re.compile(
     r"\b(te sugiero|te sugerimos|te recomiendo|te recomendamos|te aconsejo|recomendable|conviene|convendría|"
     r"deberías|podrías|sería (?:bueno|conveniente|ideal|importante)|es importante que|no olvides|asegurate|"
@@ -276,6 +343,7 @@ def _oraciones_completas(texto: str, max_palabras: int = MAX_PALABRAS_RESUMEN) -
 
 
 def _pulir_respuesta(contenido: str, cortada: bool = False) -> str:
+    """Deja la respuesta de Groq lista para controlar: sin formato y sin oraciones a medias."""
     texto = _limpiar_formato(contenido or "")
     if cortada:
         # Groq avisó que se quedó sin tokens (finish_reason="length"): la
@@ -287,6 +355,8 @@ def _pulir_respuesta(contenido: str, cortada: bool = False) -> str:
 
 
 def _problema_del_texto(texto: str, permitidos: list[Decimal]) -> str | None:
+    """Pasa los controles al texto ya pulido. Devuelve None si está bien, o el
+    motivo del rechazo (queda en el registro del servidor para poder revisarlo)."""
     palabras = len(texto.split())
     if palabras < MIN_PALABRAS_RESUMEN:
         return f"demasiado corto ({palabras} palabras)"
@@ -307,6 +377,9 @@ def _redactar_con_ia(d: DatosMes) -> tuple[str | None, str | None]:
         return None, "sin_clave"
 
     modelo = os.getenv("GROQ_MODEL", GROQ_MODELO_POR_DEFECTO)
+    # La conversación que se le manda al modelo tiene dos mensajes:
+    #   "system" = las reglas fijas (cómo tiene que escribir);
+    #   "user"   = los datos del mes y el pedido.
     mensajes = [
         {"role": "system", "content": INSTRUCCIONES_RESUMEN},
         {"role": "user", "content": _datos_para_ia(d) + "\n\nEscribí el resumen."},
@@ -345,6 +418,8 @@ def _redactar_con_ia(d: DatosMes) -> tuple[str | None, str | None]:
             return None, "servicio_no_disponible"
 
         eleccion = respuesta.choices[0]
+        # finish_reason == "length" significa que el modelo dejó de escribir
+        # porque se le acabaron los tokens permitidos: el texto vino cortado.
         texto = _pulir_respuesta(eleccion.message.content, cortada=eleccion.finish_reason == "length")
         problema = _problema_del_texto(texto, permitidos)
         if problema is None:
@@ -379,6 +454,13 @@ def _plantilla_local(d: DatosMes) -> str:
 
 
 def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int) -> ResultadoResumen:
+    """Resumen del mes en lenguaje natural (HU-11). La llama GET /resumen/financiero.
+
+    1. Calcula los totales del mes.
+    2. Si el mes está vacío, devuelve un aviso (no se llama a la IA).
+    3. Si no, le pide el texto a Groq; si Groq no está o su texto no pasa los
+       controles, usa la plantilla local y dice por qué (motivo_reserva).
+    """
     datos = _datos_del_mes(db, usuario_id, mes, anio)
 
     # Mes sin actividad: no tiene sentido invocar la IA (devolvía textos raros
@@ -397,13 +479,14 @@ def generar_resumen_financiero(usuario_id: int, db: Session, mes: int, anio: int
 
 
 UMBRAL_CONFIANZA_ML = 0.30
-# El SVM lineal no devuelve probabilidades nativas: la confianza se deriva de
-# la brecha entre el mejor y el segundo mejor margen de decision_function(),
-# mapeada a [0, 1) con 1 - e^(-brecha) (ver ml_service._confianza_svm). Vale 0
-# ante un empate (dos categorías compiten cabeza a cabeza) y tiende a 1 cuando
-# hay una clase claramente dominante. Por debajo de 0.30 (brecha < ~0.36) el
-# modelo está dudando y la predicción se marca para revisión del usuario; para
-# Naive Bayes se usa directamente la probabilidad de predict_proba.
+# Vara de confianza: por debajo del 30 % el modelo está dudando y el gasto se
+# marca para que el usuario lo revise.
+# El SVM no da probabilidades: la confianza sale de la brecha entre el puntaje
+# de la mejor categoría y el de la segunda, llevada a un número entre 0 y 1
+# con 1 - e^(-brecha) (ver ml_service._confianza_svm). Vale 0 si empatan (dos
+# categorías compiten cabeza a cabeza) y se acerca a 1 cuando una se despega
+# claramente. El 30 % corresponde a una brecha de ~0,36. Para Naive Bayes se usa
+# directamente la probabilidad que da el modelo (predict_proba).
 
 
 def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict:
@@ -413,8 +496,8 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
 
     1. Si el usuario YA corrigió explícitamente esta misma descripción
        (entrada en cache_clasificacion con su usuario_id), devolver la
-       corrección directamente con confianza 1.0. Es ground truth aportado
-       por el dueño de los datos: no hay nada que predecir.
+       corrección directamente con confianza 1.0. Es la respuesta correcta
+       dada por el dueño de los datos: no hay nada que predecir.
 
     2. Si no hay corrección previa, invocar el clasificador NLP local.
 
@@ -428,10 +511,10 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
     from app.services import ml_service
     from app.models.cache_clasificacion import CacheClasificacion
 
-    # Paso 1: lookup de corrección explícita previa del usuario. La
-    # normalización es la misma que usa registrar_ejemplo al persistir
-    # (NFKD + sin tildes + colapso de espacios + lowercase + strip), así
-    # variaciones tipográficas (mayúsculas, espacios extra) matchean igual.
+    # Paso 1: buscar si el usuario ya corrigió esta descripción. Se compara la
+    # forma normalizada, la misma que guarda registrar_ejemplo (sin tildes, en
+    # minúsculas y con los espacios repetidos reducidos a uno), así
+    # "ADOBE  Photoshop" encuentra la corrección hecha para "adobe photoshop".
     descripcion_norm = ml_service.normalizar_descripcion(descripcion)
     correccion = db.query(CacheClasificacion).filter(
         CacheClasificacion.usuario_id == usuario_id,
@@ -463,7 +546,7 @@ def clasificar_gasto(descripcion: str, db: Session, usuario_id: int = 0) -> dict
                 "requiere_revision": False,
             }
         # Confianza insuficiente: no asumimos categoría, devolvemos "Otros"
-        # como placeholder y delegamos al usuario la corrección.
+        # como categoría provisoria y le dejamos la corrección al usuario.
         return {
             "categoria_sugerida": "Otros",
             "fuente": resultado_ml["fuente"],

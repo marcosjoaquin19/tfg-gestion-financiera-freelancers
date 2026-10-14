@@ -1,5 +1,5 @@
 /**
- * Pantalla Recomendaciones — consejos financieros.
+ * Pantalla Recomendaciones — sugerencias según tus datos.
  *
  * Muestra las recomendaciones que el backend calcula de forma determinística
  * a partir de los datos del usuario (endpoint /recomendaciones), ordenadas por
@@ -20,11 +20,14 @@ function nivel(prioridad) {
   return { etiqueta: 'Sugerencia', color: '#93c5fd', fondo: '#1e3a5f' };
 }
 
+// Pantalla principal: pide las recomendaciones y las muestra de la más urgente
+// a la menos urgente, cada una con su "Por qué" (el dato que la disparó).
 export default function Recomendaciones() {
   const [data, setData] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
 
+  // GET /recomendaciones: el backend aplica sus reglas y devuelve entre 3 y 5.
   async function fetchRecomendaciones() {
     setCargando(true);
     setError('');
@@ -39,6 +42,7 @@ export default function Recomendaciones() {
     }
   }
 
+  // Al entrar a la pantalla, pedirlas ([] = solo la primera vez).
   useEffect(() => { fetchRecomendaciones(); }, []);
 
   // `detalle` trae regla, prioridad y dato; si faltara (respuesta vieja), se

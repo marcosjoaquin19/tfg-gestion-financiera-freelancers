@@ -125,7 +125,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
     token = crear_token(data={"sub": str(usuario.id)})
     # "sub" (subject) es el campo estándar de JWT para identificar al usuario
-    # guardamos el id como string porque JWT trabaja con strings
+    # guardamos el id como texto porque el estándar JWT pide "sub" como texto
 
     return {"access_token": token, "token_type": "bearer"}
-    # Pydantic valida que esto matchee con el schema Token antes de enviarlo
+    # Pydantic valida que esto coincida con el schema Token antes de enviarlo

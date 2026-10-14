@@ -15,17 +15,21 @@ import enum
 # Tipos de alertas que puede detectar el módulo de auditoría.
 class TipoAlerta(enum.Enum):
     GASTO_DUPLICADO = "gasto_duplicado"
-    # detectó dos gastos iguales en fechas cercanas
+    # dos gastos de igual monto y categoría a 3 días o menos
     
     ANOMALIA_ESTADISTICA = "anomalia_estadistica"
-    # un gasto es muy alto comparado al promedio
+    # un gasto más de 2 desviaciones por encima del promedio de su categoría
     
     DISCREPANCIA_FACTURACION = "discrepancia_facturacion"
-    # hay facturas emitidas pero no hay ingresos que las justifiquen
+    # una factura emitida que ya venció y sigue sin cobrarse
 
+    # Los tres siguientes quedaron de una versión anterior: hoy ningún detector
+    # los genera. Se conservan porque forman parte del tipo definido en la base
+    # (migración 0001); quitarlos exigiría una migración nueva.
     RIESGO_RECATEGORIZACION = "riesgo_recategorizacion"
     FACTURA_IMPAGA = "factura_impaga"
     COMISION_EXCESIVA = "comision_excesiva"
+
     MONOTRIBUTO_IMPAGO = "monotributo_impago"
     # falta el registro del gasto de la cuota mensual de Monotributo
 

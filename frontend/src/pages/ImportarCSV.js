@@ -11,6 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api, { extraerMensajeError } from '../api';
 
+// Número en formato argentino: 1234.5 → "1.234,50".
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -24,8 +25,11 @@ function formatFecha(str) {
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// La pantalla tiene tres pasos: subir el archivo → ver la vista previa y
+// confirmar → resultado. "paso" dice cuál se está mostrando.
 const PASO = { SUBIR: 'subir', PREVIEW: 'preview', EXITO: 'exito' };
 
+// Pantalla principal de la importación.
 export default function ImportarCSV() {
   const [paso, setPaso] = useState(PASO.SUBIR);
   const [archivo, setArchivo] = useState(null);
@@ -47,6 +51,8 @@ export default function ImportarCSV() {
 
   // ── Paso 1: subir ──────────────────────────────────────────────────────────
 
+  // Recibe el archivo elegido (o arrastrado) y controla la extensión: solo .csv
+  // o .xlsx. Todavía no lo manda: eso pasa al tocar "Analizar archivo".
   function handleFile(f) {
     if (!f) return;
     const nombre = f.name.toLowerCase();
@@ -58,12 +64,17 @@ export default function ImportarCSV() {
     setArchivo(f);
   }
 
+  // Soltar un archivo arrastrado sobre el recuadro ("drag and drop").
   function handleDrop(e) {
     e.preventDefault();
     setDrag(false);
     handleFile(e.dataTransfer.files[0]);
   }
 
+  // Botón "Analizar archivo": manda el archivo a POST /importar/preview (como
+  // formulario con archivo adjunto, "multipart/form-data"). El backend detecta
+  // las columnas, clasifica cada fila y marca duplicados, pero todavía NO guarda
+  // nada: devuelve la vista previa y se pasa al paso 2.
   async function handleAnalizar() {
     if (!archivo) return;
     setAnalizando(true);
@@ -90,6 +101,8 @@ export default function ImportarCSV() {
 
   // ── Paso 2: confirmar ──────────────────────────────────────────────────────
 
+  // Botón de confirmar: manda los movimientos de la vista previa a
+  // POST /importar/confirmar, que recién ahí los guarda.
   async function handleConfirmar() {
     setImportando(true);
     try {
@@ -108,6 +121,7 @@ export default function ImportarCSV() {
     }
   }
 
+  // Volver al paso 1 con todo vacío, para importar otro archivo.
   function handleReiniciar() {
     setPaso(PASO.SUBIR);
     setArchivo(null);

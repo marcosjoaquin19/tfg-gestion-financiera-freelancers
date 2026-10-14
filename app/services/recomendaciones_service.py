@@ -13,10 +13,24 @@ Reglas de redacción: siempre en tono de sugerencia ("te sugerimos", "podrías",
 "conviene"), nunca como indicación, y sin cifras que no salgan de los datos.
 Cada recomendación trae su "dato": el hecho concreto que la disparó, con
 todas las cifras que aparecen en el texto, para que sea trazable (CP-M11-06).
+
+Cómo leer este archivo: cada función _regla_xxx() mira un aspecto de los datos
+y devuelve cero, una o más recomendaciones con una prioridad (1 = más urgente).
+generar_recomendaciones() junta todas, las ordena por prioridad y elige.
+
+    Regla              Qué mira                               Prioridad
+    _regla_cobros      facturas vencidas / pendientes         1 / 3 (7 si no hay facturas)
+    _regla_monotributo semáforo fiscal y cuota del mes        1 a 2 (6 si está en verde)
+    _regla_tendencia   ingresos recientes vs. anteriores      2 baja / 4 sube / 6 estable
+    _regla_resultado   superávit o déficit de meses cerrados  4 superávit / 2 déficit
+    _regla_alertas     alertas de auditoría sin revisar       3
+    _regla_aumento     rubros que ya gastan 30 % más          5
+    _regla_uso         pasos de uso de la app                 4, 7 y 8
 """
 
 # PATRÓN: Strategy — cada regla es una función independiente que devuelve
 # recomendaciones; generar_recomendaciones() las reúne, ordena y recorta.
+# Agregar una regla nueva = escribir una función y sumarla a la lista REGLAS.
 
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
@@ -53,6 +67,8 @@ MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
          "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
 
 
+# dataclass = una clase que solo guarda datos; frozen=True la hace inmodificable
+# una vez creada (ninguna parte del código puede cambiarle el texto después).
 @dataclass(frozen=True)
 class Recomendacion:
     prioridad: int      # 1 = más urgente
@@ -62,18 +78,22 @@ class Recomendacion:
 
 
 # --- Redacción ------------------------------------------------------------------
+# Funciones chicas para que los textos se lean naturales en castellano.
 
 def _cantidad(n: int, singular: str, plural: str) -> str:
+    """"1 factura vencida" / "3 facturas vencidas"."""
     return f"{n} {singular if n == 1 else plural}"
 
 
 def _lista(items: list[str]) -> str:
+    """["a", "b", "c"] → "a, b y c" (con "y" antes del último, como se escribe)."""
     if len(items) <= 1:
         return "".join(items)
     return ", ".join(items[:-1]) + " y " + items[-1]
 
 
 def _fecha(d: datetime) -> str:
+    """Fecha en formato argentino: 03/09/2026."""
     return d.strftime("%d/%m/%Y")
 
 
@@ -85,17 +105,27 @@ def _meses(claves: list[datetime]) -> str:
 
 
 def _porcentaje(valor: float) -> str:
+    """84.4 → "84,4" y 36.0 → "36": coma decimal y sin ",0" de más."""
     return f"{valor:.1f}".replace(".", ",").removesuffix(",0")
 
 
 # --- Reglas ------------------------------------------------------------------------
 
 def _regla_cobros(db: Session, usuario_id: int) -> list[Recomendacion]:
+    """Facturas sin cobrar: vencidas (prioridad 1) o pendientes (prioridad 3).
+
+    Si hay vencidas, una sola recomendación las nombra y, si también hay
+    pendientes, las suma al final. El "dato" detalla hasta 3 facturas
+    (cliente, monto, vencimiento) y dice cuántas más hay.
+    """
+    # Primero se actualizan los estados: las pendientes con vencimiento pasado
+    # pasan a "vencida".
     marcar_vencidas(db, usuario_id)
     facturas = db.query(Factura).filter(Factura.usuario_id == usuario_id).all()
     vencidas = sorted((f for f in facturas if f.estado == EstadoFactura.VENCIDA), key=lambda f: f.fecha_vencimiento)
     pendientes = sorted((f for f in facturas if f.estado == EstadoFactura.PENDIENTE), key=lambda f: f.fecha_vencimiento)
 
+    # Arma el detalle de hasta 3 facturas: "Cliente X, $ 100.000, venció el 01/09/2026".
     def detalle(lista, verbo):
         items = [f"{f.cliente_nombre}, {pesos(f.monto)}, {verbo} el {_fecha(f.fecha_vencimiento)}" for f in lista[:3]]
         if len(lista) > 3:
@@ -137,7 +167,14 @@ def _regla_cobros(db: Session, usuario_id: int) -> list[Recomendacion]:
 
 
 def _regla_monotributo(db: Session, usuario_id: int) -> list[Recomendacion]:
-    """Estado fiscal (usa la proyección vigente de M08/M09) y cuota del mes."""
+    """Estado fiscal (usa la proyección vigente de M08/M09) y cuota del mes.
+
+    Dos cosas que se combinan en una sola recomendación:
+      - el semáforo (de calcular_estado_monotributo): de más grave a menos,
+        excede el régimen → tope ya superado → rojo → amarillo → verde;
+      - la cuota del mes (de verificar_pago_monotributo): sin pago o pago parcial.
+    Si hay las dos, va primero la más urgente.
+    """
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if not usuario or not usuario.categoria_monotributo:
         return [Recomendacion(
@@ -159,6 +196,8 @@ def _regla_monotributo(db: Session, usuario_id: int) -> list[Recomendacion]:
         f"({_porcentaje(e['porcentaje_usado'])} %); proyección anual {pesos(e['proyeccion_anual'])} ({pct} %)."
     )
 
+    # Parte fiscal: se evalúa de la situación más grave a la más leve y se
+    # queda con la primera que se cumple.
     fiscal, prioridad, regla = None, None, None
     if e["excede_regimen"]:
         fiscal = (
@@ -197,6 +236,7 @@ def _regla_monotributo(db: Session, usuario_id: int) -> list[Recomendacion]:
         )
         prioridad, regla = 6, "fiscal_verde"
 
+    # Parte de la cuota del mes: solo si no está cubierta y hay categoría cargada.
     cuota = None
     if not pago["pagado"] and pago["monto_esperado"]:
         mes_cuota = f"{pago['mes'].lower()} {pago['anio']}"
@@ -242,12 +282,16 @@ def _regla_tendencia_ingresos(db: Session, usuario_id: int) -> list[Recomendacio
             f"Meses cerrados con ingresos: {len(serie)}.",
         )]
 
+    # Se comparan dos bloques de igual tamaño: los k meses más recientes contra
+    # los k anteriores, con k = 3 como máximo. Ejemplo con 9 meses cerrados:
+    # jul-ago-sep contra abr-may-jun. Con 4 meses: k = 2 (jul-ago contra may-jun).
     k = min(3, len(serie) // 2)
     recientes, anteriores = serie[-k:], serie[-2 * k:-k]
     prom_rec = statistics.mean(t for _, t in recientes)
     prom_ant = statistics.mean(t for _, t in anteriores)
     if prom_ant == 0:
-        return []
+        return []   # no se puede calcular un % de cambio sobre cero
+    # Variación relativa: 0,20 = los recientes son 20 % más altos que los anteriores.
     variacion = (prom_rec - prom_ant) / prom_ant
     pct = _porcentaje(round(abs(variacion) * 100, 1))
     meses_rec = _meses([m for m, _ in recientes])
@@ -258,6 +302,7 @@ def _regla_tendencia_ingresos(db: Session, usuario_id: int) -> list[Recomendacio
         f"variación {'+' if variacion >= 0 else '−'}{pct} %."
     )
 
+    # Baja de 15 % o más → prioridad 2; suba de 15 % o más → 4; si no, estable → 6.
     if variacion <= -UMBRAL_TENDENCIA:
         texto = (
             f"Tus ingresos vienen bajando: en {meses_rec} promediaron {pesos(prom_rec)} por mes, un {pct} % "
@@ -281,7 +326,14 @@ def _regla_tendencia_ingresos(db: Session, usuario_id: int) -> list[Recomendacio
 
 def _regla_resultado(db: Session, usuario_id: int) -> list[Recomendacion]:
     """Superávit o déficit promedio de los últimos meses cerrados. El mes en
-    curso no entra: todavía no terminó y bajaría el promedio."""
+    curso no entra: todavía no terminó y bajaría el promedio.
+
+    Ventana: hasta 6 meses cerrados, contando desde el primer mes con
+    movimientos (para un usuario nuevo no se promedia sobre meses vacíos
+    anteriores a que empezara a usar la app).
+    Superávit (sobró plata) → sugiere ahorro o inversión, a elección del
+    usuario; déficit (faltó) → sugiere revisar los dos rubros de mayor gasto.
+    """
     mes_actual = inicio_mes_en_curso()
     hasta = mes_actual.replace(tzinfo=timezone.utc)
     desde = (mes_actual - relativedelta(months=MESES_VENTANA_AHORRO)).replace(tzinfo=timezone.utc)
@@ -294,6 +346,8 @@ def _regla_resultado(db: Session, usuario_id: int) -> list[Recomendacion]:
     if not meses_con_mov:
         return []
 
+    # n = cantidad de meses entre el primero con movimientos y el último cerrado
+    # (el mes pasado), contando los dos. Ejemplo: de abril a septiembre → 6.
     primero = meses_con_mov[0]
     ultimo = mes_actual - relativedelta(months=1)
     n = (ultimo.year - primero.year) * 12 + ultimo.month - primero.month + 1
@@ -366,6 +420,8 @@ def _regla_aumento_gastos(db: Session, usuario_id: int) -> list[Recomendacion]:
         return {c: t for c, t in filas}
 
     este, previo = por_categoria(actual), por_categoria(anterior)
+    # Rubros que este mes ya gastaron 30 % o más que en todo el mes anterior.
+    # Se comparan solo rubros que el mes anterior tuvieron gasto (base > 0).
     aumentos = []
     for cat, total in este.items():
         base = previo.get(cat, 0)
@@ -373,6 +429,7 @@ def _regla_aumento_gastos(db: Session, usuario_id: int) -> list[Recomendacion]:
             aumentos.append((cat, total, base, float((total - base) / base * 100)))
     if not aumentos:
         return []
+    # Los de mayor aumento primero (a igual %, por orden alfabético); se nombran hasta 3.
     aumentos.sort(key=lambda x: (-x[3], x[0]))
     aumentos = aumentos[:3]
     texto = (
@@ -398,6 +455,12 @@ TIPOS_CON_REGLA_PROPIA = {TipoAlerta.DISCREPANCIA_FACTURACION, TipoAlerta.MONOTR
 
 
 def _regla_alertas(db: Session, usuario_id: int) -> list[Recomendacion]:
+    """Alertas de la Auditoría que el usuario todavía no resolvió (prioridad 3).
+
+    Las cuenta por tipo ("2 posibles gastos duplicados y 1 gasto inusualmente
+    alto"). Si hay duplicados o transferencias propias, aclara por qué importan:
+    inflan los totales y el estado fiscal.
+    """
     alertas = db.query(AlertaAuditoria).filter(
         AlertaAuditoria.usuario_id == usuario_id,
         AlertaAuditoria.resuelta == False,
@@ -466,11 +529,24 @@ REGLAS = [
 
 
 def generar_recomendaciones(usuario_id: int, db: Session) -> dict:
+    """Junta las recomendaciones de todas las reglas y elige entre 3 y 5 (HU-12).
+
+    La llama GET /recomendaciones (pantalla Recomendaciones y tarjeta del Dashboard).
+      1. Corre todas las reglas y junta las candidatas.
+      2. Las ordena por prioridad (1 primero); a igual prioridad, por el orden
+         de la lista REGLAS.
+      3. Toma hasta 5 de prioridad 1 a 5 (las que señalan algo de los datos).
+      4. Si quedaron menos de 3, completa con las informativas (prioridad 6 o más).
+    """
+    # Paso 1: todas las candidatas, en el orden de REGLAS.
     candidatas = [r for regla in REGLAS for r in regla(db, usuario_id)]
+    # Paso 2: se guarda la posición original de cada una para desempatar.
     orden = {id(r): i for i, r in enumerate(candidatas)}
     candidatas.sort(key=lambda r: (r.prioridad, orden[id(r)]))
 
+    # Paso 3: las principales, como máximo 5.
     elegidas = [r for r in candidatas if r.prioridad <= PRIORIDAD_MAX_PRINCIPAL][:MAX_RECOMENDACIONES]
+    # Paso 4: completar hasta 3 con informativas, si hace falta.
     for r in candidatas:
         if len(elegidas) >= MIN_RECOMENDACIONES:
             break

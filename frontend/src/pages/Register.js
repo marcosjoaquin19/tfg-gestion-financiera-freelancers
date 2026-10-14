@@ -104,8 +104,9 @@ const inputStyle = {
   outline: 'none',
 };
 
+// Pantalla de creación de cuenta (pública: no pide token).
 export default function Register() {
-  // Estado del formulario: datos de la cuenta, mensaje de error y flag de carga.
+  // Estado del formulario: datos de la cuenta, mensaje de error e indicador de carga.
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

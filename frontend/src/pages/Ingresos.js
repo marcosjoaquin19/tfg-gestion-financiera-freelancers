@@ -1,8 +1,9 @@
 /**
  * Pantalla Ingresos — gestión de ingresos.
  *
- * Permite listar, crear, editar y eliminar los ingresos del freelancer
- * consumiendo el endpoint /ingresos. Incluye filtros y el formulario de carga.
+ * Permite listar, crear y eliminar los ingresos del freelancer consumiendo el
+ * endpoint /ingresos (no hay botón de editar: se borra y se vuelve a cargar).
+ * Incluye filtros (categoría y solo duplicados) y el formulario de carga.
  *
  * Marca con una etiqueta los ingresos que el backend detectó como una carga
  * repetida del mismo cobro, y ofrece el filtro "Solo duplicados" para
@@ -38,6 +39,7 @@ function clavePeriodo(anio, mes) {
   return `${anio}-${String(mes).padStart(2, '0')}`;
 }
 
+// "2026-09" → "Septiembre 2026" (lo que se ve en el selector).
 function nombrePeriodo(clave) {
   const [anio, mes] = clave.split('-').map(Number);
   return `${MESES[mes - 1]} ${anio}`;
@@ -55,6 +57,7 @@ function formatFecha(str) {
   return `${d.getUTCDate()} ${MESES_CORTOS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+// Monto en formato argentino con signo más (es un ingreso): "+$1.234,50".
 function fmtMonto(n) {
   return '+$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -70,6 +73,7 @@ const inputStyle = {
   outline: 'none',
 };
 
+// Botón "Eliminar" que se pone rojo al pasar el mouse.
 function DeleteBtn({ onDelete }) {
   const [hover, setHover] = useState(false);
   return (
@@ -93,6 +97,8 @@ function DeleteBtn({ onDelete }) {
   );
 }
 
+// Pantalla principal. Cada useState es un dato que la pantalla recuerda (lista,
+// mes elegido, formulario, filtros, orden de la tabla y avisos).
 export default function Ingresos() {
   const [ingresos, setIngresos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -118,6 +124,8 @@ export default function Ingresos() {
     descripcion: '', monto: '', categoria: 'Desarrollo', fecha: todayISO(),
   });
 
+  // Pide a la API los ingresos del mes elegido (o todos) y, a la vez, la lista de
+  // meses con ingresos para el selector. Si falla, muestra el error en pantalla.
   async function fetchIngresos(periodoElegido = periodo) {
     setLoading(true);
     setErrorCarga('');
@@ -142,8 +150,10 @@ export default function Ingresos() {
     }
   }
 
+  // Cada vez que cambia el mes elegido ([periodo]), volver a pedir los ingresos.
   useEffect(() => { fetchIngresos(periodo); }, [periodo]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Al escribir en el formulario: guarda el campo que cambió (el "name" del input).
   function handleFormChange(e) {
     if (e.target.name === 'monto') setFormError('');
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -172,6 +182,9 @@ export default function Ingresos() {
     return ` ${flecha}${prio}`;
   }
 
+  // Guardar el ingreso nuevo (POST /ingresos). Antes de enviar, controla que el
+  // monto sea mayor a 0; el resto lo valida el backend y, si algo no pasa, su
+  // mensaje se muestra en el formulario.
   async function handleSubmit(e) {
     e.preventDefault();
     setFormError('');
@@ -217,6 +230,7 @@ export default function Ingresos() {
     }
   }
 
+  // Pide confirmación y borra el ingreso (DELETE /ingresos/{id}).
   async function handleDelete(id) {
     if (!window.confirm('¿Eliminar este ingreso?')) return;
     try {

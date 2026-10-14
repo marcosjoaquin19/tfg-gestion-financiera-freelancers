@@ -3,7 +3,7 @@ Schemas (Pydantic) de Factura.
 
 Definen y validan los datos de las facturas en la API:
   - FacturaCreate / FacturaUpdate: validan monto positivo y que el vencimiento
-    sea posterior a la emisión.
+    no sea anterior a la emisión (puede ser el mismo día).
   - FacturaEstadoUpdate: cambia solo el estado (y la fecha de pago).
   - FacturaResponse: JSON de salida hacia el cliente.
 """

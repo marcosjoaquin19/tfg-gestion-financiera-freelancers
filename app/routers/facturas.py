@@ -1,5 +1,5 @@
 """
-Router de Facturas — emisión y seguimiento de facturas.
+Router de Facturas — registro y seguimiento de las facturas emitidas a clientes.
 
 Expone el CRUD de facturas bajo /facturas. Cada factura tiene un estado
 (pendiente / pagada / vencida) y reglas de negocio: una factura ya pagada no
@@ -13,6 +13,13 @@ Endpoints:
   PUT    /facturas/{id}             → edita una factura no pagada.
   PATCH  /facturas/{id}/estado      → cambia solo el estado (ej: a pagada).
   DELETE /facturas/{id}             → elimina una factura no pagada.
+
+Códigos de error que usa: 404 = la factura no existe o es de otro usuario;
+409 = "conflicto", la operación choca con el estado actual (por ejemplo,
+editar una factura ya pagada); 400/422 = datos que faltan o no son válidos.
+
+Cobrar una factura NO crea un ingreso a propósito: el cobro va a aparecer en
+el extracto bancario que se importa, y crearlo acá lo contaría dos veces.
 """
 
 from datetime import datetime, timezone
@@ -50,11 +57,13 @@ def _en_utc(fecha: datetime) -> datetime:
 
 
 def _ya_vencio(factura: Factura) -> bool:
+    """¿La fecha de vencimiento de la factura ya pasó (según el calendario de Argentina)?"""
     return ya_vencio(_en_utc(factura.fecha_vencimiento))
 
 
-# Helper interno: busca una factura del usuario o corta con un error 404.
-# Evita repetir esta misma validación en cada endpoint.
+# Función interna: busca una factura del usuario o corta con un error 404.
+# Evita repetir esta misma validación en cada endpoint. Antes de buscar,
+# actualiza los estados vencidos para devolver siempre el estado al día.
 def _get_factura_or_404(factura_id: int, db: Session, usuario_id: int) -> Factura:
     marcar_vencidas(db, usuario_id)
     factura = db.query(Factura).filter(
@@ -72,6 +81,7 @@ def crear_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Registra una factura emitida. Arranca como PENDIENTE de cobro."""
     nueva_factura = Factura(
         usuario_id=current_user.id,
         cliente_nombre=datos.cliente_nombre,
@@ -98,6 +108,11 @@ def listar_facturas(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Lista las facturas del usuario, de la más nueva a la más vieja.
+
+    Filtros opcionales: ?estado= y ?cliente_nombre= (la pantalla Facturas usa
+    solo el de estado), más limite/offset para paginar.
+    """
     # Antes de filtrar por estado: así ?estado=vencida ya incluye las que
     # vencieron desde la última consulta.
     marcar_vencidas(db, current_user.id)
@@ -108,7 +123,8 @@ def listar_facturas(
 
     if cliente_nombre:
         query = query.filter(Factura.cliente_nombre.ilike(f"%{cliente_nombre}%"))
-        # ilike → búsqueda case-insensitive, ej: "acme" matchea "Acme Corp"
+        # ilike → búsqueda sin distinguir mayúsculas; los % significan "lo que
+        # sea antes y después": "acme" encuentra "Acme Corp"
 
     return query.order_by(Factura.fecha_emision.desc(), Factura.id.desc()).offset(offset).limit(limite).all()
 
@@ -119,6 +135,7 @@ def obtener_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Devuelve una factura del usuario (404 si no existe o es de otro usuario)."""
     return _get_factura_or_404(factura_id, db, current_user.id)
 
 
@@ -129,6 +146,7 @@ def editar_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Edita los datos de una factura que todavía no se cobró (una pagada no se toca)."""
     factura = _get_factura_or_404(factura_id, db, current_user.id)
 
     if factura.estado == EstadoFactura.PAGADA:
@@ -163,8 +181,15 @@ def actualizar_estado_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Cambia el estado de una factura; el caso normal es "Marcar pagada".
+
+    Controles, en orden: una pagada ya no cambia; la transición tiene que
+    estar en TRANSICIONES_VALIDAS; no se puede marcar vencida antes de tiempo;
+    para pagarla hace falta la fecha de cobro, que no puede ser anterior a la
+    emisión ni posterior a hoy.
+    """
     # PATCH en vez de PUT → solo actualizamos el estado, no toda la factura
-    # una factura emitida no debería poder modificar cliente, monto o fechas
+    # (PUT reemplaza todos los datos; PATCH cambia solo una parte).
     factura = _get_factura_or_404(factura_id, db, current_user.id)
 
     if factura.estado == EstadoFactura.PAGADA:
@@ -224,6 +249,7 @@ def eliminar_factura(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Borra una factura no pagada (una cobrada se conserva como registro)."""
     factura = _get_factura_or_404(factura_id, db, current_user.id)
 
     if factura.estado == EstadoFactura.PAGADA:

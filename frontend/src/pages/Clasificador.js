@@ -37,22 +37,25 @@ const selectStyle = {
 
 // Etiquetas cortas del historial. Ninguna fuente de clasificación sale del
 // servidor propio: el clasificador no consulta modelos de lenguaje externos.
+// Etiqueta corta de la fuente para el historial de pruebas (abajo de la pantalla).
 const HISTORIAL_FUENTE = {
   correccion_usuario: { label: '·corrección', color: '#c4b5fd' },
   ml_propio:          { label: '·ML personal', color: '#4ade80' },
   ml_base:            { label: '·ML base',     color: '#67e8f9' },
 };
 
+// Etiqueta que dice de dónde salió la categoría: una corrección tuya, tu
+// modelo personal (después de 20 gastos propios) o el modelo base compartido.
 function BadgeFuente({ fuente }) {
-  // Cada fuente tiene su color: correcciones del usuario son ground truth,
-  // por eso van en violeta para distinguirse del ML predictivo.
+  // Cada fuente tiene su color: las correcciones del usuario son la respuesta
+  // correcta (no una predicción), por eso van en violeta para distinguirse del ML.
   const config = {
     correccion_usuario: { label: 'Corrección tuya', bg: '#3b1d5c', color: '#c4b5fd' },
     ml_propio:          { label: 'ML personal',     bg: '#14532d', color: '#4ade80' },
     ml_base:            { label: 'ML base',         bg: '#164e63', color: '#67e8f9' },
   };
   // La clasificación SIEMPRE se resuelve localmente: ninguna de las fuentes
-  // posibles es un servicio externo. El default refleja eso.
+  // posibles es un servicio externo. El valor por defecto refleja eso.
   const { label, bg, color } = config[fuente] || { label: 'ML local', bg: '#164e63', color: '#67e8f9' };
   return (
     <span style={{
@@ -66,6 +69,9 @@ function BadgeFuente({ fuente }) {
   );
 }
 
+// Barra de confianza: verde desde 85 %, amarilla desde 65 %, roja debajo.
+// (Es solo el color de la barra; la vara para mandar un gasto a revisión es
+// otra, el 30 %, y la aplica el backend.)
 function BarraConfianza({ confianza }) {
   if (confianza == null) return null;
   const pct = Math.round(confianza * 100);
@@ -83,6 +89,9 @@ function BarraConfianza({ confianza }) {
   );
 }
 
+// Recuadro de arriba: qué modelo está usando el usuario (propio o base),
+// algoritmo, exactitud, cantidad de ejemplos y fecha del último entrenamiento,
+// con el botón para reentrenar.
 function CardEstadoML({ estado, cargando, onReentrenar, reentrenando }) {
   if (cargando) {
     return (
@@ -151,6 +160,8 @@ function CardEstadoML({ estado, cargando, onReentrenar, reentrenando }) {
   );
 }
 
+// Pantalla principal: el recuadro del modelo, la caja para probar una
+// descripción, la corrección y el historial de las últimas 10 pruebas.
 export default function Clasificador() {
   const [descripcion, setDescripcion] = useState('');
   const [clasificando, setClasificando] = useState(false);
@@ -167,10 +178,12 @@ export default function Clasificador() {
   const [errorClasificar, setErrorClasificar] = useState('');
   const navigate = useNavigate();
 
+  // Al entrar a la pantalla, cargar el estado del modelo ([] = solo la primera vez).
   useEffect(() => {
     cargarEstado();
   }, []);
 
+  // Pide el estado del modelo (GET /ml/estado) para el recuadro de arriba.
   async function cargarEstado() {
     setCargandoEstado(true);
     try {
@@ -183,6 +196,9 @@ export default function Clasificador() {
     }
   }
 
+  // Botón "Clasificar": pide la categoría de la descripción escrita
+  // (POST /gastos/clasificar), muestra el resultado y lo suma al historial (se
+  // guardan las últimas 10). No guarda ningún gasto.
   async function handleClasificar() {
     if (!descripcion.trim()) return;
     setClasificando(true);
@@ -207,6 +223,8 @@ export default function Clasificador() {
     }
   }
 
+  // Botón de reentrenar: entrena el modelo personal con los gastos y
+  // correcciones del usuario (POST /ml/reentrenar) y actualiza el recuadro.
   async function handleReentrenar() {
     setReentrenando(true);
     setMsgReentrenamiento(null);
@@ -221,6 +239,9 @@ export default function Clasificador() {
     }
   }
 
+  // Guardar una corrección (POST /ml/corregir): desde ese momento esa
+  // descripción se clasifica con la categoría elegida, y el modelo se reentrena
+  // en segundo plano (HU-05).
   async function handleCorregir() {
     if (!categoriaCorrecta || !descripcion.trim()) return;
     setMsgCorreccion(null);
@@ -248,6 +269,7 @@ export default function Clasificador() {
     }
   }
 
+  // Atajo de teclado: Ctrl + Enter clasifica sin tocar el botón.
   function handleKeyDown(e) {
     if (e.key === 'Enter' && e.ctrlKey) handleClasificar();
   }

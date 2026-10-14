@@ -1,15 +1,29 @@
 """
-Genera el reporte financiero mensual en PDF.
+Genera el reporte financiero mensual en PDF (HU-13).
 
 Uso ReportLab y no WeasyPrint a propósito: WeasyPrint depende de un motor
 de renderizado HTML/CSS y no escala bien en Docker. ReportLab arma el PDF
 de forma totalmente programática, lo que también permite explicar línea
 por línea cómo se construye cada sección durante la defensa.
+
+Cómo leer este archivo, en tres bloques:
+  1. Recolección de datos (_totales_mes, _gastos_por_categoria, ...):
+     consultan la base y devuelven diccionarios simples.
+  2. Construcción del documento (_seccion_*): cada una arma una parte del
+     PDF con esos datos. Las secciones, en orden: encabezado, resumen
+     ejecutivo, estado fiscal, gastos por categoría, facturación, auditoría y
+     el aviso de alcance ("no reemplaza el asesoramiento de un contador matriculado").
+  3. Punto de entrada: generar_pdf_mensual() junta todo y devuelve el archivo.
+
+Vocabulario de ReportLab: Paragraph = un párrafo de texto; Table = una tabla;
+Spacer = un espacio en blanco; la "historia" (story) es la lista de esos
+elementos en orden, que ReportLab acomoda en las páginas A4.
 """
 
 # PATRÓN: Builder — cada _seccion_*() aporta un fragmento y generar_pdf_mensual() ensambla el documento.
+#         (Builder = "constructor por partes": el documento se arma pieza por pieza.)
 # PATRÓN: Template Method — _pie_pagina() lo invoca ReportLab en cada página (onFirstPage/onLaterPages).
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 from io import BytesIO
 from datetime import date, datetime
@@ -50,7 +64,11 @@ MESES_ES = {
 ZONA_AR = ZoneInfo("America/Argentina/Buenos_Aires")
 
 MAX_ALERTAS_DETALLE = 20
+# Tope de alertas que se listan una por una; si hay más, se dice cuántas faltan.
 
+# Nombre legible de cada tipo de alerta. Los tres últimos son tipos que
+# quedaron de una versión anterior (hoy ningún detector los genera): se dejan
+# para que un registro viejo, si existiera, igual se lea bien.
 ETIQUETA_ALERTA = {
     TipoAlerta.GASTO_DUPLICADO: "Posible gasto duplicado",
     TipoAlerta.ANOMALIA_ESTADISTICA: "Gasto inusualmente alto",
@@ -73,18 +91,25 @@ def _texto(valor) -> str:
 
     Paragraph interpreta "<" y "&" como marcas de formato: sin escapar, el
     nombre "Pérez & Hijos <SRL>" salía como "Pérez & Hijos" y el cliente
-    "A&B <Consultores>" como "A&B; ". En un documento para el contador el
-    texto tiene que salir exactamente como se cargó.
+    "A&B <Consultores>" como "A&B; ". En un documento que el usuario descarga y
+    guarda, el texto tiene que salir exactamente como se cargó.
+    "Escapar" = reemplazar esos símbolos por su versión de texto ("&" → "&amp;"),
+    para que ReportLab los muestre en lugar de interpretarlos.
     """
     return escape(str(valor or ""))
 
 
 # ── Recolección de datos ─────────────────────────────────────────────────────
-# Estas funciones consultan la BD y devuelven dicts simples. La idea es
-# separar la consulta del armado visual: si después cambia el layout, no hay
-# que tocar SQL.
+# Estas funciones consultan la BD y devuelven diccionarios simples. La idea es
+# separar la consulta del armado visual: si después cambia el diseño de la
+# página, no hay que tocar las consultas.
 
 def _totales_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
+    """Total de ingresos, total de gastos, cantidades y balance de un mes.
+
+    Se usa dos veces: para el mes del reporte y para el anterior (la columna
+    "vs mes anterior" del resumen ejecutivo).
+    """
     ingresos = db.query(Ingreso).filter(
         Ingreso.usuario_id == usuario_id,
         extract("month", Ingreso.fecha) == mes,
@@ -110,7 +135,8 @@ def _totales_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
 
 
 def _gastos_por_categoria(db: Session, usuario_id: int, mes: int, anio: int) -> list[dict]:
-    # Agrupado por SQL para no traer todos los registros a memoria.
+    """Por cada categoría: cuánto se gastó, en cuántos movimientos y qué % del total es."""
+    # Agrupado en la base (GROUP BY) para no traer todos los registros a memoria.
     rows = db.query(
         Gasto.categoria,
         func.sum(Gasto.monto).label("total"),
@@ -121,6 +147,8 @@ def _gastos_por_categoria(db: Session, usuario_id: int, mes: int, anio: int) -> 
         extract("year", Gasto.fecha) == anio,
     ).group_by(Gasto.categoria).all()
 
+    # Si no hubo gastos, el total sería 0 y no se puede dividir por cero: se usa
+    # 1 (igual no hay filas, así que ningún porcentaje se muestra).
     total_general = sum((r.total for r in rows), Decimal("0")) or Decimal("1")
 
     resultado = [
@@ -138,6 +166,11 @@ def _gastos_por_categoria(db: Session, usuario_id: int, mes: int, anio: int) -> 
 
 
 def _facturacion_mes(db: Session, usuario_id: int, mes: int, anio: int) -> dict:
+    """Facturas emitidas en el mes, separadas por estado: (cantidad, monto) de cada uno.
+
+    "Emitidas" es el total; pagadas + pendientes + vencidas lo desglosan.
+    """
+    # Antes de contar, se actualiza el estado de las que vencieron.
     marcar_vencidas(db, usuario_id)
     facturas = db.query(Factura).filter(
         Factura.usuario_id == usuario_id,
@@ -211,8 +244,10 @@ def _estado_fiscal_periodo(db: Session, usuario_id: int, mes: int, anio: int) ->
 
 
 def _alertas_pendientes(db: Session, usuario_id: int) -> list[AlertaAuditoria]:
+    """Alertas de auditoría sin resolver al momento de generar el reporte."""
     # Las alertas no están atadas a un mes en particular: muestro las pendientes
-    # al momento de generar el reporte. Ordeno por tipo para agrupar visualmente.
+    # al momento de generar el reporte. Ordeno por tipo para agrupar visualmente
+    # y, dentro de cada tipo, de la más nueva a la más vieja.
     return (
         db.query(AlertaAuditoria)
         .filter(
@@ -224,7 +259,7 @@ def _alertas_pendientes(db: Session, usuario_id: int) -> list[AlertaAuditoria]:
     )
 
 
-# ── Helpers de formato ───────────────────────────────────────────────────────
+# ── Funciones de formato ─────────────────────────────────────────────────────
 
 def _fmt_pesos(valor) -> str:
     # Formato argentino centralizado en services.formato (compartido con auditoria).
@@ -237,6 +272,7 @@ def _fmt_porcentaje(valor: float) -> str:
 
 
 def _variacion(actual: Decimal, anterior: Decimal) -> str:
+    """Cambio porcentual contra el mes anterior: "+12,5 %", "−3 %" o "—" si no hay base."""
     # Si no hay base para comparar, no inventamos una variación.
     if anterior is None or anterior == 0:
         return "—"
@@ -250,6 +286,12 @@ def _variacion(actual: Decimal, anterior: Decimal) -> str:
 # ── Construcción del documento ───────────────────────────────────────────────
 
 def _estilos():
+    """Estilos de texto del reporte (tamaño, color, márgenes de cada tipo de párrafo).
+
+    Parte de los estilos estándar de ReportLab y le suma los propios: Titulo,
+    Subtitulo, Seccion, Celda, Nota, Aviso (el recuadro amarillo de "período en
+    curso") y Pie (el aviso de alcance del final).
+    """
     base = getSampleStyleSheet()
     base.add(ParagraphStyle(
         name="Titulo",
@@ -311,8 +353,12 @@ def _estilos():
 
 
 def _tabla_estandar(datos: list[list], col_widths: list = None) -> Table:
+    """Tabla con el estilo común del reporte. datos = lista de filas; la primera es el encabezado."""
     # Mismo estilo para todas las tablas del reporte: encabezado azul,
     # filas alternadas, bordes finos. Centralizo acá para no repetir.
+    # Cada regla dice (qué, celda desde, celda hasta, valor). Las celdas son
+    # (columna, fila): (0, 0) es la de arriba a la izquierda y (-1, -1) la
+    # última; (0, 0)-(-1, 0) es toda la fila de encabezado.
     tabla = Table(datos, colWidths=col_widths)
     tabla.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f3a5f")),
@@ -333,6 +379,11 @@ def _tabla_estandar(datos: list[list], col_widths: list = None) -> Table:
 
 
 def _seccion_encabezado(usuario: Usuario, mes: int, anio: int, generado: datetime, en_curso: bool, estilos) -> list:
+    """Título, nombre del usuario, período y hora de generación.
+
+    Si el mes todavía no terminó, agrega un aviso de "datos parciales".
+    (&nbsp; es un espacio que no se parte en dos líneas.)
+    """
     titulo = Paragraph("FreelanceControl — Reporte mensual", estilos["Titulo"])
     sub = Paragraph(
         f"{_texto(usuario.nombre)} &nbsp;·&nbsp; "
@@ -351,6 +402,7 @@ def _seccion_encabezado(usuario: Usuario, mes: int, anio: int, generado: datetim
 
 
 def _seccion_resumen_ejecutivo(actual: dict, previo: dict, estilos) -> list:
+    """Ingresos, gastos, balance y cantidad de movimientos del mes, con su variación."""
     encabezado = Paragraph("Resumen ejecutivo", estilos["Seccion"])
 
     # La comparativa contra el mes anterior es lo más informativo del resumen,
@@ -370,6 +422,11 @@ def _seccion_resumen_ejecutivo(actual: dict, previo: dict, estilos) -> list:
 
 
 def _seccion_monotributo(fiscal: dict, estilos) -> list:
+    """Categoría, escala aplicada, tope, cuota y si la cuota del mes quedó pagada.
+
+    Casos especiales: sin categoría cargada, o sin escala para ese período
+    (no se inventa una cuota).
+    """
     encabezado = Paragraph("Estado fiscal — Monotributo", estilos["Seccion"])
 
     if not fiscal.get("tiene_categoria"):
@@ -410,6 +467,7 @@ def _seccion_monotributo(fiscal: dict, estilos) -> list:
 
 
 def _seccion_categorias(rows: list[dict], estilos) -> list:
+    """Tabla de gastos por categoría, de mayor a menor."""
     encabezado = Paragraph("Distribución de gastos por categoría", estilos["Seccion"])
 
     if not rows:
@@ -431,6 +489,7 @@ def _seccion_categorias(rows: list[dict], estilos) -> list:
 
 
 def _seccion_facturacion(fact: dict, estilos) -> list:
+    """Tabla de facturas del mes: emitidas, pagadas, pendientes y vencidas."""
     encabezado = Paragraph("Facturación del período", estilos["Seccion"])
 
     filas = [["Estado", "Cantidad", "Monto"]]
@@ -449,6 +508,7 @@ def _seccion_facturacion(fact: dict, estilos) -> list:
 
 
 def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
+    """Alertas pendientes: primero un conteo por tipo y después el detalle (hasta 20)."""
     encabezado = Paragraph("Auditoría — alertas pendientes al generar el reporte", estilos["Seccion"])
 
     if not alertas:
@@ -470,8 +530,9 @@ def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
     # a transmisiones a servicios externos.
     detalle_lineas = [["Tipo", "Detalle", "Monto"]]
     for a in alertas[:MAX_ALERTAS_DETALLE]:
-        # Paragraph (no string plano) para que ReportLab haga wrap dentro de
-        # la columna: un string largo desborda la celda y pisa la de Monto.
+        # Paragraph (no texto suelto) para que ReportLab parta el texto en
+        # varias líneas dentro de la columna: un texto largo suelto desborda la
+        # celda y pisa la de Monto.
         detalle_lineas.append([
             Paragraph(_texto(etiqueta(a.tipo)), estilos["Celda"]),
             Paragraph(_texto(a.descripcion), estilos["Celda"]),
@@ -495,10 +556,11 @@ def _seccion_auditoria(alertas: list[AlertaAuditoria], estilos) -> list:
 
 
 def _seccion_pie(estilos) -> list:
+    """Aviso de alcance al final del reporte (criterio de la HU-13)."""
     # Descargo de alcance. Va en el PDF además de en la pantalla porque el
-    # reporte es justamente el artefacto que sale de la aplicación y circula
-    # fuera de ella (el usuario se lo envía al contador o lo imprime): tiene
-    # que llevar el límite de responsabilidad consigo. Mismo enunciado que el
+    # reporte es justamente lo que sale de la aplicación y circula fuera de
+    # ella (el usuario lo descarga, lo imprime o lo comparte): tiene que llevar
+    # el límite de responsabilidad consigo. Mismo enunciado que el
     # componente frontend/src/components/AvisoAlcance.js, con la frase exacta
     # del criterio de la HU-13: "no reemplaza el asesoramiento de un contador
     # matriculado".
@@ -515,7 +577,12 @@ def _seccion_pie(estilos) -> list:
 # ── Punto de entrada ─────────────────────────────────────────────────────────
 
 def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> bytes:
-    """Devuelve el PDF como bytes listo para enviar en la respuesta HTTP."""
+    """Arma el reporte del mes y lo devuelve como bytes, listo para descargar.
+
+    La llama GET /reportes/pdf. Pasos: busca el usuario, junta los
+    datos del mes (y del anterior para comparar), arma cada sección en orden
+    y le pide a ReportLab que las acomode en páginas A4.
+    """
 
     usuario = db.query(Usuario).filter(Usuario.id == usuario_id).first()
     if usuario is None:
@@ -540,8 +607,9 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
     fiscal = _estado_fiscal_periodo(db, usuario_id, mes, anio)
     alertas = _alertas_pendientes(db, usuario_id)
 
-    # SimpleDocTemplate escribe a un buffer en memoria; después devolvemos
-    # los bytes para que el router los meta en una StreamingResponse.
+    # SimpleDocTemplate escribe en un "buffer" en memoria (un archivo que no
+    # se guarda en disco); después devolvemos sus bytes para que la ruta los
+    # mande al navegador como descarga.
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
@@ -556,6 +624,7 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
 
     estilos = _estilos()
 
+    # La "historia": la lista ordenada de todo lo que va en el PDF.
     historia = []
     historia += _seccion_encabezado(usuario, mes, anio, generado, en_curso, estilos)
     historia += _seccion_resumen_ejecutivo(actual, previo, estilos)
@@ -570,8 +639,11 @@ def generar_pdf_mensual(db: Session, usuario_id: int, mes: int, anio: int) -> by
 
 
 def _pie_pagina(canvas, doc):
+    """Escribe "Página N" abajo a la derecha. ReportLab la llama en cada página."""
     # Numeración al pie en cada página. Lo hago con onFirstPage/onLaterPages
-    # porque ReportLab no tiene un footer "global" en SimpleDocTemplate.
+    # porque ReportLab no tiene un pie de página "global" en SimpleDocTemplate.
+    # canvas = la hoja donde se dibuja; saveState/restoreState guardan y
+    # recuperan la configuración (letra, color) para no afectar al resto.
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
     canvas.setFillColor(colors.grey)

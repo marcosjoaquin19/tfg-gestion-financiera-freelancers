@@ -17,6 +17,7 @@ import api, { extraerMensajeError } from '../api';
 // lee la tabla `categorias_monotributo`). Única fuente de verdad: se actualiza en
 // un solo lugar (seed_categorias_monotributo.py) y el frontend la consume.
 
+// Pesos en formato argentino, sin decimales: 1234567 → "1.234.567".
 function fmt(n) {
   return Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
@@ -26,12 +27,15 @@ function fmtPct(n) {
   return Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 1 });
 }
 
+// Colores del semáforo. El color lo decide el backend (monotributo_service):
+// verde < 70 %, amarillo 70-90 %, rojo > 90 % de la proyección anual sobre el tope.
 const ESTADO_COLORS = {
   verde:    { fondo: '#0d1f0d', borde: '#1a4d1a', color: '#4ade80' },
   amarillo: { fondo: '#1f1a0d', borde: '#4d3d1a', color: '#fbbf24' },
   rojo:     { fondo: '#1f0d0d', borde: '#4d1a1a', color: '#f87171' },
 };
 
+// Mensaje que acompaña a cada color del semáforo.
 const ESTADO_MSG = {
   verde:    '✓ Tu facturación está bajo control',
   amarillo: 'Estás acercándote al límite de tu categoría',
@@ -45,6 +49,7 @@ const selectStyle = {
   fontSize: '14px', outline: 'none', cursor: 'pointer',
 };
 
+// Pantalla principal del control fiscal.
 export default function Monotributo() {
   const [estado, setEstado] = useState(null);
   const [pago, setPago] = useState(null);
@@ -60,6 +65,9 @@ export default function Monotributo() {
   const [errorCarga, setErrorCarga] = useState('');
   const navigate = useNavigate();
 
+  // Pide en paralelo el estado fiscal (semáforo), el pago de la cuota del mes y
+  // la escala de categorías. Promise.allSettled: si uno falla, los otros se
+  // muestran igual. La escala se guarda como {letra: categoría} para buscarla rápido.
   async function fetchData() {
     setLoading(true);
     const [estRes, pagRes, catRes] = await Promise.allSettled([
@@ -79,8 +87,11 @@ export default function Monotributo() {
     setLoading(false);
   }
 
+  // Al entrar a la pantalla, cargar todo ([] = solo la primera vez).
   useEffect(() => { fetchData(); }, []);
 
+  // Guarda la categoría elegida por el usuario (PATCH /monotributo/categoria) y
+  // recarga el estado: con otra categoría cambian el tope, la cuota y el semáforo.
   async function handleGuardarCategoria(cat) {
     setGuardando(true);
     setCatError('');

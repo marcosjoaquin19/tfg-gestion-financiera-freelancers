@@ -20,6 +20,11 @@ transaccionales para soportar el patrón típico:
 que es el corazón de las consultas rolling 12 meses (Monotributo),
 reportes mensuales y auditorías por ventana temporal.
 
+Nota posterior: el semáforo del Monotributo terminó usando el año en curso
+más la proyección hasta diciembre (HU-10 de la tesis); los 12 meses móviles
+quedaron en GET /monotributo/facturacion-12-meses. El índice sirve igual a
+los dos: "desde el 1° de enero" también es un filtro fecha >= ?.
+
 El orden de las columnas en el índice no es arbitrario: `usuario_id` va
 primero porque es el predicado de igualdad y la cardinalidad real es alta
 (muchos usuarios distintos); `fecha` va segundo para acelerar el filtro de

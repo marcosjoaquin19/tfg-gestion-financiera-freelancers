@@ -3,13 +3,31 @@
  *
  * Define el enrutamiento (qué componente se muestra en cada URL) usando
  * react-router. Separa las rutas públicas (login, registro) de las privadas,
- * que solo son accesibles con sesión iniciada gracias al wrapper PrivateRoute.
+ * que solo son accesibles con sesión iniciada gracias al envoltorio PrivateRoute.
  * Cada ruta privada corresponde a un módulo de la app (Dashboard, Ingresos,
  * Gastos, Facturas, Auditoría, Proyecciones, Clasificador, etc.).
+ *
+ * Cómo leer cualquier pantalla de React de este proyecto (carpeta pages/):
+ *  - Componente: cada pantalla es una función que devuelve lo que se dibuja
+ *    (export default function Gastos() { ... return (<Layout>...</Layout>); }).
+ *  - JSX: ese "HTML dentro de JavaScript" del return. Lo que va entre llaves
+ *    {...} es código: {fmtMonto(total)} muestra el resultado de la función.
+ *  - useState: la "memoria" de la pantalla. const [gastos, setGastos] =
+ *    useState([]) crea el dato "gastos" (arranca vacío) y la función para
+ *    cambiarlo; cada vez que se llama a setGastos, React vuelve a dibujar.
+ *  - useEffect: código que corre cuando la pantalla aparece (o cuando cambia
+ *    algún dato de la lista del final, como [periodo]). Se usa para pedir los
+ *    datos a la API al entrar.
+ *  - api.get / api.post / api.delete: los pedidos al backend (ver api.js, que
+ *    les agrega el token solo). async/await = "esperá la respuesta y seguí".
+ *  - Las funciones handleAlgo (handleSubmit, handleDelete...) son las que
+ *    corren al tocar un botón o enviar un formulario.
+ *  - Props: los datos que un componente le pasa a otro, como atributos
+ *    (<Layout activeSection="Gastos">).
  */
 
 // PATRÓN: Guard / Protected Route — PrivateRoute envuelve las rutas que exigen sesión iniciada.
-// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+// Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -33,6 +51,9 @@ function PrivateRoute({ children }) {
   return token ? children : <Navigate to="/login" replace />;
 }
 
+// PlaceholderPage y la lista "placeholders" quedaron del armado inicial, cuando
+// algunas pantallas todavía no existían ("próximamente"). Hoy la lista está
+// vacía: todas las secciones del menú tienen su pantalla real.
 function PlaceholderPage({ section }) {
   return (
     <Layout activeSection={section}>

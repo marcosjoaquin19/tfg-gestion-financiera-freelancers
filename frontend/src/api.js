@@ -12,7 +12,7 @@
 
 // PATRÓN: Interceptor — el token JWT y el manejo global del 401 se resuelven acá, no en cada pantalla.
 // PATRÓN: Singleton — una única instancia de axios compartida por toda la aplicación.
-// Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+// Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 import axios from 'axios';
 
 // Instancia de axios apuntando a la URL del backend (configurable por entorno).

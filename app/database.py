@@ -9,7 +9,7 @@ de base de datos llamando a get_db().
 # PATRÓN: Factory — sessionmaker() fabrica sesiones bajo demanda.
 # PATRÓN: Singleton — un único engine con pool de conexiones para todo el proceso.
 # PATRÓN: Unit of Work — cada Session agrupa operaciones y confirma o revierte en bloque.
-# Justificación y alternativas descartadas: docs/ARQUITECTURA_Y_PATRONES.md
+# Justificación y alternativas descartadas: defensa_final/02_ARQUITECTURA_Y_PATRONES.md
 
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base

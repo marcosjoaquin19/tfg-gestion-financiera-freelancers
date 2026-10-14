@@ -8,6 +8,7 @@
  * la noche quedaba en octubre, y el cobro de una factura, rechazado por futuro).
  */
 export function todayISO(ahora = new Date()) {
+  // dos(9) → "09": completa con un cero adelante para que siempre haya dos dígitos.
   const dos = (n) => String(n).padStart(2, '0');
   return `${ahora.getFullYear()}-${dos(ahora.getMonth() + 1)}-${dos(ahora.getDate())}`;
 }

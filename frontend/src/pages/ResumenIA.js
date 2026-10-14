@@ -33,6 +33,7 @@ const selectStyle = {
   outline: 'none', cursor: 'pointer',
 };
 
+// Pantalla principal del resumen del mes.
 export default function ResumenIA() {
   // Período con el que abre la pantalla: el mes en curso, calculado una sola vez.
   const [inicial] = useState(() => {
@@ -49,6 +50,9 @@ export default function ResumenIA() {
   // en desarrollo), se ignora para que no pise a la más reciente.
   const ultimoPedido = useRef(0);
 
+  // Pide el resumen del mes elegido (GET /resumen/financiero). useCallback hace
+  // que la función sea siempre la misma entre dibujos, así el useEffect de abajo
+  // no se vuelve a disparar solo.
   const fetchResumen = useCallback(async (m, a) => {
     const pedido = ++ultimoPedido.current;
     setCargando(true);
@@ -66,6 +70,7 @@ export default function ResumenIA() {
     }
   }, []);
 
+  // Al entrar a la pantalla, pedir el resumen del mes en curso.
   useEffect(() => { fetchResumen(inicial.mes, inicial.anio); }, [fetchResumen, inicial]);
 
   const anios = Array.from({ length: 5 }, (_, i) => inicial.anio - 2 + i);

@@ -2,8 +2,8 @@
 Modelo de datos: Gasto.
 
 Representa la tabla `gastos`. Cada fila es un gasto del freelancer, con su
-categoría (que puede asignarse automáticamente con el clasificador de ML) y un
-flag que el módulo de auditoría usa para marcar posibles duplicados.
+categoría (que puede asignarse automáticamente con el clasificador de ML) y una
+marca que se usa para señalar posibles duplicados (al cargar el gasto y en la auditoría).
 """
 
 from sqlalchemy import Column, Integer, String, Numeric, DateTime, ForeignKey, Boolean, Index

@@ -28,6 +28,11 @@ def descargar_pdf_mensual(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    """Descarga el reporte mensual en PDF (botón del Dashboard).
+
+    Parámetros opcionales: ?mes=9&anio=2026. Sin ellos, el último mes cerrado.
+    Un mes futuro devuelve 422 (dato inválido) con un mensaje claro.
+    """
     # HU-13: el reporte es "del mes cerrado". Sin período explícito se usa el
     # último mes cerrado. El mes en curso se puede pedir (el PDF lo marca como
     # datos parciales); un mes que todavía no empezó, no.
@@ -51,9 +56,9 @@ def descargar_pdf_mensual(
         anio=anio_final,
     )
 
-    # StreamingResponse + BytesIO porque el PDF puede ser mediano y no
-    # queremos cargarlo entero en una variable de respuesta. El header
-    # Content-Disposition fuerza la descarga en lugar de mostrarlo inline.
+    # StreamingResponse manda los bytes del PDF al navegador como archivo. El
+    # encabezado Content-Disposition: attachment fuerza la descarga (criterio
+    # de la HU-13) en lugar de abrirlo dentro de la pestaña, y le pone nombre.
     nombre_archivo = f"reporte_{anio_final}-{mes_final:02d}.pdf"
     return StreamingResponse(
         BytesIO(pdf_bytes),

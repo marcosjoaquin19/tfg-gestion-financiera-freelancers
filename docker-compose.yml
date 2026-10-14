@@ -30,17 +30,17 @@ services:
     env_file:
       - .env                   # usa las variables de tu archivo .env
 
-  frontend:
+  frontend:                    # contenedor de la pantalla (React)
     build: ./frontend
     container_name: tfg_frontend
     ports:
       - "127.0.0.1:3000:3000"  # la aplicación, solo desde esta computadora
     environment:
-      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_API_URL=http://localhost:8000  # adónde le pega el navegador a la API
     depends_on:
       - api
     volumes:
-      - ./frontend/src:/app/src
+      - ./frontend/src:/app/src  # el código de pantallas se monta: editar src recompila solo
 
 volumes:
   postgres_data:               # volumen para persistir los datos de PostgreSQL

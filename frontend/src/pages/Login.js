@@ -108,8 +108,9 @@ const inputStyle = {
   outline: 'none',
 };
 
+// Pantalla de inicio de sesión (pública: no pide token).
 export default function Login() {
-  // Estado del formulario: credenciales, mensaje de error y flag de carga.
+  // Estado del formulario: credenciales, mensaje de error e indicador de carga ("Ingresando...").
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

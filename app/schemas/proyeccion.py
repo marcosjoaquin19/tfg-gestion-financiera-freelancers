@@ -29,7 +29,7 @@ class ProyeccionResponse(BaseModel):
 
 class ProyeccionGenerarRequest(BaseModel):
     periodos: int = Field(default=6, ge=1, le=6)
-    # cuántos meses hacia adelante predecir, default 6 (alineado con HU-09:
+    # cuántos meses hacia adelante predecir, por defecto 6 (alineado con HU-09:
     # "proyección de ingresos para los próximos seis meses").
     # Prophet se invoca con freq="MS" (Month Start), así que cada fila del
     # forecast corresponde al primer día de un mes futuro.
